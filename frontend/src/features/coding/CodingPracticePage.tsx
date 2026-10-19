@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { api, ApiError } from '../../lib/api';
 import { CodingProblem, CodeExecutionResult } from '../../lib/types';
 import { Card } from '../../components/ui/Card';
@@ -26,6 +26,9 @@ export const CodingPracticePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'description' | 'results'>('description');
   const [loading, setLoading] = useState<boolean>(true);
 
+  // Persistent code drafts cache per problem and language
+  const draftsRef = useRef<Record<string, string>>({});
+
   useEffect(() => {
     const fetchProblems = async () => {
       try {
@@ -45,24 +48,34 @@ export const CodingPracticePage: React.FC = () => {
   }, []);
 
   const selectProblem = (problem: CodingProblem, lang: 'python' | 'java' | 'cpp') => {
+    if (selectedProblem) {
+      draftsRef.current[`${selectedProblem.id}_${language}`] = code;
+    }
     setSelectedProblem(problem);
     setLanguage(lang);
-    setCode(problem.starter_code[lang] || '');
+    const key = `${problem.id}_${lang}`;
+    const draft = draftsRef.current[key];
+    setCode(draft !== undefined ? draft : (problem.starter_code[lang] || ''));
     setExecutionResult(null);
     setSubmissionSuccess(false);
     setActiveTab('description');
   };
 
   const handleLanguageChange = (lang: 'python' | 'java' | 'cpp') => {
-    setLanguage(lang);
     if (selectedProblem) {
-      setCode(selectedProblem.starter_code[lang] || '');
+      draftsRef.current[`${selectedProblem.id}_${language}`] = code;
+      const nextKey = `${selectedProblem.id}_${lang}`;
+      const draft = draftsRef.current[nextKey];
+      setCode(draft !== undefined ? draft : (selectedProblem.starter_code[lang] || ''));
     }
+    setLanguage(lang);
   };
 
   const handleResetCode = () => {
     if (selectedProblem) {
-      setCode(selectedProblem.starter_code[language] || '');
+      const starter = selectedProblem.starter_code[language] || '';
+      draftsRef.current[`${selectedProblem.id}_${language}`] = starter;
+      setCode(starter);
     }
   };
 
@@ -323,9 +336,16 @@ export const CodingPracticePage: React.FC = () => {
             <div className="relative">
               <textarea
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCode(val);
+                  if (selectedProblem) {
+                    draftsRef.current[`${selectedProblem.id}_${language}`] = val;
+                  }
+                }}
                 rows={18}
                 spellCheck={false}
+                aria-label="Code editor"
                 className="w-full font-mono text-xs p-4 bg-zinc-950 text-lime-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-lime-500 leading-relaxed resize-y border border-zinc-800"
                 placeholder="// Write your solution here..."
               />

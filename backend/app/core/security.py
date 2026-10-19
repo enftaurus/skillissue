@@ -32,10 +32,16 @@ def decode_access_token(token: str) -> Optional[dict]:
         return None
 
 def _get_fernet() -> Fernet:
-    key = settings.ENCRYPTION_KEY
-    if isinstance(key, str):
-        key = key.encode("utf-8")
-    return Fernet(key)
+    import base64
+    import hashlib
+    raw_key = settings.ENCRYPTION_KEY
+    if isinstance(raw_key, str):
+        raw_key = raw_key.encode("utf-8")
+    try:
+        return Fernet(raw_key)
+    except Exception:
+        derived = base64.urlsafe_b64encode(hashlib.sha256(raw_key).digest())
+        return Fernet(derived)
 
 def encrypt_secret(plaintext: str) -> str:
     if not plaintext:

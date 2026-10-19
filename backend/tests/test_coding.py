@@ -86,3 +86,16 @@ async def test_coding_sandbox_api(client: httpx.AsyncClient):
     subs = list_subs.json()
     assert len(subs) >= 1
     assert subs[0]["id"] == sub_data["id"]
+
+@pytest.mark.asyncio
+async def test_coding_sandbox_environment_isolation():
+    """Verify sandboxed code runner does not leak host secrets through os.environ."""
+    import os
+    from sandbox.runner import SandboxRunner, TestCase
+    
+    os.environ["SECRET_KEY"] = "super-secret-production-key-999"
+    payload = "import os\nprint('SECRET_IS:' + str(os.environ.get('SECRET_KEY', 'NOT_FOUND')))"
+    res = await SandboxRunner.execute_async("python", payload, [TestCase(stdin="", expected_stdout="SECRET_IS:NOT_FOUND")])
+    assert "SECRET_IS:NOT_FOUND" in res.stdout
+    assert "super-secret-production-key-999" not in res.stdout
+

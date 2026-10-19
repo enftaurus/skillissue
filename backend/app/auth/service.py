@@ -37,7 +37,7 @@ class AuthService:
         config = ProviderConfig(
             user_id=user.id,
             provider_name="mock",
-            preferred_model="mock-claude-3-5-sonnet",
+            preferred_model="mock-qwen3-32b",
             is_valid=True,
         )
         db.add(config)

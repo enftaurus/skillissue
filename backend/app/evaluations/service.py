@@ -11,7 +11,7 @@ from backend.app.evaluations.prompts import build_evaluation_prompt
 from backend.app.interviews.rubrics import get_rubric_for_category
 from backend.app.providers.factory import ModelFactory
 from backend.app.providers.service import ProviderConfigService
-from backend.app.core.errors import EntityNotFoundError, AppException
+from backend.app.core.errors import EntityNotFoundError, AppException, ProviderError
 from backend.app.core.logging import logger
 
 class EvaluationService:
@@ -89,7 +89,27 @@ class EvaluationService:
         response = await provider.generate_json(prompt=user_prompt, system_prompt=system_prompt)
         parsed = response.parsed_json or {}
 
-        overall_score = float(parsed.get("overall_score", 70.0))
+        # Strictly reject malformed output; never silently fabricate a 70.0 score
+        if not parsed or "error" in parsed or not parsed.get("dimension_scores"):
+            raise ProviderError(
+                "Model failed to generate structured evaluation. No rubric dimension scores were produced.",
+                code="EVALUATION_PARSING_FAILED"
+            )
+
+        if "overall_score" not in parsed:
+            raise ProviderError(
+                "Model evaluation missing overall_score field.",
+                code="EVALUATION_SCHEMA_INVALID"
+            )
+
+        try:
+            overall_score = float(parsed["overall_score"])
+        except (ValueError, TypeError):
+            raise ProviderError(
+                "Model returned non-numeric overall_score.",
+                code="EVALUATION_SCHEMA_INVALID"
+            )
+
         dimension_scores = parsed.get("dimension_scores", {})
         strengths = parsed.get("strengths", [])
         weaknesses = parsed.get("weaknesses", [])
@@ -100,7 +120,7 @@ class EvaluationService:
 
         # Check if an evaluation already exists for this interview
         existing_res = await db.execute(
-            select(Evaluation).where(Evaluation.interview_id == interview_id)
+            select(Evaluation).where(Evaluation.interview_id == interview_id, Evaluation.user_id == user_id)
         )
         evaluation = existing_res.scalar_one_or_none()
         if evaluation:

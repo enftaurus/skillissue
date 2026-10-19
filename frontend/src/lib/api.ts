@@ -40,11 +40,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    if (response.status === 401) {
-      localStorage.removeItem('skillissue_token');
-      localStorage.removeItem('skillissue_user');
-      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
-        window.location.href = '/login';
+    if (response.status === 401 && !endpoint.startsWith('/auth/login')) {
+      if (token) {
+        localStorage.removeItem('skillissue_token');
+        localStorage.removeItem('skillissue_user');
+        window.dispatchEvent(new CustomEvent('auth:expired'));
+        if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+          window.location.href = '/login';
+        }
       }
     }
     const message = data?.error?.message || data?.detail || 'An unexpected error occurred';

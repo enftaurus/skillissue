@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -87,10 +88,13 @@ class ProviderConfigService:
                 if not test_res.success:
                     raise AppException(test_res.message, code="INVALID_CREDENTIALS")
 
-                # Store encrypted secrets and masked display
+                # Store encrypted credentials bundle and masked display
+                creds_bundle = json.dumps({
+                    "access_key_id": data.aws_access_key_id,
+                    "secret_access_key": data.aws_secret_access_key,
+                })
                 config.aws_access_key_masked = mask_access_key(data.aws_access_key_id)
-                # We store encrypted access key and secret key so backend can authenticate without client re-sending
-                config.aws_secret_key_enc = encrypt_secret(data.aws_secret_access_key)
+                config.aws_secret_key_enc = encrypt_secret(creds_bundle)
                 config.is_valid = True
                 config.last_tested_at = datetime.now(timezone.utc)
 

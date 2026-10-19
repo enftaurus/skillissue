@@ -106,3 +106,50 @@ async def test_user_provider_settings_workflow(client: httpx.AsyncClient):
     del_cred = await client.delete("/api/v1/providers/credentials", headers=headers)
     assert del_cred.status_code == 200
     assert del_cred.json()["provider_name"] == "mock"
+
+@pytest.mark.asyncio
+async def test_provider_credential_encryption_and_routing():
+    """Verify that ProviderConfig stores and decrypts unmasked Access Key ID and honors model preferences."""
+    import json
+    from unittest.mock import AsyncMock, MagicMock
+    from backend.app.database.models import ProviderConfig
+    from backend.app.core.security import encrypt_secret
+    from backend.app.providers.factory import ModelFactory
+    from backend.app.providers.bedrock import AmazonBedrockProvider
+    from backend.app.providers.mock_provider import MockProvider
+
+    full_access_key = "AKIAIOSFODNN7EXAMPLE"
+    full_secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+    # Simulate stored provider config with JSON bundle encrypted
+    bundle = json.dumps({"access_key_id": full_access_key, "secret_access_key": full_secret_key})
+    mock_config = ProviderConfig(
+        user_id="test-user-123",
+        provider_name="bedrock",
+        aws_region="us-east-1",
+        aws_access_key_masked="AKIA...MPLE",
+        aws_secret_key_enc=encrypt_secret(bundle),
+        preferred_model="qwen.qwen3-next-80b-a3b-v1:0",
+        is_valid=True,
+    )
+
+    db_mock = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = mock_config
+    db_mock.execute.return_value = mock_res
+
+    # 1. Verify get_for_user decrypts full unmasked credentials
+    provider = await ModelFactory.get_for_user(db_mock, "test-user-123", task_type="general")
+    assert isinstance(provider, AmazonBedrockProvider)
+    assert provider.aws_access_key_id == full_access_key
+    assert provider.aws_secret_access_key == full_secret_key
+
+    # 2. Verify PRV-01: explicit preferred model is honored even for coding tasks
+    coding_provider = await ModelFactory.get_for_user(db_mock, "test-user-123", task_type="coding")
+    assert coding_provider.model_id == "qwen.qwen3-next-80b-a3b-v1:0"
+
+    # 3. Verify corrupted ciphertext gracefully falls back to MockProvider
+    mock_config.aws_secret_key_enc = "corrupted-ciphertext-invalid-token"
+    fallback_provider = await ModelFactory.get_for_user(db_mock, "test-user-123", task_type="general")
+    assert isinstance(fallback_provider, MockProvider)
+

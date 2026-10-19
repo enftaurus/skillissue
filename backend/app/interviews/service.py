@@ -222,7 +222,10 @@ class InterviewService:
         provider = await ModelFactory.get_for_user(db, user_id, task_type=task_type)
 
         prompt = (
-            f"Candidate answered: '{content}'.\n"
+            "The candidate provided the following response:\n"
+            "<untrusted_candidate_answer>\n"
+            f"{content}\n"
+            "</untrusted_candidate_answer>\n\n"
             "Respond as the interviewer. Remember:\n"
             "- Ask EXACTLY ONE question.\n"
             "- If their claim is unverified or vague, ask a skeptical follow-up ('How did you measure that?', 'What was the specific bottleneck?').\n"

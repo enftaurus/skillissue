@@ -44,6 +44,22 @@ class Settings(BaseSettings):
             return [i.strip() for i in v.split(",") if i.strip()]
         return v
 
+    @field_validator("SECRET_KEY")
+    def validate_secret_key(cls, v: str, info) -> str:
+        env = info.data.get("ENVIRONMENT", "development").lower()
+        if env == "production":
+            if not v or len(v) < 32 or "insecure" in v.lower() or "dev-" in v.lower():
+                raise ValueError("Insecure or default SECRET_KEY rejected in production. Must be at least 32 cryptographically secure characters.")
+        return v
+
+    @field_validator("ENCRYPTION_KEY")
+    def validate_encryption_key(cls, v: str, info) -> str:
+        env = info.data.get("ENVIRONMENT", "development").lower()
+        if env == "production":
+            if not v or "gH7_mK9" in v:
+                raise ValueError("Insecure default ENCRYPTION_KEY rejected in production. Must provide a secure production key.")
+        return v
+
     # Model defaults
     DEFAULT_PROVIDER: str = "mock"
     SANDBOX_EXECUTION_MODE: str = "isolated_process"

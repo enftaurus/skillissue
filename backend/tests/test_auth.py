@@ -77,3 +77,24 @@ async def test_auth_workflow(client: httpx.AsyncClient):
     # 9. Verify token no longer accesses /me
     after_del = await client.get("/api/v1/auth/me", headers=headers)
     assert after_del.status_code == 401
+
+def test_production_secrets_validation():
+    """Verify that Settings raises a validation error when production boots with default/weak secrets."""
+    from backend.app.core.config import Settings
+    
+    # Insecure default secret in production must fail
+    with pytest.raises(ValueError, match="Insecure or default SECRET_KEY rejected in production"):
+        Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="dev-insecure-secret-key-at-least-32-chars-long!",
+            ENCRYPTION_KEY="6nvbNYqsN6cT89ORW_FdvzG6F0jiE3dGo9L4W9ZthWs="
+        )
+
+    # Insecure default encryption key in production must fail
+    with pytest.raises(ValueError, match="Insecure default ENCRYPTION_KEY rejected in production"):
+        Settings(
+            ENVIRONMENT="production",
+            SECRET_KEY="a-very-long-and-secure-random-production-secret-key-32chars!",
+            ENCRYPTION_KEY="gH7_mK9_sP2_wL4_xR8_yT1_bV3_nQ6_zC5_dF0_jA="
+        )
+

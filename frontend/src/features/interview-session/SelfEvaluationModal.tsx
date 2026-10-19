@@ -93,11 +93,14 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-5 gap-1.5 pt-1">
+                <div className="grid grid-cols-5 gap-1.5 pt-1" role="radiogroup" aria-label={`Score for ${r.name}`}>
                   {[1, 2, 3, 4, 5].map((s) => (
                     <button
                       key={s}
                       type="button"
+                      role="radio"
+                      aria-checked={currentScore === s}
+                      aria-label={`${s} out of 5 for ${r.name}`}
                       onClick={() => handleScoreChange(r.id, s)}
                       className={`py-2 text-xs font-semibold rounded border transition-colors ${
                         currentScore === s

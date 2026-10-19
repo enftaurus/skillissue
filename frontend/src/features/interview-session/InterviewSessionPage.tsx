@@ -52,6 +52,8 @@ export const InterviewSessionPage: React.FC = () => {
   const [secondsElapsed, setSecondsElapsed] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const baseInputTextRef = useRef<string>('');
+  const codeDraftsRef = useRef<Record<string, string>>({});
 
   // 1. Initial Load
   useEffect(() => {
@@ -67,7 +69,9 @@ export const InterviewSessionPage: React.FC = () => {
           api.get<CodingProblem>('/coding/problems/two-sum')
             .then((prob) => {
               setCodingProblem(prob);
-              setCode(prob.starter_code['python']);
+              const starter = prob.starter_code['python'] || '';
+              codeDraftsRef.current['python'] = starter;
+              setCode(starter);
             })
             .catch(() => {});
         }
@@ -77,13 +81,17 @@ export const InterviewSessionPage: React.FC = () => {
       .catch((err) => setError(err.message || 'Failed to load interview session.'))
       .finally(() => setLoading(false));
 
-    // Initialize Speech Handler
+    // Initialize Speech Handler with non-duplicating committed/interim handling
     const handler = new SpeechHandler(
-      (text, _isFinal) => {
-        setInputText((prev) => {
-          const trimmed = prev.trim();
-          return trimmed ? `${trimmed} ${text}` : text;
-        });
+      (text, isFinal) => {
+        if (isFinal) {
+          const updated = (baseInputTextRef.current ? `${baseInputTextRef.current} ` : '') + text.trim();
+          baseInputTextRef.current = updated;
+          setInputText(updated);
+        } else {
+          const live = (baseInputTextRef.current ? `${baseInputTextRef.current} ` : '') + text;
+          setInputText(live);
+        }
       },
       (err) => console.warn('Speech recognition notice:', err),
       (listening) => setIsListening(listening)
@@ -112,12 +120,26 @@ export const InterviewSessionPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isSending]);
 
+  // Speech & TTS coordination: temporarily pause microphone while TTS audio is playing
+  const speakWithMicSuppression = (text: string) => {
+    const wasListening = isListening;
+    if (wasListening && speechHandlerRef.current) {
+      speechHandlerRef.current.stop();
+    }
+    SpeechHandler.speak(text, () => {
+      if (wasListening && speechHandlerRef.current) {
+        speechHandlerRef.current.start();
+      }
+    });
+  };
+
   // 4. Handle Send Message
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputText.trim() || isSending || !id) return;
 
     const content = inputText.trim();
+    baseInputTextRef.current = '';
     setInputText('');
     setIsSending(true);
     setError('');
@@ -144,9 +166,9 @@ export const InterviewSessionPage: React.FC = () => {
       });
       setMessages((prev) => [...prev.filter((m) => m.id !== tempUserMsg.id), tempUserMsg, assistantMsg]);
 
-      // If auto-speak enabled, read out the assistant question
+      // If auto-speak enabled, read out the assistant question safely
       if (autoSpeak) {
-        SpeechHandler.speak(assistantMsg.content);
+        speakWithMicSuppression(assistantMsg.content);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to receive interview response.');
@@ -160,6 +182,7 @@ export const InterviewSessionPage: React.FC = () => {
     if (isListening) {
       speechHandlerRef.current.stop();
     } else {
+      baseInputTextRef.current = inputText.trim();
       speechHandlerRef.current.start();
     }
   };
@@ -182,9 +205,18 @@ export const InterviewSessionPage: React.FC = () => {
   };
 
   const handleLanguageChange = (newLang: 'python' | 'java' | 'cpp') => {
+    // Preserve current language code draft
+    codeDraftsRef.current[codeLanguage] = code;
     setCodeLanguage(newLang);
-    if (codingProblem && codingProblem.starter_code[newLang]) {
-      setCode(codingProblem.starter_code[newLang]);
+
+    // Restore existing draft for new language, or fall back to starter code
+    const existingDraft = codeDraftsRef.current[newLang];
+    if (existingDraft !== undefined) {
+      setCode(existingDraft);
+    } else if (codingProblem && codingProblem.starter_code[newLang]) {
+      const starter = codingProblem.starter_code[newLang];
+      codeDraftsRef.current[newLang] = starter;
+      setCode(starter);
     }
   };
 
@@ -294,9 +326,10 @@ export const InterviewSessionPage: React.FC = () => {
                     <p className="whitespace-pre-wrap">{m.content}</p>
                     {isAssistant && (
                       <button
-                        onClick={() => SpeechHandler.speak(m.content)}
+                        onClick={() => speakWithMicSuppression(m.content)}
                         className="mt-2 text-xs text-ink-muted hover:text-ink flex items-center gap-1 opacity-70 hover:opacity-100 transition-opacity"
                         title="Listen to question"
+                        aria-label="Listen to question audio"
                       >
                         <Volume2 className="w-3.5 h-3.5" />
                         Listen
@@ -327,10 +360,14 @@ export const InterviewSessionPage: React.FC = () => {
               <textarea
                 rows={3}
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={(e) => {
+                  setInputText(e.target.value);
+                  baseInputTextRef.current = e.target.value;
+                }}
                 placeholder="Type your direct explanation, or click mic to speak..."
                 className="w-full p-3 text-sm text-ink placeholder:text-ink-faint focus:outline-none resize-none"
                 disabled={isSending}
+                aria-label="Your interview response"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -351,6 +388,7 @@ export const InterviewSessionPage: React.FC = () => {
                           : 'text-ink-muted hover:text-ink hover:bg-surface-subtle'
                       }`}
                       title={isListening ? 'Stop listening' : 'Start voice input'}
+                      aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
                     >
                       {isListening ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
                       <span className="text-xs">{isListening ? 'Listening...' : 'Voice Input'}</span>
@@ -391,6 +429,7 @@ export const InterviewSessionPage: React.FC = () => {
                   <select
                     value={codeLanguage}
                     onChange={(e) => handleLanguageChange(e.target.value as any)}
+                    aria-label="Code language"
                     className="text-xs font-medium px-2 py-1 bg-surface-subtle border border-surface-border rounded text-ink focus:outline-none"
                   >
                     <option value="python">Python 3</option>
@@ -421,7 +460,12 @@ export const InterviewSessionPage: React.FC = () => {
                 <textarea
                   rows={14}
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCode(val);
+                    codeDraftsRef.current[codeLanguage] = val;
+                  }}
+                  aria-label="Code editor"
                   className="w-full p-4 bg-transparent text-emerald-300 placeholder:text-zinc-600 focus:outline-none resize-none leading-relaxed"
                   spellCheck={false}
                 />

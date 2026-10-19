@@ -23,8 +23,9 @@ class AuthorizationError(AppException):
         super().__init__(message=message, code="FORBIDDEN", status_code=status.HTTP_403_FORBIDDEN)
 
 class ProviderError(AppException):
-    def __init__(self, message: str, provider_code: str = "PROVIDER_ERROR"):
-        super().__init__(message=message, code=provider_code, status_code=status.HTTP_502_BAD_GATEWAY)
+    def __init__(self, message: str, provider_code: str = "PROVIDER_ERROR", code: str = None):
+        c = code or provider_code
+        super().__init__(message=message, code=c, status_code=status.HTTP_502_BAD_GATEWAY)
 
 class SandboxExecutionError(AppException):
     def __init__(self, message: str):

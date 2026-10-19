@@ -7,8 +7,17 @@ schema validity, quote evidence citation, and rubric calibration.
 
 import asyncio
 import json
+import os
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List
+
+# Ensure repository root is on sys.path
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from backend.app.providers.mock_provider import MockProvider
 from backend.app.evaluations.prompts import build_evaluation_prompt
 from backend.app.interviews.rubrics import get_rubric_for_category

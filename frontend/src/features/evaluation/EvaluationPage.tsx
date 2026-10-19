@@ -21,22 +21,50 @@ export const EvaluationPage: React.FC = () => {
   const [comparison, setComparison] = useState<EvaluationComparison | null>(null);
   const [loading, setLoading] = useState(true);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+  const [isGeneratingEval, setIsGeneratingEval] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadEvaluationData = async () => {
     if (!id) return;
-
-    Promise.all([
-      api.get<Evaluation>(`/evaluations/${id}`),
-      api.get<EvaluationComparison>(`/evaluations/${id}/comparison`),
-    ])
-      .then(([evalData, compData]) => {
-        setEvaluation(evalData);
+    try {
+      const evalData = await api.get<Evaluation>(`/evaluations/${id}`);
+      setEvaluation(evalData);
+      try {
+        const compData = await api.get<EvaluationComparison>(`/evaluations/${id}/comparison`);
         setComparison(compData);
-      })
-      .catch((err) => setError(err.message || 'Failed to load evaluation findings.'))
-      .finally(() => setLoading(false));
+      } catch {
+        // comparison can be empty if self-eval wasn't submitted
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to load evaluation findings.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadEvaluationData();
   }, [id]);
+
+  const handleGenerateEvaluation = async () => {
+    if (!id) return;
+    setIsGeneratingEval(true);
+    setError('');
+    try {
+      const evalData = await api.post<Evaluation>(`/evaluations/${id}/generate`);
+      setEvaluation(evalData);
+      try {
+        const compData = await api.get<EvaluationComparison>(`/evaluations/${id}/comparison`);
+        setComparison(compData);
+      } catch {
+        // Optional comparison
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to generate evaluation report.');
+    } finally {
+      setIsGeneratingEval(false);
+    }
+  };
 
   const handleGeneratePlan = async () => {
     if (!evaluation) return;
@@ -62,10 +90,22 @@ export const EvaluationPage: React.FC = () => {
   if (error || !evaluation) {
     return (
       <div className="max-w-3xl mx-auto py-12 px-4 text-center space-y-4">
-        <p className="text-sm text-red-600 font-medium">{error || 'Evaluation not found'}</p>
-        <Link to="/">
-          <Button variant="secondary" size="sm">Return to Dashboard</Button>
-        </Link>
+        <p className="text-sm text-ink-muted">
+          {error || 'No evaluation has been generated for this interview session yet.'}
+        </p>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleGenerateEvaluation}
+            isLoading={isGeneratingEval}
+          >
+            Generate Evaluation Now
+          </Button>
+          <Link to="/">
+            <Button variant="secondary" size="sm">Return to Dashboard</Button>
+          </Link>
+        </div>
       </div>
     );
   }

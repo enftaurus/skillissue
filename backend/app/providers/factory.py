@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Optional, Type
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from backend.app.providers.models_catalog import (
 )
 from backend.app.core.security import decrypt_secret
 from backend.app.core.errors import ProviderError
+from backend.app.core.logging import logger
 from backend.app.database.models import ProviderConfig
 
 # Explicit trusted provider class mapping (No dynamic imports from arbitrary strings)
@@ -57,21 +59,39 @@ class ModelFactory:
             mock_model = MOCK_MODEL_ID
             return MockProvider(model_id=mock_model)
 
-        # Select model based on task routing or preferred setting
+        # Select model: honor user choice, defaulting to coding specialist when using base default
         model_id = config.preferred_model or DEFAULT_MODEL_ID
-        if task_type == "coding":
-            # If user configured a Bedrock provider, check if coding specialist can be used
+        if task_type == "coding" and (not config.preferred_model or config.preferred_model == DEFAULT_MODEL_ID):
             model_id = DEFAULT_CODING_MODEL_ID
 
-        # Decrypt secret key in ephemeral memory only
-        secret_key = decrypt_secret(config.aws_secret_key_enc)
-        # Re-derive access key prefix if needed, or pass the stored masked / full
-        # Wait: we need the full access key to invoke AWS! Let's ensure access key is stored securely or encrypted.
-        # To be completely safe and avoid storing access key in plaintext, we store encrypted or pass through.
+        # Decrypt credentials bundle in ephemeral memory only
+        access_key = None
+        secret_key = None
+        if config.aws_secret_key_enc:
+            try:
+                decrypted = decrypt_secret(config.aws_secret_key_enc)
+                if decrypted:
+                    try:
+                        bundle = json.loads(decrypted)
+                        if isinstance(bundle, dict):
+                            access_key = bundle.get("access_key_id")
+                            secret_key = bundle.get("secret_access_key")
+                    except Exception:
+                        # Legacy plain secret string
+                        secret_key = decrypted
+                        access_key = decrypt_secret(config.aws_access_key_masked) if config.aws_access_key_masked.startswith("gAAAA") else config.aws_access_key_masked
+            except Exception as e:
+                logger.warning(f"Failed to decrypt stored BYOC credentials for user {user_id}: {e}. Falling back to mock provider.")
+                return MockProvider(model_id=MOCK_MODEL_ID)
+
+        if not access_key or not secret_key:
+            logger.warning(f"Incomplete credentials for user {user_id}; falling back to mock provider.")
+            return MockProvider(model_id=MOCK_MODEL_ID)
+
         return cls.get_provider_by_type(
             provider_name=config.provider_name,
             model_id=model_id,
-            aws_access_key=decrypt_secret(config.aws_access_key_masked) if config.aws_access_key_masked.startswith("gAAAA") else config.aws_access_key_masked,
+            aws_access_key=access_key,
             aws_secret_key=secret_key,
             aws_region=config.aws_region,
         )

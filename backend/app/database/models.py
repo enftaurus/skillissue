@@ -55,7 +55,7 @@ class ProviderConfig(Base):
     aws_region: Mapped[str] = mapped_column(String(50), default="us-east-1")
     aws_access_key_masked: Mapped[str] = mapped_column(String(50), default="")
     aws_secret_key_enc: Mapped[str] = mapped_column(Text, default="")
-    preferred_model: Mapped[str] = mapped_column(String(100), default="anthropic.claude-3-5-sonnet-20240620-v1:0")
+    preferred_model: Mapped[str] = mapped_column(String(100), default="qwen.qwen3-32b-instruct-v1:0")
     is_valid: Mapped[bool] = mapped_column(Boolean, default=False)
     last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     total_tokens_used: Mapped[int] = mapped_column(Integer, default=0)
