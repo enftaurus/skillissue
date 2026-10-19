@@ -34,9 +34,10 @@ Before any API call will succeed, you must explicitly enable model access in the
 2. In the left navigation menu, scroll down and click **Model access**.
 3. Click the orange **Modify model access** button (top right).
 4. Select the models you want to use:
-   - **Anthropic Claude 3.5 Sonnet / Haiku** (or Amazon Nova Pro / Lite / Micro)
-   - **Meta Llama 3 / 3.1 70B & 8B**
-   - **Mistral Large / Small**
+   - **Qwen3 32B** (`qwen.qwen3-32b-instruct-v1:0`) — **Recommended primary interview model** ($0.1545 in / $0.618 out per 1M tokens)
+   - **Qwen3 Coder 30B A3B** (`qwen.qwen3-coder-30b-a3b-v1:0`) — Coding specialist ($0.1545 in / $0.618 out per 1M tokens)
+   - **Qwen3 Next 80B A3B** (`qwen.qwen3-next-80b-a3b-v1:0`) — Nuanced evaluation benchmark ($0.18 in / $1.41 out per 1M tokens)
+   - **Kimi K3** (`moonshot.kimi-k3-v1:0`) — Architecture reviews & vision ($3.30 in / $16.50 out per 1M tokens)
 5. Click **Next**, review the End User License Agreements (EULA), and click **Submit**.
 6. Access is usually granted within 1–2 minutes (status turns green: *Access granted*).
 
@@ -92,7 +93,7 @@ Create a dedicated IAM user with only the exact permissions Skill Issue needs.
    - **AWS Region**: e.g., `us-east-1`
    - **AWS Access Key ID**: e.g., `AKIA...`
    - **AWS Secret Access Key**: e.g., `wJalrXUtnFEMI...`
-   - **Preferred Model**: e.g., `anthropic.claude-3-5-sonnet-20240620-v1:0` or `amazon.nova-pro-v1:0`
+   - **Preferred Model**: e.g., `qwen.qwen3-32b-instruct-v1:0` or `qwen.qwen3-coder-30b-a3b-v1:0`
 4. Click **Test & Save Configuration**.
 5. Skill Issue will validate the credentials against AWS Bedrock live and store them encrypted using AES-256.
 

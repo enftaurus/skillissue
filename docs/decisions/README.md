@@ -14,6 +14,7 @@ This directory contains records of all architectural, infrastructural, and secur
 | [0006](0006-interview-engine-and-rubrics.md) | Unified Interview Engine & Post-Evaluation | 2026-10-20 | Accepted | Single engine serving domain and JD interviews, separate post-interview evaluation pass. |
 | [0007](0007-coding-sandbox-architecture.md) | Isolated Execution Sandbox | 2026-10-20 | Accepted | Multi-language sandbox with ephemeral environments, resource limits, and no network. |
 | [0008](0008-planly-adaptive-engine.md) | Planly Adaptive Learning Engine | 2026-10-20 | Accepted | Dynamic multi-day improvement plans adapting to missed tasks and reassessment scores. |
+| [0009](0009-recommended-model-lineup.md) | Recommended Model Lineup & Task-Based Routing | 2026-10-20 | Accepted | Qwen3 32B primary, Qwen3 Coder 30B, Qwen3 Next 80B comparison, and Kimi K3 vision/reasoning. |
 
 ---
 

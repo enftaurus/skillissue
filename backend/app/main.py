@@ -3,8 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.app.core.config import settings
 from backend.app.core.errors import AppException
-from backend.app.core.logging import logger
 from backend.app.api.v1.health import router as health_router
+from backend.app.api.v1.auth import router as auth_router
+from backend.app.api.v1.providers import router as providers_router
+from backend.app.api.v1.resumes import router as resumes_router
+from backend.app.api.v1.job_descriptions import router as job_descriptions_router
+from backend.app.api.v1.interviews import router as interviews_router
 
 def create_application() -> FastAPI:
     app = FastAPI(
@@ -37,8 +41,13 @@ def create_application() -> FastAPI:
     async def root_health():
         return {"status": "healthy", "project": settings.PROJECT_NAME}
 
-    # Mount health router
+    # Mount API routers
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(providers_router, prefix="/api/v1")
+    app.include_router(resumes_router, prefix="/api/v1")
+    app.include_router(job_descriptions_router, prefix="/api/v1")
+    app.include_router(interviews_router, prefix="/api/v1")
 
     return app
 

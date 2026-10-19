@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 class UserRegister(BaseModel):
     email: EmailStr
@@ -20,6 +20,7 @@ class Token(BaseModel):
     email: str
 
 class UserProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     target_role: str
     years_experience: float
     daily_study_minutes: int
@@ -32,11 +33,9 @@ class UserProfileUpdate(BaseModel):
     bio: Optional[str] = None
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: str
     email: str
     is_active: bool
     created_at: datetime
     profile: Optional[UserProfileResponse] = None
-
-    class Config:
-        from_attributes = True
