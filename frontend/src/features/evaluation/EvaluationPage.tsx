@@ -12,7 +12,7 @@ import {
   Cell,
 } from 'recharts';
 import { api } from '../../lib/api';
-import { Evaluation, EvaluationComparison, Plan } from '../../lib/types';
+import { Evaluation, EvaluationComparison, Plan, WeaknessAnalysisItem, LearningBacklogItem } from '../../lib/types';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -27,6 +27,9 @@ import {
   ShieldCheck,
   BookOpen,
   Sparkles,
+  BookmarkPlus,
+  Check,
+  CalendarPlus,
 } from 'lucide-react';
 
 export const EvaluationPage: React.FC = () => {
@@ -41,6 +44,10 @@ export const EvaluationPage: React.FC = () => {
   const [error, setError] = useState('');
   const [expandedQuestions, setExpandedQuestions] = useState<Record<number, boolean>>({ 0: true });
   const [activeChartTab, setActiveChartTab] = useState<'diverging' | 'grouped'>('diverging');
+
+  // Backlog & Planly action state
+  const [queueLoading, setQueueLoading] = useState<Record<string, boolean>>({});
+  const [queueSuccess, setQueueSuccess] = useState<Record<string, string>>({});
 
   const loadEvaluationData = async () => {
     if (!id) return;
@@ -101,6 +108,41 @@ export const EvaluationPage: React.FC = () => {
       setError(err.message || 'Failed to generate Planly roadmap.');
       setIsGeneratingPlan(false);
     }
+  };
+
+  const handleQueueWeakness = async (weakness: WeaknessAnalysisItem) => {
+    if (!evaluation) return;
+    setQueueLoading((prev) => ({ ...prev, [weakness.id]: true }));
+    try {
+      const res = await api.post<LearningBacklogItem>('/learning-backlog/queue-weakness', {
+        interview_id: evaluation.interview_id,
+        weakness_id: weakness.id,
+        topic: weakness.topic,
+        subtopic: weakness.subtopic,
+        evidence: weakness.evidence,
+        gap_explanation: weakness.gap_explanation,
+        learning_objective: weakness.learning_objective,
+        suggested_exercise: weakness.suggested_exercise,
+        priority: 'high',
+        notes: `Identified in interview on ${evaluation.model_identifier}. Evidence: "${weakness.evidence}"`,
+      });
+      setQueueSuccess((prev) => ({
+        ...prev,
+        [weakness.id]: res.is_existing ? 'Updated in Backlog' : 'Queued for Later',
+      }));
+    } catch (err: any) {
+      alert(err.message || 'Failed to queue weakness to learning backlog.');
+    } finally {
+      setQueueLoading((prev) => ({ ...prev, [weakness.id]: false }));
+    }
+  };
+
+  const handleAddToPlanly = (weakness: WeaknessAnalysisItem) => {
+    navigate(
+      `/planly?action=create&topic=${encodeURIComponent(weakness.topic)}&objective=${encodeURIComponent(
+        weakness.learning_objective || ''
+      )}`
+    );
   };
 
   if (loading) {
@@ -343,21 +385,154 @@ export const EvaluationPage: React.FC = () => {
           </ul>
         </Card>
 
-        {/* Priority Weaknesses */}
-        <Card className="border-amber-200 bg-amber-50/20 p-5 space-y-3">
+        {/* Evidenced Weaknesses with Action A & Action B */}
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-700" />
-            <h3 className="font-semibold text-sm text-amber-900">Priority Areas to Improve</h3>
+            <h3 className="text-base font-bold text-ink">Demonstrated Weaknesses & Actionable Diagnostics</h3>
+            <Badge variant="zinc" className="font-mono text-[10px]">
+              {(evaluation.weakness_analysis?.length || evaluation.weaknesses?.length || 0)} Actionable Findings
+            </Badge>
           </div>
-          <ul className="space-y-2 text-xs text-ink-muted">
-            {evaluation.weaknesses.map((w, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className="text-amber-600 font-bold">•</span>
-                <span>{w}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
+          <span className="text-xs text-ink-subtle hidden sm:inline">
+            Act on findings individually: commit to a Planly schedule or queue for later revisit
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4">
+          {(evaluation.weakness_analysis && evaluation.weakness_analysis.length > 0
+            ? evaluation.weakness_analysis
+            : (evaluation.weaknesses || []).map((w, i): WeaknessAnalysisItem => ({
+                id: `w-${i}`,
+                topic: w,
+                subtopic: undefined,
+                evidence: 'Identified during technical dialogue',
+                gap_explanation: w,
+                learning_objective: `Master ${w} principles and architectural trade-offs.`,
+                suggested_exercise: undefined,
+                confidence: 'medium' as const,
+              }))
+          ).map((item) => {
+            const isQueued = !!queueSuccess[item.id];
+            const isQInProgress = !!queueLoading[item.id];
+
+            return (
+              <Card key={item.id} className="p-5 border-amber-200/80 bg-white space-y-3.5 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-surface-border pb-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm text-ink">{item.topic}</span>
+                    {item.subtopic && (
+                      <Badge variant="zinc" size="sm">
+                        {item.subtopic}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={item.confidence === 'high' ? 'lime' : 'zinc'}
+                      size="sm"
+                      className="capitalize"
+                    >
+                      {item.confidence} Evidence Confidence
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Evidence Quote */}
+                {item.evidence && (
+                  <div className="p-3 bg-surface-warm rounded-md border border-surface-border text-xs flex items-start gap-2.5">
+                    <Quote className="w-3.5 h-3.5 text-lime-700 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-semibold text-ink-muted text-[11px] block uppercase tracking-wider mb-0.5">
+                        Transcript Evidence:
+                      </span>
+                      <p className="italic text-ink font-mono text-[11px]">
+                        &ldquo;{item.evidence}&rdquo;
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Gap & Learning Objective */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 bg-amber-50/40 rounded-md border border-amber-200/60 space-y-1">
+                    <span className="font-semibold text-amber-900 block text-[11px] uppercase tracking-wider">
+                      Observed Knowledge Gap:
+                    </span>
+                    <p className="text-ink leading-relaxed">{item.gap_explanation}</p>
+                  </div>
+
+                  <div className="p-3 bg-lime-50/40 rounded-md border border-lime-200/60 space-y-1">
+                    <span className="font-semibold text-lime-900 block text-[11px] uppercase tracking-wider">
+                      Recommended Learning Objective:
+                    </span>
+                    <p className="text-ink leading-relaxed">{item.learning_objective}</p>
+                  </div>
+                </div>
+
+                {item.suggested_exercise && (
+                  <div className="p-3 bg-surface-subtle rounded-md border border-surface-border text-xs text-ink-muted">
+                    <span className="font-semibold text-ink">Suggested Practice Direction: </span>
+                    {item.suggested_exercise}
+                  </div>
+                )}
+
+                {/* Action Buttons: Action A & Action B */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-surface-border">
+                  <span className="text-[11px] text-ink-subtle">
+                    {queueSuccess[item.id] ? (
+                      <span className="text-lime-800 font-medium flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5" />
+                        {queueSuccess[item.id]}
+                      </span>
+                    ) : (
+                      'Act individually: queue for later revisit or schedule in Planly'
+                    )}
+                  </span>
+
+                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                    {/* Action B: Queue for later */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQueueWeakness(item)}
+                      isLoading={isQInProgress}
+                      disabled={isQueued}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-xs"
+                    >
+                      {isQueued ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-lime-600" />
+                          <span>Queued</span>
+                        </>
+                      ) : (
+                        <>
+                          <BookmarkPlus className="w-3.5 h-3.5" />
+                          <span>Queue for Later</span>
+                        </>
+                      )}
+                    </Button>
+
+                    {/* Action A: Add to Planly */}
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleAddToPlanly(item)}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-xs"
+                    >
+                      <CalendarPlus className="w-3.5 h-3.5" />
+                      <span>Add to Planly</span>
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
       {/* Missing Concepts */}

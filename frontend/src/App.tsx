@@ -13,6 +13,7 @@ import { ProgressAnalyticsPage } from './features/progress/ProgressAnalyticsPage
 import { CodingPracticePage } from './features/coding/CodingPracticePage';
 import { ProviderSettingsPage } from './features/provider-settings/ProviderSettingsPage';
 import { AwsSetupGuidePage } from './features/provider-settings/AwsSetupGuidePage';
+import { AwsBedrockOnboardingPage } from './features/provider-settings/AwsBedrockOnboardingPage';
 
 import { Sidebar } from './components/layout/Sidebar';
 import { CommandPalette } from './components/layout/CommandPalette';
@@ -34,6 +35,15 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  if (
+    user.onboarding_completed === false &&
+    !user.is_provider_connected &&
+    location.pathname !== '/onboarding/bedrock' &&
+    location.pathname !== '/docs/aws-bedrock-setup'
+  ) {
+    return <Navigate to="/onboarding/bedrock" replace />;
+  }
+
   return <>{children}</>;
 };
 
@@ -41,7 +51,10 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const location = useLocation();
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
-  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register';
+  const isAuthRoute =
+    location.pathname === '/login' ||
+    location.pathname === '/register' ||
+    location.pathname === '/onboarding/bedrock';
 
   if (!user || isAuthRoute) {
     return (
@@ -164,6 +177,14 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <AwsSetupGuidePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/onboarding/bedrock"
+              element={
+                <ProtectedRoute>
+                  <AwsBedrockOnboardingPage />
                 </ProtectedRoute>
               }
             />

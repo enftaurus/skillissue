@@ -187,20 +187,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenCommandPalette }) => {
         >
           <div
             className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              providerConfig?.provider_name === 'bedrock' ? 'bg-lime-500' : 'bg-amber-400'
+              providerConfig?.is_valid ? 'bg-lime-500' : 'bg-amber-400'
             }`}
           />
           {!isCollapsed && (
             <div className="flex flex-col truncate">
               <span className="text-[11px] font-semibold text-ink truncate">
-                {providerConfig?.provider_name === 'bedrock'
-                  ? 'Bedrock Active'
-                  : 'Mock Provider (Dev)'}
+                {providerConfig?.is_valid ? 'Bedrock BYOC' : 'Setup Required'}
               </span>
               <span className="text-[10px] text-ink-muted truncate">
-                {providerConfig?.provider_name === 'bedrock'
+                {providerConfig?.is_valid
                   ? providerConfig.aws_region
-                  : 'Offline Zero-Cost'}
+                  : 'Configure IAM Key'}
               </span>
             </div>
           )}

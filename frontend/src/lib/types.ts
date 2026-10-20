@@ -9,6 +9,8 @@ export interface User {
   id: string;
   email: string;
   is_active: boolean;
+  onboarding_completed?: boolean;
+  is_provider_connected?: boolean;
   created_at: string;
   profile?: UserProfile;
 }
@@ -172,6 +174,17 @@ export interface QuestionComparison {
   targeted_resource?: string;
 }
 
+export interface WeaknessAnalysisItem {
+  id: string;
+  topic: string;
+  subtopic?: string;
+  evidence: string;
+  gap_explanation: string;
+  learning_objective: string;
+  suggested_exercise?: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
 export interface EvaluationComparison {
   interview_id: string;
   overall_ai_score: number;
@@ -181,6 +194,7 @@ export interface EvaluationComparison {
   strengths: string[];
   weaknesses: string[];
   missing_concepts: string[];
+  weakness_analysis?: WeaknessAnalysisItem[];
 }
 
 export interface QuestionFeedback {
@@ -205,6 +219,7 @@ export interface Evaluation {
   }>;
   strengths: string[];
   weaknesses: string[];
+  weakness_analysis?: WeaknessAnalysisItem[];
   missing_concepts: string[];
   evidence_excerpts: Array<{ quote: string; critique: string }>;
   question_feedback?: QuestionFeedback[];
@@ -233,27 +248,105 @@ export interface Plan {
   id: string;
   evaluation_id?: string;
   title: string;
+  topic?: string;
+  goal?: string;
   target_role: string;
   target_skills: string[];
+  schedule_days?: string[];
+  current_level?: string;
   status: 'active' | 'completed' | 'archived';
   total_days: number;
   current_day: number;
   daily_study_minutes: number;
+  start_date?: string;
+  target_date?: string;
   tasks: PlanTask[];
   created_at: string;
   updated_at: string;
+}
+
+export interface CustomPlanRequest {
+  topic: string;
+  goal?: 'fundamentals' | 'interview_prep' | 'mastery';
+  daily_study_minutes?: number;
+  schedule_days?: string[];
+  current_level?: 'beginner' | 'intermediate' | 'advanced';
+  start_date?: string;
+  deadline?: string;
+}
+
+export interface LearningBacklogItem {
+  id: string;
+  user_id: string;
+  topic: string;
+  subtopic?: string;
+  source: string;
+  source_id?: string;
+  reason: string;
+  learning_objective?: string;
+  suggested_exercise?: string;
+  priority: 'low' | 'medium' | 'high';
+  status: 'queued' | 'planned' | 'in_progress' | 'completed' | 'dismissed';
+  notes?: string;
+  planned_plan_id?: string;
+  created_at: string;
+  updated_at: string;
+  is_existing?: boolean;
+}
+
+export interface QueueWeaknessRequest {
+  interview_id?: string;
+  weakness_id?: string;
+  topic: string;
+  subtopic?: string;
+  evidence?: string;
+  gap_explanation?: string;
+  learning_objective?: string;
+  suggested_exercise?: string;
+  priority?: 'low' | 'medium' | 'high';
+  notes?: string;
+}
+
+export interface SuggestedBacklogItem {
+  id: string;
+  topic: string;
+  subtopic?: string;
+  reason: string;
+  source: string;
+  source_id?: string;
+  priority: string;
+  status: string;
+  suggested_reason: string;
 }
 
 export interface CodingProblem {
   id: string;
   title: string;
   difficulty: 'easy' | 'medium' | 'hard';
+  category?: string;
   description: string;
   input_format: string;
   output_format: string;
   constraints: string[];
   starter_code: Record<string, string>;
   sample_test_cases: Array<{ stdin: string; expected_stdout: string }>;
+  ai_coaching_supported?: boolean;
+}
+
+export interface DsaCoachRequest {
+  hint_level: number;
+  user_code?: string;
+  language?: string;
+  user_message?: string;
+  conversation_history?: Array<{ role: string; content: string }>;
+}
+
+export interface DsaCoachResponse {
+  hint_level: number;
+  hint_text: string;
+  guiding_question: string;
+  suggested_focus?: string;
+  tokens_used?: number;
 }
 
 export interface TestCaseResult {

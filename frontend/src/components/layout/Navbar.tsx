@@ -88,15 +88,13 @@ export const Navbar: React.FC = () => {
                 {/* Active Provider Indicator */}
                 <Link to="/settings/provider" title="Configure AI Provider">
                   <Badge
-                    variant={providerConfig?.provider_name === 'bedrock' ? 'lime' : 'zinc'}
+                    variant={providerConfig?.is_valid ? 'lime' : 'zinc'}
                     className="cursor-pointer hover:opacity-85 transition-opacity"
                   >
                     <Cpu className="w-3 h-3 mr-1" />
-                    {providerConfig?.provider_name === 'bedrock'
-                      ? providerConfig.preferred_model.includes('qwen3')
-                        ? 'Bedrock (Qwen3)'
-                        : 'Bedrock BYOC'
-                      : 'Mock Provider (Dev)'}
+                    {providerConfig?.is_valid
+                      ? 'Bedrock BYOC'
+                      : 'Bedrock Setup Required'}
                   </Badge>
                 </Link>
 

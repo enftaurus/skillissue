@@ -112,15 +112,13 @@ export const ProviderSettingsPage: React.FC = () => {
   };
 
   const handleDeleteCredentials = async () => {
-    if (!window.confirm('Are you sure you want to delete your stored AWS credentials? This will revert your account to the local mock provider.')) {
+    if (!window.confirm('Are you sure you want to delete your stored AWS credentials? You will need to reconfigure Bedrock before running further interviews or coaching sessions.')) {
       return;
     }
     try {
       const updated = await api.delete<ProviderConfig>('/providers/credentials');
       setConfig(updated);
-      setProviderName('mock');
-      setPreferredModel('mock-qwen3-32b');
-      setNotification({ type: 'success', message: 'Stored credentials permanently deleted from the database.' });
+      setNotification({ type: 'success', message: 'Stored AWS credentials permanently deleted from the database.' });
     } catch (err: any) {
       setNotification({ type: 'error', message: err.message });
     }
@@ -203,55 +201,26 @@ export const ProviderSettingsPage: React.FC = () => {
       {/* Configuration Form */}
       <Card>
         <form onSubmit={handleSave} className="space-y-6">
-          {/* Provider Toggle */}
+          {/* Provider Info */}
           <div>
             <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
               Inference Provider
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <label
-                className={`p-4 rounded-lg border cursor-pointer flex flex-col justify-between transition-all ${
-                  providerName === 'mock'
-                    ? 'border-lime-600 bg-lime-50/50 ring-1 ring-lime-600'
-                    : 'border-surface-border hover:bg-surface-subtle'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-sm text-ink">Local Mock Provider</span>
-                  <input
-                    type="radio"
-                    name="provider"
-                    checked={providerName === 'mock'}
-                    onChange={() => setProviderName('mock')}
-                    className="accent-lime-600"
-                  />
-                </div>
-                <p className="text-xs text-ink-subtle mt-2">
-                  Zero cost, works offline, no AWS account required. Perfect for testing and local exploration.
-                </p>
-              </label>
-
-              <label
-                className={`p-4 rounded-lg border cursor-pointer flex flex-col justify-between transition-all ${
-                  providerName === 'bedrock'
-                    ? 'border-lime-600 bg-lime-50/50 ring-1 ring-lime-600'
-                    : 'border-surface-border hover:bg-surface-subtle'
-                }`}
-              >
-                <div className="flex items-center justify-between">
+            <div className="p-4 rounded-lg border border-lime-600 bg-lime-50/30 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-sm text-ink">Amazon Bedrock (BYOC)</span>
-                  <input
-                    type="radio"
-                    name="provider"
-                    checked={providerName === 'bedrock'}
-                    onChange={() => setProviderName('bedrock')}
-                    className="accent-lime-600"
-                  />
+                  <Badge variant="lime" size="sm">Active</Badge>
                 </div>
-                <p className="text-xs text-ink-subtle mt-2">
-                  Live AI inference via your AWS IAM keys. Access Qwen3 32B, Qwen3 Coder, and Kimi K3 directly.
+                <p className="text-xs text-ink-subtle mt-1">
+                  Live AI inference via your secure AWS IAM credentials. Pay AWS token prices directly with zero markup.
                 </p>
-              </label>
+              </div>
+              <Link to="/docs/aws-bedrock-setup">
+                <Button variant="outline" size="sm" type="button">
+                  Setup Docs
+                </Button>
+              </Link>
             </div>
           </div>
 
