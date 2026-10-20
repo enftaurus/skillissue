@@ -10,22 +10,20 @@ async def test_auth_workflow(client: httpx.AsyncClient):
     assert health_res.status_code == 200
     assert health_res.json()["status"] == "healthy"
 
-    # 2. Register user
+    # 2. Register user (only email and password per requirement)
     email = f"engineer_{uuid.uuid4().hex[:8]}@example.com"
     reg_res = await client.post(
         "/api/v1/auth/register",
         json={
             "email": email,
             "password": "SuperSecurePassword123!",
-            "target_role": "Backend Engineer",
-            "years_experience": 2.5,
-            "daily_study_minutes": 45
         }
     )
     assert reg_res.status_code == 201
     user_data = reg_res.json()
     assert user_data["email"] == email
-    assert user_data["profile"]["target_role"] == "Backend Engineer"
+    assert user_data["onboarding_completed"] is False
+    assert user_data["is_provider_connected"] is False
 
     # 3. Duplicate registration rejected
     dup_res = await client.post(

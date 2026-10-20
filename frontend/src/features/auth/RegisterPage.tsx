@@ -12,8 +12,6 @@ export const RegisterPage: React.FC = () => {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [targetRole, setTargetRole] = useState('Software Engineer');
-  const [studyMinutes, setStudyMinutes] = useState(45);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -26,10 +24,8 @@ export const RegisterPage: React.FC = () => {
       await register({
         email,
         password,
-        target_role: targetRole,
-        daily_study_minutes: studyMinutes,
       });
-      navigate('/');
+      navigate('/onboarding/bedrock');
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
     } finally {
@@ -76,35 +72,6 @@ export const RegisterPage: React.FC = () => {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
             />
-
-            <Input
-              label="Target Engineering Role"
-              type="text"
-              required
-              value={targetRole}
-              onChange={(e) => setTargetRole(e.target.value)}
-              placeholder="e.g. Backend Distributed Systems Engineer"
-            />
-
-            <div>
-              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
-                Daily Study Availability: {studyMinutes} mins
-              </label>
-              <input
-                type="range"
-                min="15"
-                max="120"
-                step="15"
-                value={studyMinutes}
-                onChange={(e) => setStudyMinutes(Number(e.target.value))}
-                className="w-full accent-lime-600 cursor-pointer"
-              />
-              <div className="flex justify-between text-[11px] text-ink-subtle mt-1">
-                <span>15m</span>
-                <span>45m (Recommended)</span>
-                <span>120m</span>
-              </div>
-            </div>
 
             <Button type="submit" variant="primary" className="w-full mt-2" isLoading={loading}>
               Create Account

@@ -43,7 +43,15 @@ def clear_refresh_cookie(response: Response):
 )
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     user = await AuthService.register(db, data)
-    return user
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        is_active=user.is_active,
+        onboarding_completed=False,
+        is_provider_connected=False,
+        created_at=user.created_at,
+        profile=user.profile,
+    )
 
 @router.post(
     "/login",
@@ -94,7 +102,16 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_active_user)):
-    return current_user
+    is_connected = bool(current_user.provider_config and current_user.provider_config.is_valid)
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        is_active=current_user.is_active,
+        onboarding_completed=bool(current_user.onboarding_completed and is_connected),
+        is_provider_connected=is_connected,
+        created_at=current_user.created_at,
+        profile=current_user.profile,
+    )
 
 @router.put("/profile", response_model=UserProfileResponse)
 async def update_profile(

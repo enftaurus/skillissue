@@ -23,26 +23,30 @@ class AuthService:
             email=data.email.lower(),
             hashed_password=hash_password(data.password),
             is_active=True,
+            onboarding_completed=False,
             token_version=1,
         )
         db.add(user)
         await db.flush()
 
-        # Create user profile
+        # Create user profile with sensible defaults
         profile = UserProfile(
             user_id=user.id,
-            target_role=data.target_role or "Software Engineer",
-            years_experience=data.years_experience or 0.0,
-            daily_study_minutes=data.daily_study_minutes or 45,
+            target_role="Software Engineer",
+            years_experience=0.0,
+            daily_study_minutes=45,
         )
         db.add(profile)
 
-        # Create initial default provider config (mock mode by default)
+        # Create initial unconfigured Bedrock provider config (requires BYOC setup)
+        from backend.app.providers.models_catalog import DEFAULT_MODEL_ID
         config = ProviderConfig(
             user_id=user.id,
-            provider_name="mock",
-            preferred_model="mock-qwen3-32b",
-            is_valid=True,
+            provider_name="bedrock",
+            aws_region="us-east-1",
+            preferred_model=DEFAULT_MODEL_ID,
+            default_model=DEFAULT_MODEL_ID,
+            is_valid=False,
         )
         db.add(config)
         await db.commit()
@@ -53,7 +57,7 @@ class AuthService:
     async def authenticate(db: AsyncSession, data: UserLogin) -> Token:
         result = await db.execute(
             select(User)
-            .options(selectinload(User.profile))
+            .options(selectinload(User.profile), selectinload(User.provider_config))
             .where(User.email == data.email.lower())
         )
         user = result.scalar_one_or_none()
@@ -72,11 +76,14 @@ class AuthService:
         access_token = create_access_token(subject=user.id, token_version=user.token_version)
         refresh_token = create_refresh_token(subject=user.id, token_version=user.token_version)
 
+        is_onboarded = bool(user.onboarding_completed and user.provider_config and user.provider_config.is_valid)
+
         return Token(
             access_token=access_token,
             refresh_token=refresh_token,
             user_id=user.id,
             email=user.email,
+            onboarding_completed=is_onboarded,
         )
 
     @staticmethod
@@ -101,11 +108,14 @@ class AuthService:
         new_access_token = create_access_token(subject=user.id, token_version=user.token_version)
         new_refresh_token = create_refresh_token(subject=user.id, token_version=user.token_version)
 
+        is_onboarded = bool(user.onboarding_completed and user.provider_config and user.provider_config.is_valid)
+
         return Token(
             access_token=new_access_token,
             refresh_token=new_refresh_token,
             user_id=user.id,
             email=user.email,
+            onboarding_completed=is_onboarded,
         )
 
     @staticmethod

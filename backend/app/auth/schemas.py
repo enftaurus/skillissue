@@ -5,9 +5,6 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict
 class UserRegister(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    target_role: Optional[str] = "Software Engineer"
-    years_experience: Optional[float] = 0.0
-    daily_study_minutes: Optional[int] = 45
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -19,6 +16,7 @@ class Token(BaseModel):
     refresh_token: Optional[str] = None
     user_id: str
     email: str
+    onboarding_completed: bool = False
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: Optional[str] = None
@@ -29,9 +27,9 @@ class LogoutResponse(BaseModel):
 
 class UserProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    target_role: str
-    years_experience: float
-    daily_study_minutes: int
+    target_role: str = "Software Engineer"
+    years_experience: float = 0.0
+    daily_study_minutes: int = 45
     bio: Optional[str] = None
 
 class UserProfileUpdate(BaseModel):
@@ -45,5 +43,7 @@ class UserResponse(BaseModel):
     id: str
     email: str
     is_active: bool
+    onboarding_completed: bool = False
+    is_provider_connected: bool = False
     created_at: datetime
     profile: Optional[UserProfileResponse] = None
