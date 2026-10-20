@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
-import { Plan } from '../../lib/types';
+import { Plan, PlanAdaptPreview } from '../../lib/types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -18,6 +18,8 @@ import {
   PlayCircle,
   RefreshCw,
   Zap,
+  ArrowRight,
+  ShieldCheck,
 } from 'lucide-react';
 
 export const PlanlyPage: React.FC = () => {
@@ -33,6 +35,8 @@ export const PlanlyPage: React.FC = () => {
   const [isAdaptModalOpen, setIsAdaptModalOpen] = useState<boolean>(false);
   const [daysBehind, setDaysBehind] = useState<number>(1);
   const [selectedDay, setSelectedDay] = useState<number>(1);
+  const [adaptPreview, setAdaptPreview] = useState<PlanAdaptPreview | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState<boolean>(false);
 
   const loadPlan = async () => {
     setLoading(true);
@@ -107,6 +111,35 @@ export const PlanlyPage: React.FC = () => {
       alert('Failed to update task status.');
     }
   };
+
+  // Live preview for adaptation
+  useEffect(() => {
+    if (!isAdaptModalOpen || !plan) return;
+    let isCancelled = false;
+
+    const fetchPreview = async () => {
+      setLoadingPreview(true);
+      try {
+        const preview = await api.post<PlanAdaptPreview>(`/plans/${plan.id}/adapt/preview`, {
+          days_behind: Number(daysBehind) || 1,
+        });
+        if (!isCancelled) {
+          setAdaptPreview(preview);
+        }
+      } catch (err) {
+        console.warn('Failed to load adaptation preview', err);
+      } finally {
+        if (!isCancelled) {
+          setLoadingPreview(false);
+        }
+      }
+    };
+
+    fetchPreview();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isAdaptModalOpen, daysBehind, plan?.id]);
 
   const handleAdaptSchedule = async () => {
     if (!plan) return;
@@ -436,8 +469,8 @@ export const PlanlyPage: React.FC = () => {
       >
         <div className="space-y-4">
           <p className="text-xs text-ink-muted leading-relaxed">
-            Life happens. If you missed study sessions or got delayed by assignments, Planly can
-            shift uncompleted tasks forward by your delay offset without discarding your progress.
+            Life happens. If you missed study sessions or got delayed by coursework, Planly can
+            shift uncompleted tasks forward by your delay offset without discarding your completed progress.
           </p>
 
           <Input
@@ -446,9 +479,67 @@ export const PlanlyPage: React.FC = () => {
             min={1}
             max={14}
             value={daysBehind}
-            onChange={(e) => setDaysBehind(Number(e.target.value))}
-            helperText="We will recalculate current day numbers and preserve already completed milestones."
+            onChange={(e) => setDaysBehind(Math.max(1, Math.min(14, Number(e.target.value))))}
+            helperText="Tasks already checked off stay intact. Unfinished milestones will advance."
           />
+
+          {/* Adaptation Preview Card */}
+          <div className="p-3 bg-surface-subtle rounded-lg border border-surface-border space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-ink">
+              <span className="flex items-center gap-1.5">
+                <RefreshCw className={`w-3.5 h-3.5 text-lime-700 ${loadingPreview ? 'animate-spin' : ''}`} />
+                <span>Schedule Shift Preview</span>
+              </span>
+              {adaptPreview && (
+                <span className="text-[11px] font-mono text-ink-muted">
+                  +{adaptPreview.days_behind} day offset
+                </span>
+              )}
+            </div>
+
+            {adaptPreview ? (
+              <div className="space-y-2 pt-1 text-xs">
+                <div className="flex items-center gap-2 text-[11px]">
+                  <Badge variant="lime" className="gap-1 font-mono">
+                    <ShieldCheck className="w-3 h-3 text-lime-700" />
+                    {plan ? plan.tasks.length - adaptPreview.shifted_tasks.length : 0} Finished (Preserved)
+                  </Badge>
+                  <Badge variant="zinc" className="font-mono">
+                    {adaptPreview.shifted_tasks.length} Pending (Advancing)
+                  </Badge>
+                  <span className="text-[11px] font-mono text-ink-subtle ml-auto">
+                    Days: {adaptPreview.current_total_days} → {adaptPreview.new_total_days}
+                  </span>
+                </div>
+
+                {adaptPreview.shifted_tasks.length > 0 ? (
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 pt-1 pr-1">
+                    {adaptPreview.shifted_tasks.map((shift) => (
+                      <div
+                        key={shift.task_id}
+                        className="p-2 rounded bg-white border border-surface-border text-xs flex items-center justify-between gap-2"
+                      >
+                        <span className="font-medium text-ink truncate max-w-[200px]">
+                          {shift.title}
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0 font-mono text-[11px]">
+                          <span className="text-ink-subtle">Day {shift.current_day}</span>
+                          <ArrowRight className="w-3 h-3 text-lime-600" />
+                          <span className="font-bold text-lime-700">Day {shift.new_day}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-ink-subtle italic py-1">
+                    All tasks on your current roadmap have already been finished!
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-ink-subtle">Calculating preview shifts...</p>
+            )}
+          </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-surface-border">
             <Button
@@ -465,7 +556,7 @@ export const PlanlyPage: React.FC = () => {
               onClick={handleAdaptSchedule}
               isLoading={actionLoading}
             >
-              Recalculate Schedule
+              Apply Schedule Shift
             </Button>
           </div>
         </div>

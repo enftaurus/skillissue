@@ -80,10 +80,20 @@ export interface Interview {
   domain_skills: string[];
   jd_id?: string;
   resume_id?: string;
+  coding_problem_id?: string;
+  hint_level_used?: number;
   target_duration_minutes: number;
   created_at: string;
   completed_at?: string;
   messages?: InterviewMessage[];
+}
+
+export interface HintResponse {
+  level: number;
+  hint: string;
+  penalty_pct: number;
+  total_hint_level_used: number;
+  message_id: string;
 }
 
 export interface RubricDimension {
@@ -114,6 +124,16 @@ export interface EvaluationComparison {
   missing_concepts: string[];
 }
 
+export interface QuestionFeedback {
+  question_index: number;
+  interviewer_question: string;
+  candidate_answer: string;
+  verbatim_quote: string;
+  critique: string;
+  strong_answer_guide: string;
+  targeted_resource?: string;
+}
+
 export interface Evaluation {
   id: string;
   interview_id: string;
@@ -128,12 +148,14 @@ export interface Evaluation {
   weaknesses: string[];
   missing_concepts: string[];
   evidence_excerpts: Array<{ quote: string; critique: string }>;
+  question_feedback?: QuestionFeedback[];
   suggested_corrections: string[];
   uncertainty_notes: string[];
   tokens_used: number;
   model_identifier: string;
   created_at: string;
 }
+
 
 export interface PlanTask {
   id: string;
@@ -236,4 +258,38 @@ export interface AnalyticsDashboard {
     stable_dimensions: string[];
     declined_dimensions: string[];
   }>;
+  skills?: UserSkill[];
 }
+
+export interface UserSkill {
+  id: string;
+  topic: string;
+  score: number;
+  confidence: number;
+  last_seen: string;
+  evidence_refs: Array<{ type?: string; id?: string; score?: number; [key: string]: any }>;
+}
+
+export interface TaskShiftPreview {
+  task_id: string;
+  title: string;
+  current_day: number;
+  new_day: number;
+  task_type: string;
+}
+
+export interface PlanAdaptPreview {
+  plan_id: string;
+  days_behind: number;
+  current_total_days: number;
+  new_total_days: number;
+  shifted_tasks: TaskShiftPreview[];
+}
+
+export interface CodingLimits {
+  memory_limit_mb: number;
+  timeout_seconds: number;
+  output_limit_bytes: number;
+  runtime: string;
+}
+

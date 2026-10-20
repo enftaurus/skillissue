@@ -1,17 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
-import { AnalyticsDashboard } from '../../lib/types';
+import { AnalyticsDashboard, UserSkill } from '../../lib/types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { Badge } from '../../components/ui/Badge';
 import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Flame,
+  Layers,
   Minus,
   PlayCircle,
+  Quote,
+  ShieldCheck,
   Sparkles,
   TrendingUp,
   XCircle,
@@ -19,6 +25,8 @@ import {
 
 export const ProgressAnalyticsPage: React.FC = () => {
   const [data, setData] = useState<AnalyticsDashboard | null>(null);
+  const [skills, setSkills] = useState<UserSkill[]>([]);
+  const [expandedSkillEvidence, setExpandedSkillEvidence] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,8 +35,12 @@ export const ProgressAnalyticsPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.get<AnalyticsDashboard>('/analytics/dashboard');
+        const [res, skillsRes] = await Promise.all([
+          api.get<AnalyticsDashboard>('/analytics/dashboard'),
+          api.get<UserSkill[]>('/analytics/skills').catch(() => [] as UserSkill[]),
+        ]);
         setData(res);
+        setSkills(skillsRes);
       } catch (err) {
         if (err instanceof ApiError) {
           setError(err.message);
@@ -42,6 +54,13 @@ export const ProgressAnalyticsPage: React.FC = () => {
 
     fetchAnalytics();
   }, []);
+
+  const toggleEvidence = (skillId: string) => {
+    setExpandedSkillEvidence((prev) => ({
+      ...prev,
+      [skillId]: !prev[skillId],
+    }));
+  };
 
   if (loading) {
     return (
@@ -63,6 +82,9 @@ export const ProgressAnalyticsPage: React.FC = () => {
     );
   }
 
+  // Topics sorted by score descending
+  const sortedSkills = [...skills].sort((a, b) => b.score - a.score);
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
       {/* Page Title */}
@@ -80,7 +102,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
             Have I Actually Improved?
           </h1>
           <p className="text-sm text-ink-muted mt-1">
-            Track rubric dimension trends, before-and-after reassessments, and recurring blind spots.
+            Persistent skill graph updated via Exponential Moving Average (α=0.3) with transcript evidence quotes.
           </p>
         </div>
 
@@ -157,6 +179,130 @@ export const ProgressAnalyticsPage: React.FC = () => {
           </div>
           <p className="text-xs text-ink-subtle mt-1">Measured on identical rubrics</p>
         </Card>
+      </div>
+
+      {/* Persistent Skill Map (ADR 0012) */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-ink flex items-center gap-2">
+              <Layers className="w-5 h-5 text-lime-600" />
+              Persistent Skill Map
+            </h2>
+            <p className="text-xs text-ink-subtle">
+              Calibrated competency ratings that persist across mock interviews and track mastery over time.
+            </p>
+          </div>
+        </div>
+
+        {sortedSkills.length === 0 ? (
+          <Card className="p-8 text-center bg-white border border-surface-border">
+            <p className="text-sm text-ink-muted mb-1">No skill data indexed yet.</p>
+            <p className="text-xs text-ink-subtle max-w-md mx-auto">
+              Complete your first mock interview to seed your persistent skill graph with evidence-based scores.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {sortedSkills.map((skill) => {
+              const isEvidenceOpen = !!expandedSkillEvidence[skill.id];
+              const confPercent = Math.round(skill.confidence * 100);
+              const scoreColor =
+                skill.score >= 75
+                  ? 'bg-lime-600'
+                  : skill.score >= 50
+                  ? 'bg-amber-500'
+                  : 'bg-rose-500';
+
+              return (
+                <Card
+                  key={skill.id}
+                  className="p-5 bg-white border border-surface-border hover:border-zinc-300 transition-all flex flex-col justify-between space-y-3"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="lime" size="sm" className="font-mono text-[10px]">
+                            Last updated {new Date(skill.last_seen).toLocaleDateString()}
+                          </Badge>
+                          <span className="text-[10px] text-ink-subtle font-mono">
+                            {skill.evidence_refs?.length || 1} signal{(skill.evidence_refs?.length || 1) !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-sm text-ink mt-1">
+                          {skill.topic}
+                        </h4>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="font-mono font-extrabold text-lg text-ink">
+                          {Math.round(skill.score)}
+                        </span>
+                        <span className="text-xs text-ink-subtle font-mono">/100</span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full h-2 bg-surface-subtle rounded-full overflow-hidden border border-surface-border mt-3">
+                      <div
+                        className={`h-full ${scoreColor} rounded-full transition-all duration-500`}
+                        style={{ width: `${Math.min(100, Math.max(5, skill.score))}%` }}
+                      />
+                    </div>
+
+                    {/* Confidence Indicator */}
+                    <div className="flex items-center justify-between text-[11px] text-ink-subtle mt-2">
+                      <span className="flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-lime-700" />
+                        <span>Confidence: {confPercent}%</span>
+                      </span>
+                      <span>
+                        {skill.confidence >= 0.7
+                          ? 'High Calibration'
+                          : skill.confidence >= 0.4
+                          ? 'Calibrating'
+                          : 'Early Signal'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Evidence Drawer Toggle */}
+                  {skill.evidence_refs && skill.evidence_refs.length > 0 && (
+                    <div className="pt-2 border-t border-surface-border/60">
+                      <button
+                        onClick={() => toggleEvidence(skill.id)}
+                        className="w-full flex items-center justify-between text-xs text-ink-muted hover:text-ink font-medium"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Quote className="w-3 h-3 text-lime-700" />
+                          <span>Evaluation Evidence History ({skill.evidence_refs.length})</span>
+                        </span>
+                        {isEvidenceOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+
+                      {isEvidenceOpen && (
+                        <div className="mt-2.5 space-y-1.5 pt-1">
+                          {skill.evidence_refs.map((ref: any, qIdx: number) => (
+                            <div
+                              key={qIdx}
+                              className="p-2 rounded bg-surface-warm border border-surface-border text-[11px] text-ink flex items-center justify-between"
+                            >
+                              <span className="capitalize text-ink-muted font-mono">{ref.type || 'evaluation'} signal</span>
+                              <span className="font-mono font-bold text-lime-800">
+                                {ref.score !== undefined ? `${Math.round(ref.score)}/100` : 'Recorded'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Reassessment Before-and-After Comparisons */}

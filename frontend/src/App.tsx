@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
-import { Navbar } from './components/layout/Navbar';
+
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
@@ -13,6 +13,9 @@ import { ProgressAnalyticsPage } from './features/progress/ProgressAnalyticsPage
 import { CodingPracticePage } from './features/coding/CodingPracticePage';
 import { ProviderSettingsPage } from './features/provider-settings/ProviderSettingsPage';
 import { AwsSetupGuidePage } from './features/provider-settings/AwsSetupGuidePage';
+
+import { Sidebar } from './components/layout/Sidebar';
+import { CommandPalette } from './components/layout/CommandPalette';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuth();
@@ -35,31 +38,51 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const location = useLocation();
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const isAuthRoute = location.pathname === '/login' || location.pathname === '/register';
+
+  if (!user || isAuthRoute) {
+    return (
+      <div className="min-h-screen flex flex-col bg-surface-warm font-sans text-ink">
+        <main className="flex-1 flex flex-col">{children}</main>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col bg-surface-warm font-sans text-ink">
-      <Navbar />
-      <main className="flex-1 pb-16">{children}</main>
-      <footer className="border-t border-surface-border bg-white py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-ink-muted">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-ink">Skill Issue</span>
-            <span>•</span>
-            <span className="italic font-mono text-[11px]">&ldquo;Your interview went badly. Good. Now we have data.&rdquo;</span>
+    <div className="min-h-screen flex bg-surface-warm font-sans text-ink">
+      <Sidebar onOpenCommandPalette={() => setIsPaletteOpen(true)} />
+      <div className="flex-1 flex flex-col min-w-0 pl-16 transition-all duration-200">
+        <main className="flex-1 pb-16">{children}</main>
+        <footer className="border-t border-surface-border bg-white py-4 px-6">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-ink-muted">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-ink">Skill Issue</span>
+              <span>•</span>
+              <span className="italic font-mono text-[11px]">&ldquo;Your interview went badly. Good. Now we have data.&rdquo;</span>
+            </div>
+            <div className="flex items-center gap-3 text-ink-subtle">
+              <button
+                onClick={() => setIsPaletteOpen(true)}
+                className="hover:text-ink font-mono text-[11px] px-2 py-0.5 rounded bg-surface-subtle border border-surface-border"
+              >
+                ⌘K Palette
+              </button>
+              <span>•</span>
+              <span>Strict Light Theme</span>
+              <span>•</span>
+              <span>Sandboxed Execution</span>
+            </div>
           </div>
-          <div className="flex items-center gap-4 text-ink-subtle">
-            <a href="/docs/aws-bedrock-setup" className="hover:text-ink transition-colors">
-              AWS Bedrock Guide
-            </a>
-            <span>•</span>
-            <span>Light Theme Strict</span>
-            <span>•</span>
-            <span>BYOC Ready</span>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      </div>
+      <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} />
     </div>
   );
 };
+
 
 export const App: React.FC = () => {
   return (

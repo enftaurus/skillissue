@@ -39,22 +39,34 @@
 ### [SEC-01] P0: Sandboxed Code Runner Host Environment Leakage
 - **Severity**: P0 (High-Impact Security Vulnerability)
 - **Category**: Sandbox Security / Secret Isolation
-- **Location**: [`sandbox/runner.py`](file:///home/rajababu/intern/skillissue/sandbox/runner.py)
-- **Status**: **Partially Fixed / Re-opened (Pending Real Docker Isolation)**
-- **Root Cause**: `subprocess.run` executed child processes on the API host. While `clean_env` removed secrets from `os.environ`, the untrusted child process still runs on the host filesystem and can read any file the host user can access (e.g. `backend/.env` with `SECRET_KEY`, `ENCRYPTION_KEY`, `DATABASE_URL`) and open outbound network sockets.
-- **Interim Fix**: Sanitized `clean_env` dictionary stripping sensitive variables.
-- **Required Permanent Fix (Phase 1)**: Remove host subprocess execution completely from all production paths. Implement a dedicated, isolated Docker executor service with `--network none`, `--read-only`, tmpfs, unprivileged user, and no host filesystem bind mounts.
+- **Location**: [`sandbox/runner.py`](file:///home/rajababu/intern/skillissue/sandbox/runner.py), [`sandbox/executor/`](file:///home/rajababu/intern/skillissue/sandbox/executor/)
+- **Status**: **Resolved & Verified (ADR 0010)**
+- **Root Cause**: Early iterations executed child processes on the API host. While `clean_env` removed secrets from `os.environ`, the untrusted child process ran on the host filesystem and could read files accessible to the host user (e.g. `backend/.env` with `SECRET_KEY`, `ENCRYPTION_KEY`, `DATABASE_URL`) and open outbound network sockets.
+- **Implemented Fix**:
+  Implemented an isolated Docker executor microservice (`sandbox/executor/`) running as a standalone container on an isolated internal network (`skillissue_sandbox_net`). The FastAPI runner communicates with the executor via an authenticated internal HTTP API with a shared secret (`EXECUTOR_SHARED_SECRET`). Untrusted code is executed in ephemeral multi-language Docker containers (`python:3.12-slim`, `gcc:13-bookworm`, `eclipse-temurin:21-jdk-jammy`) with:
+  - Network disabled (`--network none`).
+  - Read-only root filesystem (`--read-only`).
+  - Strict tmpfs mount on `/tmp:rw,noexec,nosuid,size=64m`.
+  - Non-root user execution (`UID 10001:10001`).
+  - Seccomp security profile blocking dangerous syscalls (`ptrace`, `unshare`, `clone_newuser`).
+  - Zero host filesystem bind mounts. Host files, canary files, and `.env` credentials are completely invisible and unreadable.
+- **Verification**: Verified via `scripts/sandbox_escape_suite.py` (Tests 1, 2, 3, 4 pass 100%).
 
 ---
 
 ### [SEC-02] P0: Process Group & PID Exhaustion Vulnerability (Fork Bomb) in Sandbox
 - **Severity**: P0 (High-Impact DoS / Host Stability)
 - **Category**: Sandbox Security / Resource Limits
-- **Location**: [`sandbox/runner.py`](file:///home/rajababu/intern/skillissue/sandbox/runner.py)
-- **Status**: **Partially Fixed / Re-opened (Pending Real Docker Isolation)**
-- **Root Cause**: Running on the host means Linux system-wide UID process limits (`RLIMIT_NPROC`) collide with developer or API process threads, making strict in-process enforcement impossible without risking host instability or thread exhaustion.
-- **Interim Fix**: Process group creation via `os.setsid` and `os.killpg` on timeout.
-- **Required Permanent Fix (Phase 1)**: Isolated container execution with strict cgroup `--pids-limit 64`, memory caps (256MB), CPU limits, and seccomp filtering in an isolated executor service.
+- **Location**: [`sandbox/runner.py`](file:///home/rajababu/intern/skillissue/sandbox/runner.py), [`sandbox/executor/`](file:///home/rajababu/intern/skillissue/sandbox/executor/)
+- **Status**: **Resolved & Verified (ADR 0010)**
+- **Root Cause**: Running on the host meant system-wide UID process limits collided with developer or API process threads.
+- **Implemented Fix**:
+  Container execution enforced with strict Linux cgroup limits:
+  - `--pids-limit 64` (fork bombs immediately blocked).
+  - Memory hard cap: 256MB (`--memory 256m`, `--memory-swap 256m`).
+  - Wall-clock timeout enforcement with immediate container kill (`docker kill`).
+  - Output streaming capped at 256KB to halt print floods without memory spikes.
+- **Verification**: Verified via `scripts/sandbox_escape_suite.py` (Tests 5, 6, 7, 8, 9 pass 100% across 25 concurrent submissions).
 
 ---
 

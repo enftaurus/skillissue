@@ -12,8 +12,27 @@ export class ApiError extends Error {
   }
 }
 
+async function refreshToken(): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.access_token) {
+        localStorage.setItem('skillissue_token', data.access_token);
+        return data.access_token;
+      }
+    }
+  } catch {
+    // Refresh failed
+  }
+  return null;
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('skillissue_token');
+  let token = localStorage.getItem('skillissue_token');
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -28,10 +47,24 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     delete (headers as Record<string, string>)['Content-Type'];
   }
 
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
+  let response = await fetch(`${BASE_URL}${endpoint}`, {
     ...options,
+    credentials: 'include',
     headers,
   });
+
+  // Attempt automatic refresh on 401 if we have an active session
+  if (response.status === 401 && !endpoint.startsWith('/auth/login') && !endpoint.startsWith('/auth/refresh')) {
+    const newToken = await refreshToken();
+    if (newToken) {
+      (headers as Record<string, string>)['Authorization'] = `Bearer ${newToken}`;
+      response = await fetch(`${BASE_URL}${endpoint}`, {
+        ...options,
+        credentials: 'include',
+        headers,
+      });
+    }
+  }
 
   if (response.status === 204) {
     return {} as T;
@@ -41,13 +74,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     if (response.status === 401 && !endpoint.startsWith('/auth/login')) {
-      if (token) {
-        localStorage.removeItem('skillissue_token');
-        localStorage.removeItem('skillissue_user');
-        window.dispatchEvent(new CustomEvent('auth:expired'));
-        if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
-          window.location.href = '/login';
-        }
+      localStorage.removeItem('skillissue_token');
+      localStorage.removeItem('skillissue_user');
+      window.dispatchEvent(new CustomEvent('auth:expired'));
+      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+        window.location.href = '/login';
       }
     }
     const message = data?.error?.message || data?.detail || 'An unexpected error occurred';
@@ -57,6 +88,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   return data as T;
 }
+
 
 export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint, { method: 'GET' }),

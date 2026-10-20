@@ -18,6 +18,7 @@ This directory contains records of all architectural, infrastructural, and secur
 | [0010](0010-docker-code-execution-service.md) | Isolated Docker Code Execution Service & Threat Model | 2026-10-20 | Accepted | Real ephemeral Docker container executor service with no network, external judging, cgroups, and fail-closed safety. |
 | [0011](0011-security-auth-session-and-judging-masking.md) | Auth Session Management, Outside-Sandbox Hardening & Judging Masking | 2026-10-20 | Accepted | Token revocation, refresh cookies, constant-time auth, tenant DEK derivation, hidden test masking, and rate limiting. |
 | [0012](0012-persistent-skills-verbatim-feedback-and-hints.md) | Persistent Skill Map, Verbatim Feedback, Socratic Hints & Planly Preview | 2026-10-20 | Accepted | EMA user skills, transcript quote fidelity, three-tier hint ladder, and non-mutating plan adaptation preview. |
+| [0013](0013-frontend-experience-and-design-system.md) | Frontend Experience, Design System, Monaco Workspace & Calibrated Analytics | 2026-10-20 | Accepted | Collapsible left rail, Cmd+K palette, Monaco split IDE, audio waveform presence, diverging delta charts, and Planly live preview. |
 
 ---
 
