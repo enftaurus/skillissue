@@ -20,6 +20,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
@@ -33,6 +34,7 @@ class User(Base):
     plans: Mapped[List["Plan"]] = relationship("Plan", back_populates="user", cascade="all, delete-orphan")
     coding_submissions: Mapped[List["CodingSubmission"]] = relationship("CodingSubmission", back_populates="user", cascade="all, delete-orphan")
     skills: Mapped[List["UserSkill"]] = relationship("UserSkill", back_populates="user", cascade="all, delete-orphan")
+    backlog_items: Mapped[List["LearningBacklogItem"]] = relationship("LearningBacklogItem", back_populates="user", cascade="all, delete-orphan")
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
@@ -76,6 +78,7 @@ class ProviderConfig(Base):
     monthly_tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     monthly_cost_cents_budget: Mapped[int] = mapped_column(Integer, default=1000)  # $10.00
     monthly_cost_cents_used: Mapped[int] = mapped_column(Integer, default=0)
+    config_version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
@@ -126,6 +129,7 @@ class Interview(Base):
     target_duration_minutes: Mapped[int] = mapped_column(Integer, default=20)
     hint_level_used: Mapped[int] = mapped_column(Integer, default=0)
     coding_problem_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    latest_submission_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     current_summary: Mapped[str] = mapped_column(Text, default="")
     covered_topics: Mapped[List[str]] = mapped_column(JSON, default=list)
     topic_statuses: Mapped[Dict[str, str]] = mapped_column(JSON, default=dict)
@@ -179,6 +183,7 @@ class Evaluation(Base):
     question_feedback: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     suggested_corrections: Mapped[List[str]] = mapped_column(JSON, default=list)
     uncertainty_notes: Mapped[List[str]] = mapped_column(JSON, default=list)
+    weakness_analysis: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     raw_llm_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     model_identifier: Mapped[str] = mapped_column(String(100), default="")
@@ -194,12 +199,18 @@ class Plan(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     evaluation_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("evaluations.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
+    topic: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    goal: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 'fundamentals', 'interview_prep', 'mastery'
     target_role: Mapped[str] = mapped_column(String(150), default="Software Engineer")
     target_skills: Mapped[List[str]] = mapped_column(JSON, default=list)
+    schedule_days: Mapped[List[str]] = mapped_column(JSON, default=list)  # e.g. ["monday", "wednesday", "friday"]
+    current_level: Mapped[str] = mapped_column(String(30), default="intermediate")  # 'beginner', 'intermediate', 'advanced'
     status: Mapped[str] = mapped_column(String(20), default="active")  # 'active', 'completed', 'archived'
     total_days: Mapped[int] = mapped_column(Integer, default=7)
     current_day: Mapped[int] = mapped_column(Integer, default=1)
     daily_study_minutes: Mapped[int] = mapped_column(Integer, default=45)
+    start_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    target_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
@@ -215,8 +226,11 @@ class PlanTask(Base):
     day_number: Mapped[int] = mapped_column(Integer)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text)
+    subtopic: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     task_type: Mapped[str] = mapped_column(String(30), default="practice")  # 'concept', 'practice', 'coding', 'reassessment'
     estimated_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    scheduled_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="upcoming")  # 'upcoming', 'in_progress', 'completed', 'skipped'
     external_resources: Mapped[List[Dict[str, str]]] = mapped_column(JSON, default=list)  # [{title, url, type}]
     is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -261,3 +275,25 @@ class UserSkill(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     user: Mapped["User"] = relationship("User", back_populates="skills")
+
+class LearningBacklogItem(Base):
+    __tablename__ = "learning_backlog"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    topic: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    subtopic: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="manual")  # 'interview_evaluation', 'manual', 'coding_practice'
+    source_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)  # e.g. interview_id
+    reason: Mapped[str] = mapped_column(Text, default="")
+    learning_objective: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    suggested_exercise: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    priority: Mapped[str] = mapped_column(String(20), default="medium")  # 'low', 'medium', 'high'
+    status: Mapped[str] = mapped_column(String(30), default="queued")  # 'queued', 'planned', 'in_progress', 'completed', 'dismissed'
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    planned_plan_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("plans.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    user: Mapped["User"] = relationship("User", back_populates="backlog_items")
+    plan: Mapped[Optional["Plan"]] = relationship("Plan")
