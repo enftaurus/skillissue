@@ -46,6 +46,17 @@ class QuestionFeedback(BaseModel):
     strong_answer_guide: str
     targeted_resource: Optional[str] = None
 
+class WeaknessAnalysisItem(BaseModel):
+    id: Optional[str] = None
+    topic: str
+    subtopic: Optional[str] = None
+    evidence: str
+    gap_explanation: str
+    learning_objective: str
+    suggested_exercise: Optional[str] = None
+    confidence: str = "medium"  # 'high', 'medium', 'low'
+    status: str = "identified"  # 'identified', 'added_to_plan', 'queued', 'dismissed'
+
 class EvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -57,6 +68,7 @@ class EvaluationResponse(BaseModel):
     missing_concepts: List[str]
     evidence_excerpts: List[Dict[str, str]]
     question_feedback: List[QuestionFeedback] = []
+    weakness_analysis: List[WeaknessAnalysisItem] = []
     suggested_corrections: List[str]
     uncertainty_notes: List[str]
     tokens_used: int
@@ -96,4 +108,5 @@ class EvaluationComparisonResponse(BaseModel):
     strengths: List[str]
     weaknesses: List[str]
     missing_concepts: List[str]
+    weakness_analysis: List[WeaknessAnalysisItem] = []
 

@@ -203,6 +203,37 @@ class EvaluationService:
                 "targeted_resource": res,
             })
 
+        import uuid as uuid_mod
+        raw_weakness_analysis = parsed.get("weakness_analysis", [])
+        verified_weakness_analysis = []
+        for item in raw_weakness_analysis:
+            if isinstance(item, dict) and item.get("topic"):
+                verified_weakness_analysis.append({
+                    "id": str(uuid_mod.uuid4()),
+                    "topic": str(item.get("topic")).strip(),
+                    "subtopic": str(item.get("subtopic")).strip() if item.get("subtopic") else None,
+                    "evidence": str(item.get("evidence", "")).strip(),
+                    "gap_explanation": str(item.get("gap_explanation", "")).strip(),
+                    "learning_objective": str(item.get("learning_objective", f"Master {item.get('topic')}")).strip(),
+                    "suggested_exercise": str(item.get("suggested_exercise")).strip() if item.get("suggested_exercise") else None,
+                    "confidence": str(item.get("confidence", "medium")).lower(),
+                    "status": "identified",
+                })
+
+        if not verified_weakness_analysis and weaknesses:
+            for w in weaknesses[:4]:
+                verified_weakness_analysis.append({
+                    "id": str(uuid_mod.uuid4()),
+                    "topic": w,
+                    "subtopic": None,
+                    "evidence": evidence_excerpts[0].get("quote", "") if evidence_excerpts else "Demonstrated in interview discussion",
+                    "gap_explanation": w,
+                    "learning_objective": f"Strengthen core fundamentals in {w}",
+                    "suggested_exercise": f"Build a practical implementation addressing edge cases in {w}",
+                    "confidence": "medium",
+                    "status": "identified",
+                })
+
         # Check if an evaluation already exists for this interview
         existing_res = await db.execute(
             select(Evaluation).where(Evaluation.interview_id == interview_id, Evaluation.user_id == user_id)
@@ -216,6 +247,7 @@ class EvaluationService:
             evaluation.missing_concepts = missing_concepts
             evaluation.evidence_excerpts = evidence_excerpts
             evaluation.question_feedback = verified_question_feedback
+            evaluation.weakness_analysis = verified_weakness_analysis
             evaluation.suggested_corrections = suggested_corrections
             evaluation.uncertainty_notes = uncertainty_notes
             evaluation.raw_llm_response = response.text
@@ -232,6 +264,7 @@ class EvaluationService:
                 missing_concepts=missing_concepts,
                 evidence_excerpts=evidence_excerpts,
                 question_feedback=verified_question_feedback,
+                weakness_analysis=verified_weakness_analysis,
                 suggested_corrections=suggested_corrections,
                 uncertainty_notes=uncertainty_notes,
                 raw_llm_response=response.text,
@@ -405,4 +438,5 @@ class EvaluationService:
             strengths=evaluation.strengths,
             weaknesses=evaluation.weaknesses,
             missing_concepts=evaluation.missing_concepts,
+            weakness_analysis=evaluation.weakness_analysis or [],
         )
