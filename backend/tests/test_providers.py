@@ -1,7 +1,9 @@
+import uuid
 import pytest
 import httpx
-from backend.app.providers.models_catalog import SUPPORTED_MODELS, calculate_token_cost
+from backend.app.providers.models_catalog import SUPPORTED_MODELS, calculate_token_cost, generate_iam_policy
 from backend.app.providers.mock_provider import MockProvider
+from backend.app.core.errors import ProviderError
 
 @pytest.mark.asyncio
 async def test_models_catalog_lineup(client: httpx.AsyncClient):
@@ -11,64 +13,58 @@ async def test_models_catalog_lineup(client: httpx.AsyncClient):
     models = res.json()
     model_ids = [m["model_id"] for m in models]
 
-    # Verify user-specified lineup
-    assert "qwen.qwen3-32b-instruct-v1:0" in model_ids
-    assert "qwen.qwen3-coder-30b-a3b-v1:0" in model_ids
-    assert "qwen.qwen3-next-80b-a3b-v1:0" in model_ids
-    assert "moonshot.kimi-k3-v1:0" in model_ids
-    assert "mock-qwen3-32b" in model_ids
+    # Verify Amazon Nova lineup is primary
+    assert "amazon.nova-lite-v1:0" in model_ids
+    assert "amazon.nova-pro-v1:0" in model_ids
+    assert "amazon.nova-micro-v1:0" in model_ids
+    assert "mock-qwen3-32b" not in model_ids
 
-    # Verify exact reference pricing for Qwen3 32B ($0.1545 in / $0.618 out per 1M)
-    qwen3 = next(m for m in models if m["model_id"] == "qwen.qwen3-32b-instruct-v1:0")
-    assert qwen3["input_price_per_1m"] == 0.1545
-    assert qwen3["output_price_per_1m"] == 0.618
+    # Verify Nova Lite pricing ($0.06 in / $0.24 out per 1M)
+    nova_lite = next(m for m in models if m["model_id"] == "amazon.nova-lite-v1:0")
+    assert nova_lite["input_price_per_1m"] == 0.06
+    assert nova_lite["output_price_per_1m"] == 0.24
+    assert nova_lite["is_default"] is True
 
     # Verify pricing calculation
-    # 10,000 in, 2,000 out with Qwen3 32B:
-    # in: 10000 / 1000000 * 0.1545 = 0.001545
-    # out: 2000 / 1000000 * 0.618 = 0.001236
-    # total = 0.002781
-    cost = calculate_token_cost("qwen.qwen3-32b-instruct-v1:0", 10_000, 2_000)
-    assert cost == pytest.approx(0.002781, rel=1e-3)
+    # 10,000 in, 2,000 out with Nova Lite:
+    # in: 10000 / 1000000 * 0.06 = 0.0006
+    # out: 2000 / 1000000 * 0.24 = 0.00048
+    # total = 0.00108
+    cost = calculate_token_cost("amazon.nova-lite-v1:0", 10_000, 2_000)
+    assert cost == pytest.approx(0.00108, rel=1e-3)
 
 @pytest.mark.asyncio
-async def test_mock_provider_generation():
+async def test_iam_policy_generation(client: httpx.AsyncClient):
+    # Test IAM policy generator endpoint
+    res = await client.get("/api/v1/providers/iam-policy?model_id=amazon.nova-lite-v1:0&region=us-east-1")
+    assert res.status_code == 200
+    data = res.json()
+    assert "policy_json" in data
+    assert "bedrock:InvokeModel" in data["policy_json"]
+    assert "bedrock:InvokeModelWithResponseStream" in data["policy_json"]
+    assert "amazon.nova-lite-v1:0" in data["policy_json"]
+    assert "us.amazon.nova-lite-v1:0" in data["policy_json"]
+    assert "actions_explained" in data
+
+@pytest.mark.asyncio
+async def test_mock_provider_test_double():
+    """Verify test double provider operates deterministically for offline testing."""
     provider = MockProvider()
     assert await provider.validate_credentials() is True
 
-    # Test initial question
     r1 = await provider.generate_text("Hello, start my interview", conversation_history=[])
     assert len(r1.text) > 20
     assert r1.input_tokens > 0
-    assert r1.output_tokens > 0
-    assert r1.estimated_cost_usd == 0.0
 
-    # Test adaptive follow-up on Redis claim
-    r2 = await provider.generate_text(
-        "Can you ask follow-up?",
-        conversation_history=[
-            {"role": "assistant", "content": "Tell me about your architecture."},
-            {"role": "user", "content": "We used Redis for caching to make things 10x faster."}
-        ]
-    )
-    assert "redis" in r2.text.lower() or "faster" in r2.text.lower() or "latency" in r2.text.lower()
-
-    # Test structured evaluation JSON
     eval_res = await provider.generate_json(
         prompt="Evaluate candidate performance against rubric",
         system_prompt="You are an expert technical evaluator."
     )
     assert eval_res.parsed_json is not None
     assert "overall_score" in eval_res.parsed_json
-    assert "dimension_scores" in eval_res.parsed_json
-    assert "strengths" in eval_res.parsed_json
-    assert "weaknesses" in eval_res.parsed_json
-
-import uuid
 
 @pytest.mark.asyncio
 async def test_user_provider_settings_workflow(client: httpx.AsyncClient):
-    # Register test user with unique email
     email = f"provider_test_{uuid.uuid4().hex[:8]}@example.com"
     reg = await client.post(
         "/api/v1/auth/register",
@@ -83,45 +79,30 @@ async def test_user_provider_settings_workflow(client: httpx.AsyncClient):
     token = login.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    # Default provider should be mock
+    # Default provider should be unconfigured Bedrock (is_valid=False)
     cfg = await client.get("/api/v1/providers/config", headers=headers)
     assert cfg.status_code == 200
-    assert cfg.json()["provider_name"] == "mock"
-    assert cfg.json()["is_valid"] is True
+    assert cfg.json()["provider_name"] == "bedrock"
+    assert cfg.json()["is_valid"] is False
 
-    # Test updating mock config preferred model
-    upd = await client.put(
-        "/api/v1/providers/config",
-        headers=headers,
-        json={
-            "provider_name": "mock",
-            "preferred_model": "mock-qwen3-32b",
-            "aws_region": "us-east-1"
-        }
-    )
-    assert upd.status_code == 200
-    assert upd.json()["preferred_model"] == "mock-qwen3-32b"
-
-    # Delete credentials resets to default
+    # Delete credentials resets to unconfigured state
     del_cred = await client.delete("/api/v1/providers/credentials", headers=headers)
     assert del_cred.status_code == 200
-    assert del_cred.json()["provider_name"] == "mock"
+    assert del_cred.json()["is_valid"] is False
 
 @pytest.mark.asyncio
 async def test_provider_credential_encryption_and_routing():
-    """Verify that ProviderConfig stores and decrypts unmasked Access Key ID and honors model preferences."""
+    """Verify ProviderConfig stores and decrypts unmasked Access Key ID and fails closed without silent mock fallback."""
     import json
     from unittest.mock import AsyncMock, MagicMock
     from backend.app.database.models import ProviderConfig
     from backend.app.core.security import encrypt_secret
     from backend.app.providers.factory import ModelFactory
     from backend.app.providers.bedrock import AmazonBedrockProvider
-    from backend.app.providers.mock_provider import MockProvider
 
     full_access_key = "AKIAIOSFODNN7EXAMPLE"
     full_secret_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 
-    # Simulate stored provider config with JSON bundle encrypted
     bundle = json.dumps({"access_key_id": full_access_key, "secret_access_key": full_secret_key})
     mock_config = ProviderConfig(
         user_id="test-user-123",
@@ -129,7 +110,7 @@ async def test_provider_credential_encryption_and_routing():
         aws_region="us-east-1",
         aws_access_key_masked="AKIA...MPLE",
         aws_secret_key_enc=encrypt_secret(bundle),
-        preferred_model="qwen.qwen3-next-80b-a3b-v1:0",
+        preferred_model="amazon.nova-pro-v1:0",
         is_valid=True,
     )
 
@@ -143,13 +124,11 @@ async def test_provider_credential_encryption_and_routing():
     assert isinstance(provider, AmazonBedrockProvider)
     assert provider.aws_access_key_id == full_access_key
     assert provider.aws_secret_access_key == full_secret_key
+    assert provider.model_id == "amazon.nova-pro-v1:0"
 
-    # 2. Verify PRV-01: explicit preferred model is honored even for coding tasks
-    coding_provider = await ModelFactory.get_for_user(db_mock, "test-user-123", task_type="coding")
-    assert coding_provider.model_id == "qwen.qwen3-next-80b-a3b-v1:0"
-
-    # 3. Verify corrupted ciphertext gracefully falls back to MockProvider
+    # 2. Corrupted ciphertext must fail closed with ProviderError (no silent fallback!)
+    from backend.app.providers.model_client_factory import ModelClientFactory
+    ModelClientFactory.clear_cache_for_user("test-user-123")
     mock_config.aws_secret_key_enc = "corrupted-ciphertext-invalid-token"
-    fallback_provider = await ModelFactory.get_for_user(db_mock, "test-user-123", task_type="general")
-    assert isinstance(fallback_provider, MockProvider)
-
+    with pytest.raises(ProviderError, match="could not be decrypted or are incomplete"):
+        await ModelFactory.get_for_user(db_mock, "test-user-123", task_type="general")

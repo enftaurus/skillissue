@@ -220,6 +220,26 @@ class MockProvider(BaseProvider):
                         "targeted_resource": "Resilient Distributed Systems Engineering"
                     }
                 ],
+                "weakness_analysis": [
+                    {
+                        "topic": "PostgreSQL Partitioning",
+                        "subtopic": "DDL Lock Mitigation",
+                        "evidence": first_sentence,
+                        "gap_explanation": "Understood declarative table partitioning syntax but omitted catalog locking behavior during partition attachment.",
+                        "learning_objective": "Master PostgreSQL concurrent partition maintenance and query planner pruning invariants.",
+                        "suggested_exercise": "Benchmark concurrent partition attachment under heavy write load using pgbench.",
+                        "confidence": "high"
+                    },
+                    {
+                        "topic": "Distributed System Observability",
+                        "subtopic": "Latency Distributions",
+                        "evidence": second_sentence,
+                        "gap_explanation": "Relies on vague assertions of performance gains without citing quantitative percentiles (p95, p99) or instrumentation.",
+                        "learning_objective": "Learn to instrument services with Prometheus histograms and interpret tail latency metrics under saturation.",
+                        "suggested_exercise": "Configure a local service with OpenTelemetry and measure p99 latency during artificial lock contention.",
+                        "confidence": "medium"
+                    }
+                ],
                 "suggested_corrections": [
                     "Whenever claiming a performance win in an interview, state the metric: 'Reduced median latency from 140ms to 18ms under 2,000 req/sec'.",
                     "Proactively address failure modes: mention circuit breakers, timeouts, and fallback policies."

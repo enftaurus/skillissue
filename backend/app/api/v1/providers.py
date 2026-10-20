@@ -1,12 +1,13 @@
-from typing import List
-from fastapi import APIRouter, Depends, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database.session import get_db
 from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
-from backend.app.providers.models_catalog import get_recommended_lineup, ModelMetadata
+from backend.app.providers.models_catalog import get_recommended_lineup, ModelMetadata, DEFAULT_MODEL_ID
 from backend.app.providers.schemas import (
-    ProviderConfigSave, ProviderConfigResponse, TestCredentialsRequest, TestCredentialsResponse
+    ProviderConfigSave, ProviderConfigResponse, TestCredentialsRequest, TestCredentialsResponse,
+    IamPolicyResponse
 )
 from backend.app.providers.service import ProviderConfigService
 
@@ -48,3 +49,10 @@ async def delete_saved_credentials(
 @router.get("/models", response_model=List[ModelMetadata])
 async def list_available_models():
     return get_recommended_lineup()
+
+@router.get("/iam-policy", response_model=IamPolicyResponse)
+async def get_iam_policy(
+    model_id: str = Query(default=DEFAULT_MODEL_ID, description="Target Bedrock model ID"),
+    region: str = Query(default="us-east-1", description="AWS Region"),
+):
+    return ProviderConfigService.get_iam_policy_doc(model_id=model_id, region=region)
