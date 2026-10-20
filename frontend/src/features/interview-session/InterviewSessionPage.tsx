@@ -56,6 +56,14 @@ export const InterviewSessionPage: React.FC = () => {
 
   // Modal State
   const [showSelfEvalModal, setShowSelfEvalModal] = useState(false);
+  const [hintError, setHintError] = useState('');
+  const [codeExecutionError, setCodeExecutionError] = useState('');
+  const [sessionState, setSessionState] = useState<{
+    current_topic?: string;
+    topic_statuses?: Record<string, string>;
+    running_summary?: string;
+    turn_count?: number;
+  } | null>(null);
 
   // Elapsed Timer
   const [secondsElapsed, setSecondsElapsed] = useState(0);
@@ -63,6 +71,7 @@ export const InterviewSessionPage: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const baseInputTextRef = useRef<string>('');
   const codeDraftsRef = useRef<Record<string, string>>({});
+  const pendingTurnIdRef = useRef<string | null>(null);
 
   // 1. Initial Load
   useEffect(() => {
@@ -86,9 +95,14 @@ export const InterviewSessionPage: React.FC = () => {
             })
             .catch(() => {});
         }
+
         return api.get<RubricDimension[]>(`/interviews/rubrics/${data.category}`);
       })
-      .then(setRubrics)
+      .then((r) => {
+        setRubrics(r);
+        return api.get<any>(`/interviews/${id}/state`);
+      })
+      .then(setSessionState)
       .catch((err) => setError(err.message || 'Failed to load interview session.'))
       .finally(() => setLoading(false));
 
@@ -165,6 +179,13 @@ export const InterviewSessionPage: React.FC = () => {
       speechHandlerRef.current?.stop();
     }
 
+    const clientTurnId =
+      pendingTurnIdRef.current ||
+      (typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `turn-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
+    pendingTurnIdRef.current = clientTurnId;
+
     const optimisticMsg: InterviewMessage = {
       id: `temp-${Date.now()}`,
       interview_id: id,
@@ -176,21 +197,34 @@ export const InterviewSessionPage: React.FC = () => {
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
-    setInputText('');
-    baseInputTextRef.current = '';
     setIsSending(true);
+    setError('');
 
     try {
       const assistantMsg = await api.post<InterviewMessage>(`/interviews/${id}/message`, {
         content,
+        client_turn_id: clientTurnId,
       });
+
       setMessages((prev) => [...prev.filter((m) => m.id !== optimisticMsg.id), optimisticMsg, assistantMsg]);
+      // Confirm success: clear input and pending turn ID
+      setInputText('');
+      baseInputTextRef.current = '';
+      pendingTurnIdRef.current = null;
+
+      // Update state snapshot
+      api.get<any>(`/interviews/${id}/state`).then(setSessionState).catch(() => {});
 
       if (autoSpeak) {
         speakWithMicSuppression(assistantMsg.content);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to send message.');
+      // Roll back optimistic message to avoid phantom messages in chat
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+      // Preserve candidate text in input
+      setInputText(content);
+      baseInputTextRef.current = content;
+      setError(err.message || 'Failed to send message. Your draft has been preserved. Please retry.');
     } finally {
       setIsSending(false);
     }
@@ -200,6 +234,7 @@ export const InterviewSessionPage: React.FC = () => {
     if (!id || isRequestingHint) return;
     setIsRequestingHint(true);
     setShowHintMenu(false);
+    setHintError('');
 
     try {
       const res = await api.post<HintResponse>(`/interviews/${id}/hint`, {
@@ -218,7 +253,7 @@ export const InterviewSessionPage: React.FC = () => {
         speakWithMicSuppression(res.hint);
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to request Socratic hint.');
+      setHintError(err.message || 'Failed to request Socratic hint.');
     } finally {
       setIsRequestingHint(false);
     }
@@ -239,6 +274,7 @@ export const InterviewSessionPage: React.FC = () => {
     if (!codingProblem) return;
     setIsExecutingCode(true);
     setExecutionResult(null);
+    setCodeExecutionError('');
 
     try {
       const result = await api.post<CodeExecutionResult>('/coding/run', {
@@ -248,7 +284,7 @@ export const InterviewSessionPage: React.FC = () => {
       });
       setExecutionResult(result);
     } catch (err: any) {
-      alert(err.message || 'Code execution failed');
+      setCodeExecutionError(err.message || 'Code execution failed. Please check your syntax or limits.');
     } finally {
       setIsExecutingCode(false);
     }
@@ -403,9 +439,60 @@ export const InterviewSessionPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Session State / Memory Inspector Banner */}
+      {sessionState && (
+        <div className="flex items-center justify-between px-3.5 py-2 bg-surface-warm/80 border border-surface-border rounded-lg text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-ink">Active Competency:</span>
+            <span className="font-mono text-lime-800 bg-lime-50 px-2 py-0.5 rounded border border-lime-200">
+              {sessionState.current_topic || 'General Engineering'}
+            </span>
+            {sessionState.topic_statuses && sessionState.current_topic && (
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                sessionState.topic_statuses[sessionState.current_topic] === 'assessed'
+                  ? 'bg-zinc-100 text-zinc-700'
+                  : sessionState.topic_statuses[sessionState.current_topic] === 'needs_follow_up'
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-lime-100 text-lime-800'
+              }`}>
+                {sessionState.topic_statuses[sessionState.current_topic] || 'In Progress'}
+              </span>
+            )}
+          </div>
+          {sessionState.running_summary && (
+            <span className="text-[11px] text-ink-subtle hidden md:inline truncate max-w-md" title={sessionState.running_summary}>
+              Memory: {sessionState.running_summary}
+            </span>
+          )}
+        </div>
+      )}
+
       {error && (
-        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg">
-          {error}
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-center justify-between gap-3 shadow-xs">
+          <span>{error}</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => handleSendMessage()}
+            className="shrink-0 text-xs py-1 px-3 border-amber-300 hover:bg-amber-100 font-semibold"
+          >
+            Retry Send
+          </Button>
+        </div>
+      )}
+
+      {hintError && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-center justify-between">
+          <span>{hintError}</span>
+          <button onClick={() => setHintError('')} className="text-amber-700 hover:text-amber-900 text-xs">Dismiss</button>
+        </div>
+      )}
+
+      {codeExecutionError && (
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg flex items-center justify-between">
+          <span>{codeExecutionError}</span>
+          <button onClick={() => setCodeExecutionError('')} className="text-rose-700 hover:text-rose-900 text-xs">Dismiss</button>
         </div>
       )}
 

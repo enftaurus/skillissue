@@ -24,6 +24,7 @@ export const CodingPracticePage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [executionResult, setExecutionResult] = useState<CodeExecutionResult | null>(null);
   const [submissionSuccess, setSubmissionSuccess] = useState<boolean>(false);
+  const [executionError, setExecutionError] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'problem' | 'results'>('problem');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [limits, setLimits] = useState<CodingLimits | null>(null);
@@ -31,6 +32,23 @@ export const CodingPracticePage: React.FC = () => {
 
   // Persistent code drafts cache per problem and language
   const draftsRef = useRef<Record<string, string>>({});
+
+  const getDraftKey = (problemId: string, lang: string) => `skillissue_code_draft_${problemId}_${lang}`;
+
+  const loadDraft = (problemId: string, lang: string, defaultCode: string): string => {
+    try {
+      const saved = localStorage.getItem(getDraftKey(problemId, lang));
+      return saved !== null ? saved : defaultCode;
+    } catch {
+      return defaultCode;
+    }
+  };
+
+  const saveDraft = (problemId: string, lang: string, val: string) => {
+    try {
+      localStorage.setItem(getDraftKey(problemId, lang), val);
+    } catch {}
+  };
 
   useEffect(() => {
     const fetchCatalog = async () => {
@@ -57,23 +75,28 @@ export const CodingPracticePage: React.FC = () => {
   const selectProblem = (problem: CodingProblem, lang: 'python' | 'java' | 'cpp') => {
     if (selectedProblem) {
       draftsRef.current[`${selectedProblem.id}_${language}`] = code;
+      saveDraft(selectedProblem.id, language, code);
     }
     setSelectedProblem(problem);
     setLanguage(lang);
-    const key = `${problem.id}_${lang}`;
-    const draft = draftsRef.current[key];
-    setCode(draft !== undefined ? draft : (problem.starter_code[lang] || ''));
+    const starter = problem.starter_code[lang] || '';
+    const draft = loadDraft(problem.id, lang, starter);
+    draftsRef.current[`${problem.id}_${lang}`] = draft;
+    setCode(draft);
     setExecutionResult(null);
     setSubmissionSuccess(false);
+    setExecutionError('');
     setActiveTab('problem');
   };
 
   const handleLanguageChange = (lang: 'python' | 'java' | 'cpp') => {
     if (selectedProblem) {
       draftsRef.current[`${selectedProblem.id}_${language}`] = code;
-      const nextKey = `${selectedProblem.id}_${lang}`;
-      const draft = draftsRef.current[nextKey];
-      setCode(draft !== undefined ? draft : (selectedProblem.starter_code[lang] || ''));
+      saveDraft(selectedProblem.id, language, code);
+      const starter = selectedProblem.starter_code[lang] || '';
+      const draft = loadDraft(selectedProblem.id, lang, starter);
+      draftsRef.current[`${selectedProblem.id}_${lang}`] = draft;
+      setCode(draft);
     }
     setLanguage(lang);
   };
@@ -82,6 +105,7 @@ export const CodingPracticePage: React.FC = () => {
     if (selectedProblem) {
       const starter = selectedProblem.starter_code[language] || '';
       draftsRef.current[`${selectedProblem.id}_${language}`] = starter;
+      saveDraft(selectedProblem.id, language, starter);
       setCode(starter);
     }
   };
@@ -91,6 +115,7 @@ export const CodingPracticePage: React.FC = () => {
     setIsRunning(true);
     setExecutionResult(null);
     setSubmissionSuccess(false);
+    setExecutionError('');
     setActiveTab('results');
 
     try {
@@ -100,12 +125,10 @@ export const CodingPracticePage: React.FC = () => {
         code,
       });
       setExecutionResult(res);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        alert(err.message);
-      } else {
-        alert('Code execution failed.');
-      }
+      setExecutionError('');
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : (err?.message || 'Code execution failed. Please check your syntax or limits.');
+      setExecutionError(msg);
     } finally {
       setIsRunning(false);
     }
@@ -115,6 +138,7 @@ export const CodingPracticePage: React.FC = () => {
     if (!selectedProblem) return;
     setIsSubmitting(true);
     setExecutionResult(null);
+    setExecutionError('');
     setActiveTab('results');
 
     try {
@@ -135,12 +159,10 @@ export const CodingPracticePage: React.FC = () => {
       if (res.status === 'passed') {
         setSubmissionSuccess(true);
       }
-    } catch (err) {
-      if (err instanceof ApiError) {
-        alert(err.message);
-      } else {
-        alert('Submission failed.');
-      }
+      setExecutionError('');
+    } catch (err: any) {
+      const msg = err instanceof ApiError ? err.message : (err?.message || 'Submission failed.');
+      setExecutionError(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -373,6 +395,18 @@ export const CodingPracticePage: React.FC = () => {
                     )}
                   </div>
 
+                  {executionError && (
+                    <div className="p-3 mb-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-center justify-between shadow-xs">
+                      <span>{executionError}</span>
+                      <button
+                        onClick={() => setExecutionError('')}
+                        className="text-amber-700 hover:text-amber-900 text-xs font-semibold"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+
                   {isRunning || isSubmitting ? (
                     <div className="py-12 text-center">
                       <div className="w-7 h-7 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
@@ -538,6 +572,7 @@ export const CodingPracticePage: React.FC = () => {
                   setCode(updated);
                   if (selectedProblem) {
                     draftsRef.current[`${selectedProblem.id}_${language}`] = updated;
+                    saveDraft(selectedProblem.id, language, updated);
                   }
                 }}
                 options={{

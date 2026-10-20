@@ -38,9 +38,10 @@ class EvidenceExcerpt(BaseModel):
 
 class QuestionFeedback(BaseModel):
     question_index: int
+    score: Optional[int] = Field(default=None, ge=1, le=5)
     interviewer_question: str
     candidate_answer: str
-    verbatim_quote: str
+    verbatim_quote: Optional[str] = None
     critique: str
     strong_answer_guide: str
     targeted_resource: Optional[str] = None
@@ -76,13 +77,14 @@ class QuestionComparison(BaseModel):
     interviewer_question: str
     candidate_answer: str
     self_score: Optional[int] = None
+    ai_score: Optional[int] = None
+    score_gap: Optional[int] = None
     self_strengths: Optional[str] = None
     self_missed_points: Optional[str] = None
     self_confidence: Optional[str] = None
     ai_verbatim_quote: Optional[str] = None
     ai_critique: Optional[str] = None
     ai_guide: Optional[str] = None
-    score_gap: Optional[int] = None
     targeted_resource: Optional[str] = None
 
 class EvaluationComparisonResponse(BaseModel):

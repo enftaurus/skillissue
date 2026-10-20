@@ -30,6 +30,16 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
 
   useEffect(() => {
     if (isOpen && interviewId) {
+      try {
+        const saved = sessionStorage.getItem(`skillissue_self_eval_${interviewId}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.scores) setScores(parsed.scores);
+          if (parsed.reflection) setReflection(parsed.reflection);
+          if (parsed.questionEvals) setQuestionEvals(parsed.questionEvals);
+        }
+      } catch {}
+
       api.get<QuestionTurn[]>(`/interviews/${interviewId}/transcript/grouped`)
         .then((data) => {
           setTurns(data.filter((t) => t.candidate_answer));
@@ -37,6 +47,18 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
         .catch(() => {});
     }
   }, [isOpen, interviewId]);
+
+  // Persist unsaved draft so reopening modal restores entries
+  useEffect(() => {
+    if (interviewId && (Object.keys(scores).length > 0 || reflection || Object.keys(questionEvals).length > 0)) {
+      try {
+        sessionStorage.setItem(
+          `skillissue_self_eval_${interviewId}`,
+          JSON.stringify({ scores, reflection, questionEvals })
+        );
+      } catch {}
+    }
+  }, [interviewId, scores, reflection, questionEvals]);
 
   const handleScoreChange = (dimensionId: string, score: number) => {
     setScores((prev) => ({ ...prev, [dimensionId]: score }));
@@ -95,6 +117,10 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
 
       // 2. Trigger AI evaluation generation
       await api.post(`/evaluations/${interviewId}/generate`);
+
+      try {
+        sessionStorage.removeItem(`skillissue_self_eval_${interviewId}`);
+      } catch {}
 
       onComplete();
     } catch (err: any) {

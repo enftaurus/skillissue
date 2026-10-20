@@ -7,7 +7,7 @@ from backend.app.auth.dependencies import get_current_active_user
 from backend.app.interviews.schemas import (
     InterviewCreateDomain, InterviewCreateJd, InterviewMessageCreate,
     InterviewResponse, InterviewDetailResponse, InterviewMessageResponse,
-    HintRequest, HintResponse, QuestionTurnResponse
+    HintRequest, HintResponse, QuestionTurnResponse, InterviewStateResponse
 )
 from backend.app.interviews.service import InterviewService
 from backend.app.interviews.rubrics import get_rubric_for_category, RubricDimension
@@ -68,7 +68,17 @@ async def send_interview_message(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await InterviewService.send_message(db, current_user.id, interview_id, data.content)
+    return await InterviewService.send_message(
+        db, current_user.id, interview_id, data.content, data.client_turn_id
+    )
+
+@router.get("/{interview_id}/state", response_model=InterviewStateResponse)
+async def get_interview_state(
+    interview_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InterviewService.get_interview_state(db, current_user.id, interview_id)
 
 @router.post(
     "/{interview_id}/hint",

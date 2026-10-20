@@ -9,7 +9,6 @@ from backend.app.interviews.agent.checkpoint import get_interview_checkpointer
 from backend.app.interviews.agent.state import InterviewAgentState
 from backend.app.interviews.prompts import build_interviewer_system_prompt
 from backend.app.providers.model_client_factory import ModelClientFactory
-from backend.app.providers.service import ProviderConfigService
 from backend.app.core.errors import AppException, EntityNotFoundError
 from backend.app.core.logging import logger
 
@@ -29,19 +28,24 @@ class InterviewAgentService:
         jd: Optional[JobDescription] = None,
     ) -> str:
         """
-        Initializes graph state and generates the first interview question.
+        Initializes graph state, sets explicit topic statuses, and generates the first interview question.
         """
         # Resolve user's configured interviewer model client
         task_type = "coding" if interview.category == "dsa" else "interviewer"
         model = await ModelClientFactory.get_chat_model(db, user_id, task_type=task_type)
 
         current_topic = interview.domain_skills[0] if interview.domain_skills else "System Architecture"
+        domain_skills = interview.domain_skills or [current_topic]
+        topic_statuses = {
+            skill: ("in_progress" if skill == current_topic else "not_started")
+            for skill in domain_skills
+        }
 
         system_prompt = build_interviewer_system_prompt(
             category=interview.category,
             target_role=interview.target_role,
             difficulty=interview.difficulty,
-            domain_skills=interview.domain_skills,
+            domain_skills=domain_skills,
             jd_role=jd.extracted_role if jd else None,
             jd_skills=jd.extracted_skills if jd else None,
             jd_requirements=jd.extracted_requirements if jd else None,
@@ -76,9 +80,10 @@ class InterviewAgentService:
                 "category": interview.category,
                 "target_role": interview.target_role,
                 "difficulty": interview.difficulty,
-                "domain_skills": interview.domain_skills or [],
+                "domain_skills": domain_skills,
                 "current_topic": current_topic,
                 "covered_topics": [current_topic],
+                "topic_statuses": topic_statuses,
                 "pending_follow_up": False,
                 "running_summary": "",
                 "recent_messages": [{"role": "assistant", "content": initial_question}],
@@ -94,9 +99,10 @@ class InterviewAgentService:
             except Exception as e:
                 logger.warning(f"Checkpointer initial state save notice: {e}")
 
-        # Update interview model with current topic
+        # Update interview model with current topic and lifecycle statuses
         interview.current_summary = ""
         interview.covered_topics = [current_topic]
+        interview.topic_statuses = topic_statuses
 
         return initial_question
 
@@ -107,6 +113,8 @@ class InterviewAgentService:
         user_id: str,
         interview: Interview,
         candidate_content: str,
+        candidate_message_id: Optional[str] = None,
+        client_turn_id: Optional[str] = None,
         resume: Optional[Resume] = None,
         jd: Optional[JobDescription] = None,
     ) -> Dict[str, Any]:
@@ -141,9 +149,16 @@ class InterviewAgentService:
                 logger.info(f"Checkpoint retrieval fallback: {e}")
 
             turn_count = candidate_turns
+            domain_skills = interview.domain_skills or ["System Architecture"]
             covered_topics = prior_state.get("covered_topics") or interview.covered_topics or []
-            current_topic = prior_state.get("current_topic") or (interview.domain_skills[0] if interview.domain_skills else "System Architecture")
+            current_topic = prior_state.get("current_topic") or (domain_skills[0] if domain_skills else "System Architecture")
             running_summary = prior_state.get("running_summary") or interview.current_summary or ""
+            topic_statuses = prior_state.get("topic_statuses") or interview.topic_statuses or {}
+            for skill in domain_skills:
+                if skill not in topic_statuses:
+                    topic_statuses[skill] = "in_progress" if skill == current_topic else "not_started"
+
+            candidate_evidence = prior_state.get("candidate_evidence", [])
 
             input_state: InterviewAgentState = {
                 "interview_id": interview.id,
@@ -151,13 +166,17 @@ class InterviewAgentService:
                 "category": interview.category,
                 "target_role": interview.target_role,
                 "difficulty": interview.difficulty,
-                "domain_skills": interview.domain_skills or [],
+                "domain_skills": domain_skills,
                 "current_topic": current_topic,
                 "covered_topics": covered_topics,
+                "topic_statuses": topic_statuses,
                 "pending_follow_up": prior_state.get("pending_follow_up", False),
                 "running_summary": running_summary,
                 "recent_messages": history_dicts,
+                "candidate_evidence": candidate_evidence,
                 "latest_candidate_answer": candidate_content,
+                "latest_candidate_message_id": candidate_message_id,
+                "client_turn_id": client_turn_id,
                 "turn_count": turn_count,
                 "max_turns": 8,
                 "phase": "active",
@@ -165,9 +184,10 @@ class InterviewAgentService:
 
             result_state = await graph.ainvoke(input_state, config=config)
 
-        # Update interview model with summary & topics
+        # Update interview model with summary, topics, and lifecycle statuses
         interview.current_summary = result_state.get("running_summary", "")
         interview.covered_topics = result_state.get("covered_topics", [])
+        interview.topic_statuses = result_state.get("topic_statuses", topic_statuses)
         interview.difficulty = result_state.get("difficulty", interview.difficulty)
 
         is_completed = result_state.get("phase") == "completed" or result_state.get("next_action") == "wrapup"
@@ -183,4 +203,50 @@ class InterviewAgentService:
             "is_completed": is_completed,
             "running_summary": interview.current_summary,
             "covered_topics": interview.covered_topics,
+            "topic_statuses": interview.topic_statuses,
+            "candidate_evidence": result_state.get("candidate_evidence", []),
+        }
+
+    @classmethod
+    async def get_state_snapshot(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        interview: Interview,
+    ) -> Dict[str, Any]:
+        """
+        Inspects durable LangGraph checkpoint state or database fallback for frontend memory display.
+        """
+        thread_id = f"interview_{interview.id}"
+        config = {"configurable": {"thread_id": thread_id}}
+
+        candidate_turns = len([m for m in interview.messages if m.role == "user"])
+        snapshot_values: Dict[str, Any] = {}
+
+        try:
+            async with get_interview_checkpointer() as checkpointer:
+                graph = create_interview_graph(checkpointer=checkpointer)
+                state_snapshot = await graph.aget_state(config)
+                if state_snapshot and state_snapshot.values:
+                    snapshot_values = state_snapshot.values
+        except Exception as e:
+            logger.info(f"Checkpointer state inspection note: {e}")
+
+        current_topic = snapshot_values.get("current_topic") or (interview.domain_skills[0] if interview.domain_skills else "System Architecture")
+        covered_topics = snapshot_values.get("covered_topics") or interview.covered_topics or []
+        topic_statuses = snapshot_values.get("topic_statuses") or interview.topic_statuses or {}
+        running_summary = snapshot_values.get("running_summary") or interview.current_summary or ""
+        candidate_evidence = snapshot_values.get("candidate_evidence") or []
+
+        return {
+            "interview_id": interview.id,
+            "status": interview.status,
+            "difficulty": interview.difficulty,
+            "current_topic": current_topic,
+            "covered_topics": covered_topics,
+            "topic_statuses": topic_statuses,
+            "running_summary": running_summary,
+            "candidate_evidence": candidate_evidence,
+            "turn_count": candidate_turns,
+            "max_turns": 8,
         }

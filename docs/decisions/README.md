@@ -20,6 +20,7 @@ This directory contains records of all architectural, infrastructural, and secur
 | [0012](0012-persistent-skills-verbatim-feedback-and-hints.md) | Persistent Skill Map, Verbatim Feedback, Socratic Hints & Planly Preview | 2026-10-20 | Accepted | EMA user skills, transcript quote fidelity, three-tier hint ladder, and non-mutating plan adaptation preview. |
 | [0013](0013-frontend-experience-and-design-system.md) | Frontend Experience, Design System, Monaco Workspace & Calibrated Analytics | 2026-10-20 | Accepted | Collapsible left rail, Cmd+K palette, Monaco split IDE, audio waveform presence, diverging delta charts, and Planly live preview. |
 | [0014](0014-langchain-langgraph-agent-architecture.md) | LangChain + LangGraph Agent Architecture, Provider Preferences, Short-Term Memory & Evaluation | 2026-10-20 | Accepted | LangChain ChatBedrockConverse/MockChatModel, LangGraph stateful interview agent with sliding memory and Postgres checkpointing, task routing preferences, and question-level evaluation workflow. |
+| [0015](0015-reliability-audit-turn-idempotency-and-grounded-evaluations.md) | Reliability Audit, Turn Idempotency, Memory Rolling, and Grounded Evaluations | 2026-10-20 | Accepted | Client turn idempotency, fail-closed checkpointer in prod, topic lifecycle memory rolling, unified model resolver, grounded evaluations, and frontend draft persistence. |
 
 ---
 

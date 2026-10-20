@@ -5,39 +5,67 @@ from backend.app.interviews.agent.state import InterviewAgentState, AdaptiveDeci
 from backend.app.interviews.prompts import build_interviewer_system_prompt
 from backend.app.core.logging import logger
 
-MAX_RECENT_TURNS = 6  # Last 3 user + 3 assistant turns
+MAX_RECENT_TURNS = 6  # Sliding window of last 6 messages (3 user + 3 assistant turns)
 
 def prepare_context_node(state: InterviewAgentState) -> Dict[str, Any]:
     """
-    Constructs bounded short-term conversational context and updates the running summary.
-    Prevents token bloat while preserving critical candidate claims and covered topics.
+    Constructs bounded short-term conversational context and continuously updates
+    the rolling summary. Earlier messages falling outside the sliding 6-turn window
+    are condensed so memory continuously incorporates newly displaced turns.
     """
     messages = state.get("recent_messages", [])
     running_summary = state.get("running_summary", "")
     covered_topics = list(state.get("covered_topics", []))
     current_topic = state.get("current_topic", "")
+    topic_statuses = dict(state.get("topic_statuses", {}))
 
-    if current_topic and current_topic not in covered_topics:
-        covered_topics.append(current_topic)
+    if current_topic:
+        if current_topic not in covered_topics:
+            covered_topics.append(current_topic)
+        if current_topic not in topic_statuses:
+            topic_statuses[current_topic] = "in_progress"
 
     # Bound recent messages to last MAX_RECENT_TURNS
-    bounded_messages = messages[-MAX_RECENT_TURNS:] if len(messages) > MAX_RECENT_TURNS else messages
+    if len(messages) > MAX_RECENT_TURNS:
+        bounded_messages = messages[-MAX_RECENT_TURNS:]
+        displaced_messages = messages[:-MAX_RECENT_TURNS]
 
-    # Update running summary when conversation grows beyond recent window
-    if len(messages) > MAX_RECENT_TURNS and not running_summary:
-        user_claims = [m["content"] for m in messages if m.get("role") == "user"]
-        running_summary = f"Covered topics: {', '.join(covered_topics)}. Key candidate claims: {' | '.join(user_claims[:3])}"
+        # Continuously condense displaced messages into the rolling summary
+        displaced_claims = [
+            m.get("content", "").strip()
+            for m in displaced_messages
+            if m.get("role") == "user" and m.get("content")
+        ]
+        displaced_topics = [
+            t for t, status in topic_statuses.items() if status in ("assessed", "in_progress")
+        ]
+
+        summary_parts = []
+        if displaced_topics:
+            summary_parts.append(f"Covered topics: {', '.join(displaced_topics)}.")
+        if displaced_claims:
+            # Capture concise excerpts from displaced candidate claims
+            concise_claims = [c[:120] + "..." if len(c) > 120 else c for c in displaced_claims[-3:]]
+            summary_parts.append(f"Earlier candidate claims: {' | '.join(concise_claims)}.")
+
+        running_summary = " ".join(summary_parts)
+    else:
+        bounded_messages = messages
 
     return {
         "recent_messages": bounded_messages,
         "running_summary": running_summary,
         "covered_topics": covered_topics,
+        "topic_statuses": topic_statuses,
     }
 
-async def assess_candidate_turn_node(state: InterviewAgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
+async def assess_candidate_turn_node(
+    state: InterviewAgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
     """
     Evaluates candidate's latest response and deterministically decides next action
-    (follow-up, topic transition, difficulty adjustment, or interview wrapup).
+    using explicit topic lifecycle states (not_started, in_progress, needs_follow_up, assessed)
+    and eliminates legacy keyword heuristics.
     """
     turn_count = state.get("turn_count", 0)
     max_turns = state.get("max_turns", 8)
@@ -45,14 +73,20 @@ async def assess_candidate_turn_node(state: InterviewAgentState, config: Optiona
     current_difficulty = state.get("difficulty", "intermediate")
     current_topic = state.get("current_topic", "")
     domain_skills = state.get("domain_skills", [])
-    covered_topics = state.get("covered_topics", [])
+    covered_topics = list(state.get("covered_topics", []))
+    topic_statuses = dict(state.get("topic_statuses", {}))
+    pending_follow_up = state.get("pending_follow_up", False)
+    candidate_evidence = list(state.get("candidate_evidence", []))
+    latest_message_id = state.get("latest_candidate_message_id")
 
     # Check maximum turn limit budget
     if turn_count >= max_turns:
+        topic_statuses[current_topic] = "assessed"
         return {
             "next_action": "wrapup",
             "decision_reason": f"Maximum question budget ({max_turns} turns) reached.",
             "pending_follow_up": False,
+            "topic_statuses": topic_statuses,
         }
 
     # Attempt structured decision via model client if available in config
@@ -63,45 +97,102 @@ async def assess_candidate_turn_node(state: InterviewAgentState, config: Optiona
     if model and hasattr(model, "with_structured_output"):
         try:
             structured_evaluator = model.with_structured_output(AdaptiveDecision)
+            remaining_topics = [s for s in domain_skills if topic_statuses.get(s) != "assessed" and s != current_topic]
             eval_prompt = (
                 f"Candidate Answer: '{latest_answer}'\n"
-                f"Current Topic: {current_topic}, Difficulty: {current_difficulty}.\n"
-                "Evaluate whether candidate made an unverified claim requiring follow-up, "
-                "or whether we should change topic or adjust difficulty."
+                f"Current Topic: {current_topic} (Status: {topic_statuses.get(current_topic, 'in_progress')})\n"
+                f"Current Difficulty: {current_difficulty}\n"
+                f"Was Previous Question Follow-up: {pending_follow_up}\n"
+                f"Remaining Topics: {remaining_topics}\n"
+                "Evaluate candidate depth. If candidate made an unverified claim or gave an incomplete answer, "
+                "set action='ask_follow_up' and topic_status='needs_follow_up'. "
+                "If topic has been adequately assessed, set action='next_topic' and topic_status='assessed'. "
+                "If candidate showed exceptional mastery, consider action='increase_difficulty'. "
+                "If candidate struggled significantly, consider action='decrease_difficulty'."
             )
             decision = await structured_evaluator.ainvoke([HumanMessage(content=eval_prompt)])
         except Exception as e:
-            logger.info(f"Model structured evaluation skipped, using deterministic rules: {e}")
+            logger.info(f"Model structured evaluation skipped, using state-driven rules: {e}")
 
-    # Fallback to deterministic evaluation rules
+    # State-driven deterministic lifecycle fallback (No keyword heuristics)
     if not decision:
-        answer_lower = latest_answer.lower()
-        if any(w in answer_lower for w in ["redis", "faster", "10x", "improved", "cache", "scale"]):
-            action = "ask_follow_up"
-            reason = "Candidate made an unverified latency/scaling claim. Probe measurement methodology."
-            difficulty_delta = 0
-        elif any(w in answer_lower for w in ["fail", "error", "struggle", "don't know", "unsure"]):
-            action = "decrease_difficulty"
-            reason = "Candidate encountered difficulty with previous concept."
-            difficulty_delta = -1
-        elif any(w in answer_lower for w in ["distributed", "raft", "paxos", "saga", "concurrency"]):
-            action = "increase_difficulty"
-            reason = "Candidate demonstrated strong grasp of distributed system primitives."
-            difficulty_delta = 1
-        elif len(covered_topics) < len(domain_skills):
-            action = "next_topic"
-            reason = "Sufficient depth explored on current topic. Progressing through rubric competencies."
-            difficulty_delta = 0
-        else:
-            action = "ask_follow_up"
-            reason = "Probing edge cases and trade-offs."
-            difficulty_delta = 0
+        words = latest_answer.split()
+        word_count = len(words)
 
+        if pending_follow_up:
+            # Candidate just answered a follow-up probe; resolve the topic
+            topic_statuses[current_topic] = "assessed"
+            unassessed = [s for s in domain_skills if topic_statuses.get(s) != "assessed"]
+            if unassessed:
+                action = "next_topic"
+                reason = f"Completed follow-up exploration on '{current_topic}'. Advancing to next competency."
+                difficulty_delta = 0
+                topic_status = "assessed"
+            elif turn_count >= max_turns - 1:
+                action = "wrapup"
+                reason = "All domain competencies explored."
+                difficulty_delta = 0
+                topic_status = "assessed"
+            else:
+                action = "increase_difficulty"
+                reason = f"Competency '{current_topic}' assessed. Probing edge cases at increased difficulty."
+                difficulty_delta = 1
+                topic_status = "assessed"
+        else:
+            # First answer on this topic
+            if word_count < 25:
+                # Abbreviated answer lacks depth; probe for specifics
+                action = "ask_follow_up"
+                reason = f"Candidate response on '{current_topic}' is brief ({word_count} words). Probing concrete implementation trade-offs."
+                difficulty_delta = 0
+                topic_status = "needs_follow_up"
+            else:
+                # Substantive initial answer; probe failure modes or transition
+                unassessed = [s for s in domain_skills if topic_statuses.get(s) not in ("assessed", "in_progress") and s != current_topic]
+                if unassessed and turn_count % 2 == 1:
+                    # Alternate between follow-up and next topic progression
+                    action = "ask_follow_up"
+                    reason = f"Probing trade-offs and edge-case handling for '{current_topic}'."
+                    difficulty_delta = 0
+                    topic_status = "needs_follow_up"
+                elif unassessed:
+                    action = "next_topic"
+                    reason = f"Candidate provided thorough initial analysis on '{current_topic}'. Moving to '{unassessed[0]}'."
+                    difficulty_delta = 0
+                    topic_status = "assessed"
+                else:
+                    action = "ask_follow_up"
+                    reason = f"Probing edge cases and failure modes on '{current_topic}'."
+                    difficulty_delta = 0
+                    topic_status = "needs_follow_up"
+
+        extracted_claim = latest_answer[:140] if latest_answer else None
         decision = AdaptiveDecision(
             action=action,
             reason=reason,
             difficulty_delta=difficulty_delta,
+            identified_evidence=extracted_claim,
+            topic_status=topic_status,
         )
+
+    # Apply topic status update
+    if decision.topic_status:
+        topic_statuses[current_topic] = decision.topic_status
+    elif decision.action == "ask_follow_up":
+        topic_statuses[current_topic] = "needs_follow_up"
+    elif decision.action == "next_topic":
+        topic_statuses[current_topic] = "assessed"
+
+    # Track structured candidate claim linked to transcript message ID
+    claim_text = decision.identified_evidence or (latest_answer[:140] if latest_answer else "")
+    if claim_text:
+        candidate_evidence.append({
+            "claim": claim_text,
+            "topic": current_topic,
+            "message_id": latest_message_id,
+            "turn": turn_count,
+            "verification_status": "probed" if decision.action == "ask_follow_up" else "unverified",
+        })
 
     # Calculate next difficulty
     diff_levels = ["beginner", "intermediate", "advanced", "staff"]
@@ -115,18 +206,30 @@ async def assess_candidate_turn_node(state: InterviewAgentState, config: Optiona
     # Calculate next topic
     new_topic = current_topic
     if decision.action == "next_topic":
-        remaining = [s for s in domain_skills if s not in covered_topics]
-        new_topic = remaining[0] if remaining else (domain_skills[0] if domain_skills else current_topic)
+        if decision.suggested_topic and decision.suggested_topic in domain_skills:
+            new_topic = decision.suggested_topic
+        else:
+            remaining = [s for s in domain_skills if topic_statuses.get(s) != "assessed"]
+            new_topic = remaining[0] if remaining else (domain_skills[0] if domain_skills else current_topic)
+
+        topic_statuses[new_topic] = "in_progress"
+        if new_topic not in covered_topics:
+            covered_topics.append(new_topic)
 
     return {
         "next_action": decision.action,
         "decision_reason": decision.reason,
         "difficulty": new_difficulty,
         "current_topic": new_topic,
+        "covered_topics": covered_topics,
+        "topic_statuses": topic_statuses,
         "pending_follow_up": decision.action == "ask_follow_up",
+        "candidate_evidence": candidate_evidence,
     }
 
-async def generate_question_node(state: InterviewAgentState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
+async def generate_question_node(
+    state: InterviewAgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
     """
     Generates the next technical interview question or follow-up question.
     Enforces Gilfoyle-level engineering precision: short, dry, skeptical, zero praise.

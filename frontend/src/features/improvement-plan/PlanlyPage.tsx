@@ -30,6 +30,7 @@ export const PlanlyPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const [actionError, setActionError] = useState<string>('');
 
   // Adapt Schedule Modal
   const [isAdaptModalOpen, setIsAdaptModalOpen] = useState<boolean>(false);
@@ -108,7 +109,7 @@ export const PlanlyPage: React.FC = () => {
             : t
         ),
       });
-      alert('Failed to update task status.');
+      setActionError('Failed to update task status. Please check your network connection.');
     }
   };
 
@@ -144,6 +145,7 @@ export const PlanlyPage: React.FC = () => {
   const handleAdaptSchedule = async () => {
     if (!plan) return;
     setActionLoading(true);
+    setActionError('');
     try {
       const updated = await api.post<Plan>(`/plans/${plan.id}/adapt`, {
         days_behind: Number(daysBehind),
@@ -153,9 +155,9 @@ export const PlanlyPage: React.FC = () => {
       setIsAdaptModalOpen(false);
     } catch (err) {
       if (err instanceof ApiError) {
-        alert(err.message);
+        setActionError(err.message);
       } else {
-        alert('Could not adapt schedule.');
+        setActionError('Could not adapt schedule.');
       }
     } finally {
       setActionLoading(false);
@@ -214,6 +216,18 @@ export const PlanlyPage: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {actionError && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-center justify-between shadow-xs">
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError('')}
+            className="text-amber-700 hover:text-amber-900 font-semibold text-xs"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Top Header Card */}
       <Card className="p-6 sm:p-8 bg-white border border-surface-border">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">

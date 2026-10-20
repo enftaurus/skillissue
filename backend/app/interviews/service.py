@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -146,6 +146,7 @@ class InterviewService:
         user_id: str,
         interview_id: str,
         content: str,
+        client_turn_id: Optional[str] = None,
     ) -> InterviewMessage:
         result = await db.execute(
             select(Interview)
@@ -160,16 +161,49 @@ class InterviewService:
         if interview.status != "in_progress":
             raise AppException("Interview is no longer active", code="INTERVIEW_NOT_ACTIVE")
 
-        # Save user message
-        user_msg = InterviewMessage(
-            interview_id=interview.id,
-            role="user",
-            content=content,
-            question_index=len([m for m in interview.messages if m.role == "assistant"]),
-            is_follow_up=False,
-        )
-        db.add(user_msg)
-        await db.flush()
+        # 1. Turn idempotency check by client_turn_id
+        if client_turn_id:
+            existing_user_msg = (
+                await db.execute(
+                    select(InterviewMessage).where(
+                        InterviewMessage.interview_id == interview_id,
+                        InterviewMessage.client_turn_id == client_turn_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_user_msg:
+                # Find the assistant response that answered this turn
+                subsequent_assistant_msg = (
+                    await db.execute(
+                        select(InterviewMessage).where(
+                            InterviewMessage.interview_id == interview_id,
+                            InterviewMessage.role == "assistant",
+                            InterviewMessage.created_at >= existing_user_msg.created_at,
+                            InterviewMessage.id != existing_user_msg.id,
+                        ).order_by(InterviewMessage.created_at.asc())
+                    )
+                ).scalars().first()
+                if subsequent_assistant_msg:
+                    logger.info(f"Idempotent hit for client_turn_id={client_turn_id}. Returning existing assistant response.")
+                    return subsequent_assistant_msg
+
+        # 2. Duplicate submission protection within active turn
+        last_msg = interview.messages[-1] if interview.messages else None
+        if last_msg and last_msg.role == "user" and last_msg.content.strip() == content.strip():
+            logger.info("Duplicate user message in active turn detected. Reusing existing message.")
+            user_msg = last_msg
+        else:
+            # Save user message
+            user_msg = InterviewMessage(
+                interview_id=interview.id,
+                role="user",
+                content=content,
+                client_turn_id=client_turn_id,
+                question_index=len([m for m in interview.messages if m.role == "assistant"]),
+                is_follow_up=False,
+            )
+            db.add(user_msg)
+            await db.flush()
 
         # Check turn limit (auto-wrapup at 8 turns)
         candidate_turns = len([m for m in interview.messages if m.role == "user"])
@@ -210,6 +244,8 @@ class InterviewService:
             user_id=user_id,
             interview=interview,
             candidate_content=content,
+            candidate_message_id=user_msg.id,
+            client_turn_id=client_turn_id,
             resume=resume,
             jd=jd,
         )
@@ -385,4 +421,19 @@ class InterviewService:
             total_hint_level_used=interview.hint_level_used,
             message_id=assistant_msg.id,
         )
+
+    @classmethod
+    async def get_interview_state(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        interview_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Retrieves live inspectable state and memory representation for frontend/debug inspection.
+        """
+        interview = await cls.get_interview(db, user_id, interview_id)
+        from backend.app.interviews.agent.service import InterviewAgentService
+        return await InterviewAgentService.get_state_snapshot(db, user_id, interview)
+
 

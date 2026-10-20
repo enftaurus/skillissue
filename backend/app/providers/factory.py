@@ -50,64 +50,14 @@ class ModelFactory:
         cls,
         db: AsyncSession,
         user_id: str,
-        task_type: str = "general"  # 'general', 'coding', 'evaluation'
+        task_type: str = "general"  # 'general', 'coding', 'evaluation', 'interviewer', 'planning'
     ) -> BaseProvider:
-        result = await db.execute(select(ProviderConfig).where(ProviderConfig.user_id == user_id))
-        config = result.scalar_one_or_none()
-
-        # If user has no config or is in mock mode, use MockProvider
-        if not config or config.provider_name == "mock" or not config.is_valid:
-            mock_model = MOCK_MODEL_ID
-            return MockProvider(model_id=mock_model)
-
-        # Enforce monthly spend and token ceiling
-        from backend.app.providers.service import ProviderConfigService
-        ProviderConfigService.check_spend_budget(config)
-
-        # Select model: honor task-specific overrides if configured
-        if task_type == "evaluation" and config.evaluation_model:
-            model_id = config.evaluation_model
-        elif task_type == "coding" and config.coding_model:
-            model_id = config.coding_model
-        elif task_type in ("interviewer", "general") and config.interviewer_model:
-            model_id = config.interviewer_model
-        elif config.default_model:
-            model_id = config.default_model
-        elif config.preferred_model:
-            model_id = config.preferred_model
-        elif task_type == "coding":
-            model_id = DEFAULT_CODING_MODEL_ID
-        else:
-            model_id = DEFAULT_MODEL_ID
-
-        # Decrypt credentials bundle in ephemeral memory only using tenant DEK
-        access_key = None
-        secret_key = None
-        if config.aws_secret_key_enc:
-            try:
-                decrypted = decrypt_secret(config.aws_secret_key_enc, user_id=user_id)
-                if decrypted:
-                    try:
-                        bundle = json.loads(decrypted)
-                        if isinstance(bundle, dict):
-                            access_key = bundle.get("access_key_id")
-                            secret_key = bundle.get("secret_access_key")
-                    except Exception:
-                        # Legacy plain secret string
-                        secret_key = decrypted
-                        access_key = decrypt_secret(config.aws_access_key_masked, user_id=user_id) if config.aws_access_key_masked.startswith("gAAAA") else config.aws_access_key_masked
-            except Exception as e:
-                logger.warning(f"Failed to decrypt stored BYOC credentials for user {user_id}: {e}. Falling back to mock provider.")
-                return MockProvider(model_id=MOCK_MODEL_ID)
-
-        if not access_key or not secret_key:
-            logger.warning(f"Incomplete credentials for user {user_id}; falling back to mock provider.")
-            return MockProvider(model_id=MOCK_MODEL_ID)
-
+        from backend.app.providers.resolver import ModelResolver
+        resolution = await ModelResolver.resolve(db, user_id, task_type=task_type)
         return cls.get_provider_by_type(
-            provider_name=config.provider_name,
-            model_id=model_id,
-            aws_access_key=access_key,
-            aws_secret_key=secret_key,
-            aws_region=config.aws_region,
+            provider_name=resolution.provider_name,
+            model_id=resolution.model_id,
+            aws_access_key=resolution.access_key,
+            aws_secret_key=resolution.secret_key,
+            aws_region=resolution.region,
         )

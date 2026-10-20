@@ -128,6 +128,7 @@ class Interview(Base):
     coding_problem_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     current_summary: Mapped[str] = mapped_column(Text, default="")
     covered_topics: Mapped[List[str]] = mapped_column(JSON, default=list)
+    topic_statuses: Mapped[Dict[str, str]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -145,6 +146,7 @@ class InterviewMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     question_index: Mapped[int] = mapped_column(Integer, default=0)
     is_follow_up: Mapped[bool] = mapped_column(Boolean, default=False)
+    client_turn_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     interview: Mapped["Interview"] = relationship("Interview", back_populates="messages")

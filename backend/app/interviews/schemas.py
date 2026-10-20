@@ -21,6 +21,7 @@ class InterviewCreateJd(BaseModel):
 
 class InterviewMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
+    client_turn_id: Optional[str] = Field(default=None, max_length=64)
 
 class HintRequest(BaseModel):
     level: int = Field(ge=1, le=3, description="Socratic hint tier: 1=clarifying nudge, 2=algorithmic pattern, 3=pseudocode/structure")
@@ -42,6 +43,7 @@ class InterviewMessageResponse(BaseModel):
     content: str
     question_index: int
     is_follow_up: bool
+    client_turn_id: Optional[str] = None
     created_at: datetime
 
 class InterviewResponse(BaseModel):
@@ -59,6 +61,9 @@ class InterviewResponse(BaseModel):
     coding_problem_id: Optional[str] = None
     hint_level_used: int = 0
     target_duration_minutes: int
+    current_summary: str = ""
+    covered_topics: List[str] = []
+    topic_statuses: Dict[str, str] = {}
     created_at: datetime
     completed_at: Optional[datetime] = None
 
@@ -74,3 +79,14 @@ class InterviewDetailResponse(InterviewResponse):
     messages: List[InterviewMessageResponse]
     grouped_transcript: Optional[List[QuestionTurnResponse]] = None
 
+class InterviewStateResponse(BaseModel):
+    interview_id: str
+    status: str
+    difficulty: str
+    current_topic: str
+    covered_topics: List[str] = []
+    topic_statuses: Dict[str, str] = {}
+    running_summary: str = ""
+    candidate_evidence: List[Dict[str, Any]] = []
+    turn_count: int = 0
+    max_turns: int = 8

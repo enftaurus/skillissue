@@ -231,8 +231,8 @@ if [ ! -d "backend/venv" ]; then
     log_info "Creating backend Python virtual environment..."
     python3 -m venv backend/venv
     backend/venv/bin/pip install --upgrade pip
-    backend/venv/bin/pip install -r backend/requirements.txt
 fi
+backend/venv/bin/pip install -q -r backend/requirements.txt
 
 # 3. Apply Alembic migrations
 log_info "Applying database migrations..."

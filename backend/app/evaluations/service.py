@@ -148,9 +148,11 @@ class EvaluationService:
         suggested_corrections = parsed.get("suggested_corrections", [])
         uncertainty_notes = parsed.get("uncertainty_notes", [])
 
-        # Parse & verify question_feedback verbatim quotes against candidate transcript
-        candidate_turns = [m.content for m in interview.messages if m.role == "user"]
-        candidate_full_text = " ".join(candidate_turns)
+        # Parse & verify question_feedback verbatim quotes strictly against candidate transcript for that specific turn
+        from backend.app.interviews.service import InterviewService
+        grouped_transcript = InterviewService.compute_grouped_transcript(interview.messages)
+        grouped_by_idx = {t["question_index"]: t for t in grouped_transcript}
+
         raw_qf = parsed.get("question_feedback", [])
         verified_question_feedback = []
 
@@ -160,28 +162,41 @@ class EvaluationService:
             q_idx = int(item.get("question_index", len(verified_question_feedback) + 1))
             iq = str(item.get("interviewer_question", ""))
             ca = str(item.get("candidate_answer", ""))
-            vq = str(item.get("verbatim_quote", "")).strip()
+            vq = str(item.get("verbatim_quote", "")).strip() if item.get("verbatim_quote") else ""
+            score_val = item.get("score")
+            try:
+                score_int = int(score_val) if score_val is not None else None
+            except (ValueError, TypeError):
+                score_int = None
             critique = str(item.get("critique", ""))
             guide = str(item.get("strong_answer_guide", ""))
             res = item.get("targeted_resource")
 
-            # Validate that verbatim quote actually exists in candidate's responses
-            if vq and vq.lower() in candidate_full_text.lower():
-                actual_quote = vq
-            elif 0 <= (q_idx - 1) < len(candidate_turns):
-                # Extract first substantive sentence from corresponding candidate response
-                cand_turn = candidate_turns[q_idx - 1]
-                sentences = [s.strip() for s in cand_turn.split(".") if len(s.strip()) > 10]
-                actual_quote = sentences[0] if sentences else cand_turn[:120]
-            elif candidate_turns:
-                actual_quote = candidate_turns[0][:120]
+            # Ground strictly against candidate answer for this specific question turn
+            turn = grouped_by_idx.get(q_idx)
+            turn_cand_text = turn.get("candidate_answer", "").strip() if turn else ""
+
+            actual_quote: Optional[str] = None
+            if turn_cand_text:
+                if vq and vq.lower() in turn_cand_text.lower():
+                    actual_quote = vq
+                else:
+                    # Ground against actual candidate sentences in this specific turn
+                    substantive_sentences = [
+                        s.strip() for s in turn_cand_text.split(".") if len(s.strip()) > 15
+                    ]
+                    if substantive_sentences:
+                        actual_quote = substantive_sentences[0]
+                    else:
+                        actual_quote = turn_cand_text[:120]
             else:
-                actual_quote = vq
+                actual_quote = None  # No candidate text for this turn; quote unavailable
 
             verified_question_feedback.append({
                 "question_index": q_idx,
-                "interviewer_question": iq,
-                "candidate_answer": ca,
+                "score": score_int,
+                "interviewer_question": iq or (turn.get("interviewer_question") if turn else f"Question {q_idx}"),
+                "candidate_answer": ca or turn_cand_text,
                 "verbatim_quote": actual_quote,
                 "critique": critique,
                 "strong_answer_guide": guide,
@@ -254,12 +269,21 @@ class EvaluationService:
         score: float,
         eval_id: str,
     ) -> None:
-        """Update or create persistent UserSkill with EMA (alpha=0.3) and confidence progression."""
+        """Update or create persistent UserSkill with EMA (alpha=0.3) and confidence progression. Strictly idempotent per evaluation."""
         skill_res = await db.execute(
             select(UserSkill).where(UserSkill.user_id == user_id, UserSkill.topic == topic)
         )
         skill = skill_res.scalar_one_or_none()
         if skill:
+            # Check if this evaluation ID was already applied to prevent duplicate EMA compounding
+            existing_ref = next(
+                (ref for ref in (skill.evidence_refs or []) if isinstance(ref, dict) and ref.get("id") == eval_id),
+                None
+            )
+            if existing_ref:
+                existing_ref["score"] = score
+                return
+
             skill.score = round(0.7 * skill.score + 0.3 * score, 1)
             skill.confidence = min(1.0, round(skill.confidence + 0.1, 2))
             skill.last_seen = datetime.now(timezone.utc)
@@ -350,21 +374,24 @@ class EvaluationService:
 
             iq = q_ai.get("interviewer_question") or q_turn.get("interviewer_question") or f"Question {q_idx}"
             ca = q_ai.get("candidate_answer") or q_turn.get("candidate_answer") or ""
-            self_score = q_self.get("score")
+            q_self_score = q_self.get("score")
+            q_ai_score = q_ai.get("score")
+            score_gap = (q_ai_score - q_self_score) if (q_ai_score is not None and q_self_score is not None) else None
 
             question_comparisons.append(
                 QuestionComparison(
                     question_index=q_idx,
                     interviewer_question=iq,
                     candidate_answer=ca,
-                    self_score=self_score,
+                    self_score=q_self_score,
+                    ai_score=q_ai_score,
+                    score_gap=score_gap,
                     self_strengths=q_self.get("strengths"),
                     self_missed_points=q_self.get("missed_points"),
                     self_confidence=q_self.get("confidence"),
                     ai_verbatim_quote=q_ai.get("verbatim_quote"),
                     ai_critique=q_ai.get("critique"),
                     ai_guide=q_ai.get("strong_answer_guide"),
-                    score_gap=None,
                     targeted_resource=q_ai.get("targeted_resource"),
                 )
             )
