@@ -62,6 +62,15 @@ class InterviewResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
 
+class QuestionTurnResponse(BaseModel):
+    question_index: int
+    interviewer_question: str
+    candidate_answer: str = ""
+    is_follow_up: bool = False
+    assistant_message_id: Optional[str] = None
+    user_message_id: Optional[str] = None
+
 class InterviewDetailResponse(InterviewResponse):
     messages: List[InterviewMessageResponse]
+    grouped_transcript: Optional[List[QuestionTurnResponse]] = None
 

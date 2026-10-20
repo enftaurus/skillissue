@@ -19,6 +19,16 @@ export interface ProviderConfig {
   aws_region: string;
   aws_access_key_masked: string;
   preferred_model: string;
+  default_model?: string;
+  interviewer_model?: string;
+  evaluation_model?: string;
+  coding_model?: string;
+  planning_model?: string;
+  fallback_enabled?: boolean;
+  fallback_provider?: string;
+  fallback_model?: string;
+  temperature?: number;
+  max_tokens?: number;
   is_valid: boolean;
   last_tested_at?: string;
   total_tokens_used: number;
@@ -38,6 +48,10 @@ export interface ModelMetadata {
   max_output_tokens: number;
   recommended_for: string;
   is_default: boolean;
+  supports_structured_output?: boolean;
+  supports_tool_calling?: boolean;
+  supports_streaming?: boolean;
+  supports_vision?: boolean;
 }
 
 export interface Resume {
@@ -69,6 +83,15 @@ export interface InterviewMessage {
   created_at: string;
 }
 
+export interface QuestionTurn {
+  question_index: number;
+  interviewer_question: string;
+  candidate_answer: string;
+  is_follow_up: boolean;
+  assistant_message_id?: string;
+  user_message_id?: string;
+}
+
 export interface Interview {
   id: string;
   mode: 'domain' | 'jd';
@@ -86,6 +109,7 @@ export interface Interview {
   created_at: string;
   completed_at?: string;
   messages?: InterviewMessage[];
+  grouped_transcript?: QuestionTurn[];
 }
 
 export interface HintResponse {
@@ -114,10 +138,45 @@ export interface DimensionComparison {
   explanation: string;
 }
 
+export interface QuestionSelfEvaluation {
+  question_index: number;
+  interviewer_question?: string;
+  candidate_answer?: string;
+  score: number;
+  strengths?: string;
+  missed_points?: string;
+  confidence?: string;
+}
+
+export interface SelfEvaluation {
+  id: string;
+  interview_id: string;
+  dimension_scores: Record<string, number>;
+  reflection: string;
+  question_evaluations?: QuestionSelfEvaluation[];
+  created_at: string;
+}
+
+export interface QuestionComparison {
+  question_index: number;
+  interviewer_question: string;
+  candidate_answer: string;
+  self_score?: number;
+  self_strengths?: string;
+  self_missed_points?: string;
+  self_confidence?: string;
+  ai_verbatim_quote?: string;
+  ai_critique?: string;
+  ai_guide?: string;
+  score_gap?: number;
+  targeted_resource?: string;
+}
+
 export interface EvaluationComparison {
   interview_id: string;
   overall_ai_score: number;
   dimensions: DimensionComparison[];
+  question_comparisons?: QuestionComparison[];
   self_reflection: string;
   strengths: string[];
   weaknesses: string[];

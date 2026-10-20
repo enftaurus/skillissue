@@ -7,7 +7,7 @@ from backend.app.auth.dependencies import get_current_active_user
 from backend.app.interviews.schemas import (
     InterviewCreateDomain, InterviewCreateJd, InterviewMessageCreate,
     InterviewResponse, InterviewDetailResponse, InterviewMessageResponse,
-    HintRequest, HintResponse
+    HintRequest, HintResponse, QuestionTurnResponse
 )
 from backend.app.interviews.service import InterviewService
 from backend.app.interviews.rubrics import get_rubric_for_category, RubricDimension
@@ -99,6 +99,15 @@ async def end_interview_session(
     return await InterviewService.end_interview(db, current_user.id, interview_id)
 
 
+@router.get("/{interview_id}/transcript/grouped", response_model=List[QuestionTurnResponse])
+async def get_grouped_transcript(
+    interview_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InterviewService.get_grouped_transcript(db, current_user.id, interview_id)
+
 @router.get("/rubrics/{category}", response_model=List[RubricDimension])
 async def get_category_rubrics(category: str):
     return get_rubric_for_category(category)
+

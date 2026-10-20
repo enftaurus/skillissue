@@ -11,6 +11,16 @@ class ProviderConfigSave(BaseModel):
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None
     preferred_model: str = "qwen.qwen3-32b-instruct-v1:0"
+    default_model: Optional[str] = "qwen.qwen3-32b-instruct-v1:0"
+    interviewer_model: Optional[str] = None
+    evaluation_model: Optional[str] = None
+    coding_model: Optional[str] = None
+    planning_model: Optional[str] = None
+    fallback_enabled: bool = False
+    fallback_provider: Optional[str] = "mock"
+    fallback_model: Optional[str] = "mock-qwen3-32b"
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 2048
     monthly_token_budget: Optional[int] = Field(default=1_000_000, ge=10_000, le=50_000_000)
     monthly_cost_cents_budget: Optional[int] = Field(default=1000, ge=100, le=50000)  # $1 to $500
 
@@ -28,6 +38,16 @@ class ProviderConfigResponse(BaseModel):
     aws_region: str
     aws_access_key_masked: str
     preferred_model: str
+    default_model: Optional[str] = None
+    interviewer_model: Optional[str] = None
+    evaluation_model: Optional[str] = None
+    coding_model: Optional[str] = None
+    planning_model: Optional[str] = None
+    fallback_enabled: bool = False
+    fallback_provider: Optional[str] = None
+    fallback_model: Optional[str] = None
+    temperature: float = 0.7
+    max_tokens: int = 2048
     is_valid: bool
     last_tested_at: Optional[datetime] = None
     total_tokens_used: int

@@ -12,6 +12,7 @@ from backend.app.core.security import decrypt_secret
 from backend.app.core.errors import ProviderError
 from backend.app.core.logging import logger
 from backend.app.database.models import ProviderConfig
+from backend.app.providers.model_client_factory import ModelClientFactory
 
 # Explicit trusted provider class mapping (No dynamic imports from arbitrary strings)
 PROVIDER_REGISTRY: Dict[str, Type[BaseProvider]] = {
@@ -63,10 +64,21 @@ class ModelFactory:
         from backend.app.providers.service import ProviderConfigService
         ProviderConfigService.check_spend_budget(config)
 
-        # Select model: honor user choice, defaulting to coding specialist when using base default
-        model_id = config.preferred_model or DEFAULT_MODEL_ID
-        if task_type == "coding" and (not config.preferred_model or config.preferred_model == DEFAULT_MODEL_ID):
+        # Select model: honor task-specific overrides if configured
+        if task_type == "evaluation" and config.evaluation_model:
+            model_id = config.evaluation_model
+        elif task_type == "coding" and config.coding_model:
+            model_id = config.coding_model
+        elif task_type in ("interviewer", "general") and config.interviewer_model:
+            model_id = config.interviewer_model
+        elif config.default_model:
+            model_id = config.default_model
+        elif config.preferred_model:
+            model_id = config.preferred_model
+        elif task_type == "coding":
             model_id = DEFAULT_CODING_MODEL_ID
+        else:
+            model_id = DEFAULT_MODEL_ID
 
         # Decrypt credentials bundle in ephemeral memory only using tenant DEK
         access_key = None

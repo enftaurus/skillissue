@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from backend.app.database.models import Interview, Evaluation, SelfEvaluation, UserSkill
 from backend.app.evaluations.schemas import (
-    SelfEvaluationCreate, EvaluationComparisonResponse, DimensionComparison
+    SelfEvaluationCreate, EvaluationComparisonResponse, DimensionComparison, QuestionComparison
 )
 from backend.app.evaluations.prompts import build_evaluation_prompt
 from backend.app.interviews.rubrics import get_rubric_for_category
@@ -30,20 +30,26 @@ class EvaluationService:
         if not interview:
             raise EntityNotFoundError("Interview", data.interview_id)
 
+        # Convert question_evaluations to dicts if provided
+        q_evals_data = [q.model_dump() for q in data.question_evaluations] if data.question_evaluations else None
+
         # Check if already self-evaluated
         existing = await db.execute(
             select(SelfEvaluation).where(SelfEvaluation.interview_id == data.interview_id)
         )
         self_eval = existing.scalar_one_or_none()
         if self_eval:
-            self_eval.dimension_scores = data.dimension_scores
+            self_eval.dimension_scores = data.dimension_scores or {}
             self_eval.reflection = data.reflection or ""
+            if q_evals_data is not None:
+                self_eval.question_evaluations = q_evals_data
         else:
             self_eval = SelfEvaluation(
                 interview_id=data.interview_id,
                 user_id=user_id,
-                dimension_scores=data.dimension_scores,
+                dimension_scores=data.dimension_scores or {},
                 reflection=data.reflection or "",
+                question_evaluations=q_evals_data,
             )
             db.add(self_eval)
 
@@ -123,6 +129,17 @@ class EvaluationService:
             dimension_scores["problem_solving_rigor"]["explanation"] += (
                 f" (Reflects Level {interview.hint_level_used} hint penalty)."
             )
+
+        # Compute overall_score deterministically from rubric dimension scores and weights
+        total_weighted_score = 0.0
+        total_weight = 0.0
+        for dim in rubric:
+            dim_val = dimension_scores.get(dim.id, {}).get("score", 3)
+            weight = getattr(dim, "weight", 1.0)
+            total_weighted_score += (float(dim_val) / 5.0 * 100.0) * weight
+            total_weight += weight
+        if total_weight > 0:
+            overall_score = round(total_weighted_score / total_weight, 1)
 
         strengths = parsed.get("strengths", [])
         weaknesses = parsed.get("weaknesses", [])
@@ -286,8 +303,12 @@ class EvaluationService:
         self_scores = self_eval.dimension_scores if self_eval else {}
         self_reflection = self_eval.reflection if self_eval else ""
 
-        # Fetch interview category to get friendly dimension names
-        int_res = await db.execute(select(Interview).where(Interview.id == interview_id))
+        # Fetch interview to get category and transcript
+        int_res = await db.execute(
+            select(Interview)
+            .options(selectinload(Interview.messages))
+            .where(Interview.id == interview_id)
+        )
         interview = int_res.scalar_one_or_none()
         category = interview.category if interview else "technical"
         rubric_dims = {d.id: d.name for d in get_rubric_for_category(category)}
@@ -311,10 +332,48 @@ class EvaluationService:
                 )
             )
 
+        # Build question-level comparisons
+        from backend.app.interviews.service import InterviewService
+        grouped_transcript = InterviewService.compute_grouped_transcript(interview.messages) if interview else []
+        grouped_by_idx = {t["question_index"]: t for t in grouped_transcript}
+
+        q_self_by_idx = {q.get("question_index"): q for q in (self_eval.question_evaluations or [])} if self_eval and self_eval.question_evaluations else {}
+        ai_qf_by_idx = {item.get("question_index"): item for item in (evaluation.question_feedback or [])}
+
+        all_indices = sorted(set(list(q_self_by_idx.keys()) + list(ai_qf_by_idx.keys()) + list(grouped_by_idx.keys())))
+        question_comparisons: List[QuestionComparison] = []
+
+        for q_idx in all_indices:
+            q_self = q_self_by_idx.get(q_idx, {})
+            q_ai = ai_qf_by_idx.get(q_idx, {})
+            q_turn = grouped_by_idx.get(q_idx, {})
+
+            iq = q_ai.get("interviewer_question") or q_turn.get("interviewer_question") or f"Question {q_idx}"
+            ca = q_ai.get("candidate_answer") or q_turn.get("candidate_answer") or ""
+            self_score = q_self.get("score")
+
+            question_comparisons.append(
+                QuestionComparison(
+                    question_index=q_idx,
+                    interviewer_question=iq,
+                    candidate_answer=ca,
+                    self_score=self_score,
+                    self_strengths=q_self.get("strengths"),
+                    self_missed_points=q_self.get("missed_points"),
+                    self_confidence=q_self.get("confidence"),
+                    ai_verbatim_quote=q_ai.get("verbatim_quote"),
+                    ai_critique=q_ai.get("critique"),
+                    ai_guide=q_ai.get("strong_answer_guide"),
+                    score_gap=None,
+                    targeted_resource=q_ai.get("targeted_resource"),
+                )
+            )
+
         return EvaluationComparisonResponse(
             interview_id=interview_id,
             overall_ai_score=evaluation.overall_score,
             dimensions=comparisons,
+            question_comparisons=question_comparisons,
             self_reflection=self_reflection,
             strengths=evaluation.strengths,
             weaknesses=evaluation.weaknesses,

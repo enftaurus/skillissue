@@ -86,6 +86,18 @@ class ProviderConfigService:
         config.provider_name = data.provider_name
         config.aws_region = data.aws_region
         config.preferred_model = data.preferred_model
+        config.default_model = data.default_model or data.preferred_model
+        config.interviewer_model = data.interviewer_model
+        config.evaluation_model = data.evaluation_model
+        config.coding_model = data.coding_model
+        config.planning_model = data.planning_model
+        config.fallback_enabled = data.fallback_enabled
+        config.fallback_provider = data.fallback_provider
+        config.fallback_model = data.fallback_model
+        if data.temperature is not None:
+            config.temperature = data.temperature
+        if data.max_tokens is not None:
+            config.max_tokens = data.max_tokens
         if data.monthly_token_budget is not None:
             config.monthly_token_budget = data.monthly_token_budget
         if data.monthly_cost_cents_budget is not None:
@@ -126,6 +138,9 @@ class ProviderConfigService:
                 config.is_valid = True
                 config.last_tested_at = datetime.now(timezone.utc)
 
+        from backend.app.providers.model_client_factory import ModelClientFactory
+        ModelClientFactory.clear_cache_for_user(user_id)
+
         await db.commit()
         await db.refresh(config)
         return config
@@ -137,8 +152,16 @@ class ProviderConfigService:
         config.aws_access_key_masked = ""
         config.aws_secret_key_enc = ""
         config.preferred_model = "mock-qwen3-32b"
+        config.default_model = "mock-qwen3-32b"
+        config.interviewer_model = None
+        config.evaluation_model = None
+        config.coding_model = None
+        config.planning_model = None
         config.is_valid = True
         config.last_tested_at = None
+
+        from backend.app.providers.model_client_factory import ModelClientFactory
+        ModelClientFactory.clear_cache_for_user(user_id)
 
         await db.commit()
         await db.refresh(config)

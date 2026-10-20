@@ -49,26 +49,15 @@ class InterviewService:
         await db.flush()
 
 
-        # Build system prompt
-        system_prompt = build_interviewer_system_prompt(
-            category=interview.category,
-            target_role=interview.target_role,
-            difficulty=interview.difficulty,
-            domain_skills=interview.domain_skills,
-            resume_skills=resume.extracted_skills if resume else None,
-            resume_projects=resume.projects_context if resume else None,
+        # Generate initial interview question via LangGraph agent
+        from backend.app.interviews.agent.service import InterviewAgentService
+        initial_question = await InterviewAgentService.start_interview(
+            db=db,
+            user_id=user_id,
+            interview=interview,
+            resume=resume,
+            jd=None,
         )
-
-        # Generate initial interview question
-        provider = await ModelFactory.get_for_user(db, user_id, task_type="general")
-        first_q_prompt = (
-            f"The candidate is ready for a {interview.difficulty}-level {interview.category} interview "
-            f"for the role of {interview.target_role}. Start the interview directly with your first question. "
-            "Ask exactly ONE short, direct question about their engineering background or a concrete technical decision."
-        )
-
-        response = await provider.generate_text(prompt=first_q_prompt, system_prompt=system_prompt)
-        initial_question = response.text.strip()
 
         msg = InterviewMessage(
             interview_id=interview.id,
@@ -79,11 +68,6 @@ class InterviewService:
         )
         db.add(msg)
         await db.commit()
-
-        # Record token usage
-        await ProviderConfigService.record_usage(
-            db, user_id, response.input_tokens + response.output_tokens, response.estimated_cost_usd
-        )
 
         return await cls.get_interview(db, user_id, interview.id)
 
@@ -133,27 +117,15 @@ class InterviewService:
         db.add(interview)
         await db.flush()
 
-        # Build system prompt focused on JD
-        system_prompt = build_interviewer_system_prompt(
-            category=interview.category,
-            target_role=interview.target_role,
-            difficulty=interview.difficulty,
-            jd_role=jd.extracted_role or jd.title,
-            jd_skills=jd.extracted_skills,
-            jd_requirements=jd.extracted_requirements,
-            resume_skills=resume.extracted_skills if resume else None,
-            resume_projects=resume.projects_context if resume else None,
+        # Generate initial interview question via LangGraph agent
+        from backend.app.interviews.agent.service import InterviewAgentService
+        initial_question = await InterviewAgentService.start_interview(
+            db=db,
+            user_id=user_id,
+            interview=interview,
+            resume=resume,
+            jd=jd,
         )
-
-        provider = await ModelFactory.get_for_user(db, user_id, task_type="general")
-        first_q_prompt = (
-            f"The candidate is interviewing for the {jd.extracted_role or jd.title} position based on the provided Job Description. "
-            "Start the interview directly with your first question. Ask ONE short, direct question exploring their practical experience "
-            f"with one of the primary requirements: {jd.extracted_skills[:3] if jd.extracted_skills else jd.title}."
-        )
-
-        response = await provider.generate_text(prompt=first_q_prompt, system_prompt=system_prompt)
-        initial_question = response.text.strip()
 
         msg = InterviewMessage(
             interview_id=interview.id,
@@ -164,11 +136,6 @@ class InterviewService:
         )
         db.add(msg)
         await db.commit()
-
-        # Record token usage
-        await ProviderConfigService.record_usage(
-            db, user_id, response.input_tokens + response.output_tokens, response.estimated_cost_usd
-        )
 
         return await cls.get_interview(db, user_id, interview.id)
 
@@ -204,7 +171,7 @@ class InterviewService:
         db.add(user_msg)
         await db.flush()
 
-        # Check turn limit (auto-wrapup at 8 turns to avoid infinite loops and high token spend)
+        # Check turn limit (auto-wrapup at 8 turns)
         candidate_turns = len([m for m in interview.messages if m.role == "user"])
         if candidate_turns >= 8:
             wrapup_text = (
@@ -225,7 +192,7 @@ class InterviewService:
             await db.refresh(assistant_msg)
             return assistant_msg
 
-        # Load context for prompt
+        # Load context for agent
         jd = None
         if interview.jd_id:
             jd_res = await db.execute(select(JobDescription).where(JobDescription.id == interview.jd_id, JobDescription.user_id == user_id))
@@ -236,66 +203,63 @@ class InterviewService:
             res_res = await db.execute(select(Resume).where(Resume.id == interview.resume_id, Resume.user_id == user_id))
             resume = res_res.scalar_one_or_none()
 
-        system_prompt = build_interviewer_system_prompt(
-            category=interview.category,
-            target_role=interview.target_role,
-            difficulty=interview.difficulty,
-            domain_skills=interview.domain_skills if interview.mode == "domain" else None,
-            jd_role=jd.extracted_role if jd else None,
-            jd_skills=jd.extracted_skills if jd else None,
-            jd_requirements=jd.extracted_requirements if jd else None,
-            resume_skills=resume.extracted_skills if resume else None,
-            resume_projects=resume.projects_context if resume else None,
+        # Process turn through LangGraph agent
+        from backend.app.interviews.agent.service import InterviewAgentService
+        agent_result = await InterviewAgentService.process_turn(
+            db=db,
+            user_id=user_id,
+            interview=interview,
+            candidate_content=content,
+            resume=resume,
+            jd=jd,
         )
 
-        # Build conversation history
-        history = []
-        for m in interview.messages:
-            history.append({"role": m.role, "content": m.content})
-        history.append({"role": "user", "content": content})
-
-        # Determine task type (for coding rounds, we can route to Qwen3 Coder)
-        task_type = "coding" if interview.category == "dsa" else "general"
-        provider = await ModelFactory.get_for_user(db, user_id, task_type=task_type)
-
-        prompt = (
-            "The candidate provided the following response:\n"
-            "<untrusted_candidate_answer>\n"
-            f"{content}\n"
-            "</untrusted_candidate_answer>\n\n"
-            "Respond as the interviewer. Remember:\n"
-            "- Ask EXACTLY ONE question.\n"
-            "- If their claim is unverified or vague, ask a skeptical follow-up ('How did you measure that?', 'What was the specific bottleneck?').\n"
-            "- If their answer was solid, probe a concrete edge case or pivot to the next architectural trade-off.\n"
-            "- Keep your response under 3 sentences."
-        )
-
-        response = await provider.generate_text(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            conversation_history=history,
-            max_tokens=600,
-            temperature=0.6,
-        )
-
-        assistant_text = response.text.strip()
+        assistant_text = agent_result["assistant_content"]
+        is_follow_up = (agent_result.get("next_action") == "ask_follow_up")
         assistant_msg = InterviewMessage(
             interview_id=interview.id,
             role="assistant",
             content=assistant_text,
             question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
-            is_follow_up=True if "?" in content or len(history) % 2 == 0 else False,
+            is_follow_up=is_follow_up,
         )
         db.add(assistant_msg)
         await db.commit()
         await db.refresh(assistant_msg)
 
-        # Record tokens
-        await ProviderConfigService.record_usage(
-            db, user_id, response.input_tokens + response.output_tokens, response.estimated_cost_usd
-        )
-
         return assistant_msg
+
+    @staticmethod
+    def compute_grouped_transcript(messages: List[InterviewMessage]) -> List[dict]:
+        turns: List[dict] = []
+        sorted_msgs = sorted(messages, key=lambda m: (m.created_at or datetime.min, m.id))
+
+        current_turn: Optional[dict] = None
+        q_idx = 1
+
+        for msg in sorted_msgs:
+            if msg.role == "assistant":
+                if current_turn:
+                    turns.append(current_turn)
+                current_turn = {
+                    "question_index": q_idx,
+                    "interviewer_question": msg.content,
+                    "candidate_answer": "",
+                    "is_follow_up": bool(msg.is_follow_up),
+                    "assistant_message_id": msg.id,
+                    "user_message_id": None,
+                }
+                q_idx += 1
+            elif msg.role == "user" and current_turn:
+                current_turn["candidate_answer"] = msg.content
+                current_turn["user_message_id"] = msg.id
+                turns.append(current_turn)
+                current_turn = None
+
+        if current_turn:
+            turns.append(current_turn)
+
+        return turns
 
     @staticmethod
     async def end_interview(db: AsyncSession, user_id: str, interview_id: str) -> Interview:
@@ -307,8 +271,8 @@ class InterviewService:
             await db.refresh(interview)
         return interview
 
-    @staticmethod
-    async def get_interview(db: AsyncSession, user_id: str, interview_id: str) -> Interview:
+    @classmethod
+    async def get_interview(cls, db: AsyncSession, user_id: str, interview_id: str) -> Interview:
         result = await db.execute(
             select(Interview)
             .options(selectinload(Interview.messages))
@@ -317,7 +281,15 @@ class InterviewService:
         interview = result.scalar_one_or_none()
         if not interview:
             raise EntityNotFoundError("Interview", interview_id)
+        interview.grouped_transcript = cls.compute_grouped_transcript(interview.messages)
         return interview
+
+    @classmethod
+    async def get_grouped_transcript(
+        cls, db: AsyncSession, user_id: str, interview_id: str
+    ) -> List[dict]:
+        interview = await cls.get_interview(db, user_id, interview_id)
+        return interview.grouped_transcript or []
 
     @staticmethod
     async def list_interviews(db: AsyncSession, user_id: str) -> List[Interview]:

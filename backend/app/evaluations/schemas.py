@@ -2,10 +2,20 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
+class QuestionSelfEvaluation(BaseModel):
+    question_index: int
+    interviewer_question: Optional[str] = None
+    candidate_answer: Optional[str] = None
+    score: int = Field(ge=1, le=5, description="Self rating from 1 to 5")
+    strengths: Optional[str] = ""
+    missed_points: Optional[str] = ""
+    confidence: Optional[str] = "medium"
+
 class SelfEvaluationCreate(BaseModel):
     interview_id: str
-    dimension_scores: Dict[str, int] = Field(description="Rubric dimension ID to 1-5 score")
+    dimension_scores: Optional[Dict[str, int]] = Field(default_factory=dict, description="Rubric dimension ID to 1-5 score")
     reflection: Optional[str] = ""
+    question_evaluations: Optional[List[QuestionSelfEvaluation]] = Field(default_factory=list)
 
 class SelfEvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -13,6 +23,7 @@ class SelfEvaluationResponse(BaseModel):
     interview_id: str
     dimension_scores: Dict[str, int]
     reflection: str
+    question_evaluations: Optional[List[Dict[str, Any]]] = None
     created_at: datetime
 
 class EvaluationDimensionDetail(BaseModel):
@@ -60,11 +71,27 @@ class DimensionComparison(BaseModel):
     evidence_quote: str
     explanation: str
 
+class QuestionComparison(BaseModel):
+    question_index: int
+    interviewer_question: str
+    candidate_answer: str
+    self_score: Optional[int] = None
+    self_strengths: Optional[str] = None
+    self_missed_points: Optional[str] = None
+    self_confidence: Optional[str] = None
+    ai_verbatim_quote: Optional[str] = None
+    ai_critique: Optional[str] = None
+    ai_guide: Optional[str] = None
+    score_gap: Optional[int] = None
+    targeted_resource: Optional[str] = None
+
 class EvaluationComparisonResponse(BaseModel):
     interview_id: str
     overall_ai_score: float
     dimensions: List[DimensionComparison]
+    question_comparisons: List[QuestionComparison] = []
     self_reflection: str
     strengths: List[str]
     weaknesses: List[str]
     missing_concepts: List[str]
+

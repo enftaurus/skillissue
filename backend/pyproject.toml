@@ -23,6 +23,11 @@ dependencies = [
     "python-multipart>=0.0.9",
     "docker>=7.0.0",
     "pypdf>=4.0.0",
+    "langchain-core>=1.6.0",
+    "langgraph>=1.2.0",
+    "langgraph-checkpoint>=4.3.0",
+    "langgraph-checkpoint-postgres>=3.2.0",
+    "langchain-aws>=1.9.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0"
 ]

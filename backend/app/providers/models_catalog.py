@@ -14,6 +14,10 @@ class ModelMetadata(BaseModel):
     max_output_tokens: int
     recommended_for: str
     is_default: bool = False
+    supports_structured_output: bool = True
+    supports_tool_calling: bool = True
+    supports_streaming: bool = True
+    supports_vision: bool = False
 
 # Recommended Model Lineup for Skill Issue (per explicit product owner specification)
 SUPPORTED_MODELS: Dict[str, ModelMetadata] = {
@@ -75,7 +79,8 @@ SUPPORTED_MODELS: Dict[str, ModelMetadata] = {
         output_price_per_1m=16.50,
         context_window=200000,
         max_output_tokens=8192,
-        recommended_for="Complex architecture reviews, diagrams, and vision/screenshot analysis."
+        recommended_for="Complex architecture reviews, diagrams, and vision/screenshot analysis.",
+        supports_vision=True
     ),
 
     # 5. Local Mock Engine for zero-cost offline development & automated tests

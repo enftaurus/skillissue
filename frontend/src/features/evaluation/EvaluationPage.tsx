@@ -395,6 +395,9 @@ export const EvaluationPage: React.FC = () => {
           <div className="space-y-3">
             {evaluation.question_feedback.map((qf, idx) => {
               const isExpanded = !!expandedQuestions[idx];
+              const qIndex = qf.question_index || idx + 1;
+              const qComp = comparison?.question_comparisons?.find((c) => c.question_index === qIndex);
+
               return (
                 <div
                   key={idx}
@@ -407,7 +410,7 @@ export const EvaluationPage: React.FC = () => {
                   >
                     <div className="flex items-start gap-3 pr-4">
                       <span className="shrink-0 w-6 h-6 rounded-full bg-surface-subtle border border-surface-border text-xs font-mono font-bold flex items-center justify-center text-ink mt-0.5">
-                        {qf.question_index || idx + 1}
+                        {qIndex}
                       </span>
                       <div>
                         <h4 className="font-semibold text-xs sm:text-sm text-ink leading-snug">
@@ -418,14 +421,53 @@ export const EvaluationPage: React.FC = () => {
                         </p>
                       </div>
                     </div>
-                    <div className="shrink-0 text-ink-subtle">
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    <div className="shrink-0 flex items-center gap-2">
+                      {qComp?.self_score && (
+                        <Badge variant="zinc" size="sm" className="hidden sm:inline-flex">
+                          Self: {qComp.self_score}/5
+                        </Badge>
+                      )}
+                      <div className="text-ink-subtle">
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </div>
                     </div>
                   </button>
 
                   {/* Accordion Body */}
                   {isExpanded && (
                     <div className="px-5 pb-5 pt-2 border-t border-surface-border/60 space-y-4 bg-surface-subtle/30 text-xs">
+                      {/* Candidate Self-Evaluation Comparison */}
+                      {qComp && qComp.self_score && (
+                        <div className="p-3 bg-white rounded-md border border-surface-border space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-ink-muted uppercase">
+                              Candidate Self-Evaluation
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant="zinc" size="sm">Self-Score: {qComp.self_score}/5</Badge>
+                              {qComp.self_confidence && (
+                                <span className="text-[10px] text-ink-faint">({qComp.self_confidence} confidence)</span>
+                              )}
+                            </div>
+                          </div>
+                          {(qComp.self_strengths || qComp.self_missed_points) && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1 border-t border-surface-border/50">
+                              {qComp.self_strengths && (
+                                <div>
+                                  <span className="font-medium text-lime-800">What you felt went well: </span>
+                                  <span className="text-ink-muted">{qComp.self_strengths}</span>
+                                </div>
+                              )}
+                              {qComp.self_missed_points && (
+                                <div>
+                                  <span className="font-medium text-amber-800">What you felt was missed: </span>
+                                  <span className="text-ink-muted">{qComp.self_missed_points}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {/* Candidate Quote Highlight */}
                       {qf.verbatim_quote && (
                         <div className="p-3 bg-white rounded-md border border-lime-200/80 space-y-1">

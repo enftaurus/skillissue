@@ -19,6 +19,14 @@ export const ProviderSettingsPage: React.FC = () => {
   const [accessKeyId, setAccessKeyId] = useState('');
   const [secretAccessKey, setSecretAccessKey] = useState('');
   const [preferredModel, setPreferredModel] = useState('qwen.qwen3-32b-instruct-v1:0');
+  const [interviewerModel, setInterviewerModel] = useState('');
+  const [evaluationModel, setEvaluationModel] = useState('');
+  const [codingModel, setCodingModel] = useState('');
+  const [fallbackEnabled, setFallbackEnabled] = useState(false);
+  const [fallbackProvider, setFallbackProvider] = useState('mock');
+  const [fallbackModel, setFallbackModel] = useState('mock-qwen3-32b');
+  const [temperature, setTemperature] = useState(0.7);
+  const [maxTokens, setMaxTokens] = useState(1024);
 
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency_ms?: number } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
@@ -36,6 +44,14 @@ export const ProviderSettingsPage: React.FC = () => {
         setProviderName(cfg.provider_name as 'bedrock' | 'mock');
         setAwsRegion(cfg.aws_region || 'us-east-1');
         setPreferredModel(cfg.preferred_model || 'qwen.qwen3-32b-instruct-v1:0');
+        setInterviewerModel(cfg.interviewer_model || cfg.preferred_model || 'qwen.qwen3-32b-instruct-v1:0');
+        setEvaluationModel(cfg.evaluation_model || 'qwen.qwen3-next-80b-instruct-v1:0');
+        setCodingModel(cfg.coding_model || 'qwen.qwen3-coder-30b-instruct-v1:0');
+        setFallbackEnabled(Boolean(cfg.fallback_enabled));
+        setFallbackProvider(cfg.fallback_provider || 'mock');
+        setFallbackModel(cfg.fallback_model || 'mock-qwen3-32b');
+        setTemperature(cfg.temperature ?? 0.7);
+        setMaxTokens(cfg.max_tokens ?? 1024);
       })
       .catch((err) => {
         setNotification({ type: 'error', message: err.message });
@@ -74,11 +90,20 @@ export const ProviderSettingsPage: React.FC = () => {
         aws_access_key_id: accessKeyId || undefined,
         aws_secret_access_key: secretAccessKey || undefined,
         preferred_model: preferredModel,
+        default_model: preferredModel,
+        interviewer_model: interviewerModel,
+        evaluation_model: evaluationModel,
+        coding_model: codingModel,
+        fallback_enabled: fallbackEnabled,
+        fallback_provider: fallbackProvider,
+        fallback_model: fallbackModel,
+        temperature,
+        max_tokens: maxTokens,
       });
       setConfig(updated);
       setAccessKeyId('');
       setSecretAccessKey('');
-      setNotification({ type: 'success', message: 'Provider configuration validated and encrypted successfully.' });
+      setNotification({ type: 'success', message: 'Provider configuration and task routing saved successfully.' });
     } catch (err: any) {
       setNotification({ type: 'error', message: err.message || 'Failed to save configuration.' });
     } finally {
@@ -282,6 +307,155 @@ export const ProviderSettingsPage: React.FC = () => {
                   </label>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Task-Specific Model Routing */}
+          <div className="pt-4 border-t border-surface-border space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider">
+                Task-Specific Routing (LangGraph Orchestration)
+              </label>
+              <p className="text-xs text-ink-subtle mt-1">
+                Assign specialized models for specific stages in your preparation loop.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-ink mb-1.5">
+                  Interviewer Model
+                </label>
+                <select
+                  value={interviewerModel}
+                  onChange={(e) => setInterviewerModel(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
+                >
+                  {models.map((m) => (
+                    <option key={m.model_id} value={m.model_id}>
+                      {m.display_name} ({m.role})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-ink-faint mt-1 block">Dynamic dialogue & follow-ups</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-ink mb-1.5">
+                  Evaluator Model
+                </label>
+                <select
+                  value={evaluationModel}
+                  onChange={(e) => setEvaluationModel(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
+                >
+                  {models.map((m) => (
+                    <option key={m.model_id} value={m.model_id}>
+                      {m.display_name} ({m.role})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-ink-faint mt-1 block">Deterministic scoring & rubric critique</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-ink mb-1.5">
+                  Coding Specialist
+                </label>
+                <select
+                  value={codingModel}
+                  onChange={(e) => setCodingModel(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
+                >
+                  {models.map((m) => (
+                    <option key={m.model_id} value={m.model_id}>
+                      {m.display_name} ({m.role})
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-ink-faint mt-1 block">Syntax, hints & algorithmic analysis</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Fallback & Inference Controls */}
+          <div className="pt-4 border-t border-surface-border space-y-4">
+            <span className="block text-xs font-semibold text-ink-muted uppercase tracking-wider">
+              Resilience & Inference Controls
+            </span>
+
+            <div className="flex items-center justify-between p-3 bg-surface-warm rounded-md border border-surface-border">
+              <div>
+                <span className="text-sm font-medium text-ink block">Automatic Provider Fallback</span>
+                <span className="text-xs text-ink-subtle">
+                  Gracefully route to a secondary model or local mock when cloud rate limits or timeouts occur.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={fallbackEnabled}
+                onChange={(e) => setFallbackEnabled(e.target.checked)}
+                className="w-4 h-4 accent-lime-600 rounded"
+              />
+            </div>
+
+            {fallbackEnabled && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-surface-subtle rounded-md border border-surface-border">
+                <div>
+                  <label className="block text-xs font-medium text-ink mb-1.5">Fallback Provider</label>
+                  <select
+                    value={fallbackProvider}
+                    onChange={(e) => setFallbackProvider(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink"
+                  >
+                    <option value="mock">Local Mock Provider (Zero Cost)</option>
+                    <option value="bedrock">Amazon Bedrock</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink mb-1.5">Fallback Model</label>
+                  <input
+                    type="text"
+                    value={fallbackModel}
+                    onChange={(e) => setFallbackModel(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink font-mono"
+                    placeholder="mock-qwen3-32b"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs font-medium text-ink">Sampling Temperature</label>
+                  <span className="text-xs font-mono font-semibold text-lime-700">{temperature}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.0"
+                  max="1.0"
+                  step="0.05"
+                  value={temperature}
+                  onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                  className="w-full accent-lime-600"
+                />
+                <span className="text-[10px] text-ink-faint block mt-1">Lower = more deterministic, higher = more creative</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-ink mb-1.5">Max Generation Tokens</label>
+                <input
+                  type="number"
+                  min={256}
+                  max={4096}
+                  step={128}
+                  value={maxTokens}
+                  onChange={(e) => setMaxTokens(parseInt(e.target.value) || 1024)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink font-mono"
+                />
+                <span className="text-[10px] text-ink-faint block mt-1">Bounded between 256 and 4096 tokens</span>
+              </div>
             </div>
           </div>
 

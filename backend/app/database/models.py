@@ -58,6 +58,16 @@ class ProviderConfig(Base):
     aws_access_key_masked: Mapped[str] = mapped_column(String(50), default="")
     aws_secret_key_enc: Mapped[str] = mapped_column(Text, default="")
     preferred_model: Mapped[str] = mapped_column(String(100), default="qwen.qwen3-32b-instruct-v1:0")
+    default_model: Mapped[Optional[str]] = mapped_column(String(100), default="qwen.qwen3-32b-instruct-v1:0", nullable=True)
+    interviewer_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    evaluation_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    coding_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    planning_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    fallback_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    fallback_provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    fallback_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    temperature: Mapped[float] = mapped_column(Float, default=0.7)
+    max_tokens: Mapped[int] = mapped_column(Integer, default=2048)
     is_valid: Mapped[bool] = mapped_column(Boolean, default=False)
     last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     total_tokens_used: Mapped[int] = mapped_column(Integer, default=0)
@@ -116,6 +126,8 @@ class Interview(Base):
     target_duration_minutes: Mapped[int] = mapped_column(Integer, default=20)
     hint_level_used: Mapped[int] = mapped_column(Integer, default=0)
     coding_problem_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    current_summary: Mapped[str] = mapped_column(Text, default="")
+    covered_topics: Mapped[List[str]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -144,6 +156,7 @@ class SelfEvaluation(Base):
     interview_id: Mapped[str] = mapped_column(String(36), ForeignKey("interviews.id", ondelete="CASCADE"), unique=True, index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     dimension_scores: Mapped[Dict[str, int]] = mapped_column(JSON, default=dict)  # dimension: 1-5 score
+    question_evaluations: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     reflection: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
