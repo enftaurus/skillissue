@@ -10,10 +10,16 @@ from backend.app.interviews.schemas import (
 )
 from backend.app.interviews.service import InterviewService
 from backend.app.interviews.rubrics import get_rubric_for_category, RubricDimension
+from backend.app.core.rate_limit import rate_limit
 
 router = APIRouter(prefix="/interviews", tags=["Interviews"])
 
-@router.post("/domain", response_model=InterviewDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/domain",
+    response_model=InterviewDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit(max_requests=10, window_seconds=60))]
+)
 async def create_domain_interview(
     data: InterviewCreateDomain,
     current_user: User = Depends(get_current_active_user),
@@ -21,7 +27,12 @@ async def create_domain_interview(
 ):
     return await InterviewService.create_domain_interview(db, current_user.id, data)
 
-@router.post("/jd", response_model=InterviewDetailResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/jd",
+    response_model=InterviewDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit(max_requests=10, window_seconds=60))]
+)
 async def create_jd_interview(
     data: InterviewCreateJd,
     current_user: User = Depends(get_current_active_user),
@@ -44,7 +55,11 @@ async def get_interview(
 ):
     return await InterviewService.get_interview(db, current_user.id, interview_id)
 
-@router.post("/{interview_id}/message", response_model=InterviewMessageResponse)
+@router.post(
+    "/{interview_id}/message",
+    response_model=InterviewMessageResponse,
+    dependencies=[Depends(rate_limit(max_requests=15, window_seconds=60))]
+)
 async def send_interview_message(
     interview_id: str,
     data: InterviewMessageCreate,

@@ -2,7 +2,10 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from backend.app.core.security import hash_password, verify_password, create_access_token
+from backend.app.core.security import (
+    hash_password, verify_password, dummy_verify_password,
+    create_access_token, create_refresh_token, decode_access_token
+)
 from backend.app.core.errors import AppException, AuthenticationError, EntityNotFoundError
 from backend.app.database.models import User, UserProfile, ProviderConfig
 from backend.app.auth.schemas import UserRegister, UserLogin, Token, UserProfileUpdate
@@ -20,6 +23,7 @@ class AuthService:
             email=data.email.lower(),
             hashed_password=hash_password(data.password),
             is_active=True,
+            token_version=1,
         )
         db.add(user)
         await db.flush()
@@ -53,17 +57,66 @@ class AuthService:
             .where(User.email == data.email.lower())
         )
         user = result.scalar_one_or_none()
-        if not user or not verify_password(data.password, user.hashed_password):
+        
+        # Constant-time mitigation against email enumeration attacks
+        if not user:
+            dummy_verify_password(data.password)
             raise AuthenticationError("Invalid email or password")
+            
+        if not verify_password(data.password, user.hashed_password):
+            raise AuthenticationError("Invalid email or password")
+
         if not user.is_active:
             raise AuthenticationError("Account has been deactivated")
 
-        token = create_access_token(subject=user.id)
+        access_token = create_access_token(subject=user.id, token_version=user.token_version)
+        refresh_token = create_refresh_token(subject=user.id, token_version=user.token_version)
+
         return Token(
-            access_token=token,
+            access_token=access_token,
+            refresh_token=refresh_token,
             user_id=user.id,
             email=user.email,
         )
+
+    @staticmethod
+    async def refresh_session(db: AsyncSession, refresh_token: str) -> Token:
+        token_data = decode_access_token(refresh_token)
+        if not token_data or "sub" not in token_data:
+            raise AuthenticationError("Invalid or expired refresh token")
+
+        if token_data.get("token_type") != "refresh":
+            raise AuthenticationError("Invalid token type for refresh")
+
+        user_id = token_data["sub"]
+        token_version = token_data.get("token_version", 1)
+
+        user = await AuthService.get_by_id(db, user_id)
+        if user.token_version != token_version:
+            raise AuthenticationError("Session has been revoked. Please log in again.")
+
+        if not user.is_active:
+            raise AuthenticationError("Account has been deactivated")
+
+        new_access_token = create_access_token(subject=user.id, token_version=user.token_version)
+        new_refresh_token = create_refresh_token(subject=user.id, token_version=user.token_version)
+
+        return Token(
+            access_token=new_access_token,
+            refresh_token=new_refresh_token,
+            user_id=user.id,
+            email=user.email,
+        )
+
+    @staticmethod
+    async def logout(db: AsyncSession, user_id: str) -> bool:
+        """Revoke all issued sessions by incrementing user token_version."""
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user:
+            user.token_version += 1
+            await db.commit()
+        return True
 
     @staticmethod
     async def get_by_id(db: AsyncSession, user_id: str) -> User:

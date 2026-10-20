@@ -112,8 +112,8 @@ class AmazonBedrockProvider(BaseProvider):
                         "temperature": temperature,
                     }
                 )
-
-                output_text = response["output"]["message"]["content"][0]["text"]
+                content_blocks = response.get("output", {}).get("message", {}).get("content", [])
+                output_text = "".join(b.get("text", "") for b in content_blocks if "text" in b)
                 usage = response.get("usage", {})
                 in_tokens = usage.get("inputTokens", 0)
                 out_tokens = usage.get("outputTokens", 0)

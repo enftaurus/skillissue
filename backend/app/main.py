@@ -15,13 +15,35 @@ from backend.app.api.v1.analytics import router as analytics_router
 from backend.app.api.v1.coding import router as coding_router
 
 def create_application() -> FastAPI:
+    is_dev = settings.ENVIRONMENT.lower() in ("development", "test") or settings.DEBUG
     app = FastAPI(
         title=settings.PROJECT_NAME,
         version=settings.VERSION,
-        openapi_url="/api/v1/openapi.json" if settings.DEBUG else None,
-        docs_url="/docs" if settings.DEBUG else None,
+        openapi_url="/api/v1/openapi.json" if is_dev else None,
+        docs_url="/docs" if is_dev else None,
         redoc_url=None,
     )
+
+    # Security Headers Middleware
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' data:; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "object-src 'none'; "
+            "base-uri 'self';"
+        )
+        return response
 
     # CORS configuration
     app.add_middleware(

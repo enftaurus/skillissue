@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, JSON
+    Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, JSON, UniqueConstraint
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from backend.app.database.session import Base
@@ -20,6 +20,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
@@ -31,6 +32,7 @@ class User(Base):
     interviews: Mapped[List["Interview"]] = relationship("Interview", back_populates="user", cascade="all, delete-orphan")
     plans: Mapped[List["Plan"]] = relationship("Plan", back_populates="user", cascade="all, delete-orphan")
     coding_submissions: Mapped[List["CodingSubmission"]] = relationship("CodingSubmission", back_populates="user", cascade="all, delete-orphan")
+    skills: Mapped[List["UserSkill"]] = relationship("UserSkill", back_populates="user", cascade="all, delete-orphan")
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
@@ -60,6 +62,10 @@ class ProviderConfig(Base):
     last_tested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     total_tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    monthly_token_budget: Mapped[int] = mapped_column(Integer, default=1_000_000)
+    monthly_tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+    monthly_cost_cents_budget: Mapped[int] = mapped_column(Integer, default=1000)  # $10.00
+    monthly_cost_cents_used: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
@@ -213,7 +219,27 @@ class CodingSubmission(Base):
     stderr: Mapped[str] = mapped_column(Text, default="")
     execution_time_ms: Mapped[int] = mapped_column(Integer, default=0)
     memory_kb: Mapped[int] = mapped_column(Integer, default=0)
+    tests_passed: Mapped[int] = mapped_column(Integer, default=0)
+    tests_total: Mapped[int] = mapped_column(Integer, default=0)
     test_results: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     user: Mapped["User"] = relationship("User", back_populates="coding_submissions")
+
+class UserSkill(Base):
+    __tablename__ = "user_skills"
+    __table_args__ = (
+        UniqueConstraint("user_id", "topic", name="uq_user_skills_user_topic"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    topic: Mapped[str] = mapped_column(String(100), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.5)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    evidence_refs: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    user: Mapped["User"] = relationship("User", back_populates="skills")

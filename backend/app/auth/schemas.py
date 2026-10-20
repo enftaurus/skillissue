@@ -16,8 +16,16 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    refresh_token: Optional[str] = None
     user_id: str
     email: str
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+class LogoutResponse(BaseModel):
+    status: str = "logged_out"
+    message: str = "Session successfully revoked"
 
 class UserProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

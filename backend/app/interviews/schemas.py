@@ -18,7 +18,7 @@ class InterviewCreateJd(BaseModel):
     target_duration_minutes: Optional[int] = 20
 
 class InterviewMessageCreate(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=4000)
 
 class InterviewMessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

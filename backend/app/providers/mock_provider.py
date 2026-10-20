@@ -97,66 +97,8 @@ class MockProvider(BaseProvider):
                 ]
             }
 
-        # 3. Post-Interview Evaluation
-        elif "evaluat" in prompt_lower or "rubric" in prompt_lower or "score" in sys_lower:
-            parsed = {
-                "overall_score": 78.5,
-                "dimension_scores": {
-                    "technical_depth": {
-                        "score": 4,
-                        "max_score": 5,
-                        "explanation": "Demonstrated sound understanding of async I/O and database transactions, though lacked concrete p99 latency measurement methodology.",
-                        "evidence_quote": "We used Redis for caching to speed up user session lookups."
-                    },
-                    "system_design_tradeoffs": {
-                        "score": 3,
-                        "max_score": 5,
-                        "explanation": "Identified cache invalidation as a risk, but did not address network partition or failover modes.",
-                        "evidence_quote": "If the cache goes down we just fall back to Postgres queries."
-                    },
-                    "communication_clarity": {
-                        "score": 4,
-                        "max_score": 5,
-                        "explanation": "Direct and concise responses without filler words. Stayed focused on the technical mechanisms.",
-                        "evidence_quote": "We configured EXPLAIN ANALYZE to identify unindexed foreign key lookups."
-                    },
-                    "problem_solving_rigor": {
-                        "score": 4,
-                        "max_score": 5,
-                        "explanation": "Methodical debugging approach when asked about concurrency contention.",
-                        "evidence_quote": "We isolated the blocking database transaction with connection pool telemetry."
-                    }
-                },
-                "strengths": [
-                    "Strong mental model of asynchronous programming and database indexing fundamentals.",
-                    "Comfortable acknowledging boundaries of design decisions rather than bluffing.",
-                    "Direct communication style suited for senior engineering discussions."
-                ],
-                "weaknesses": [
-                    "Relies on vague claims of 'speed improvements' without citing quantitative benchmark numbers (p95/p99 latency, RPS).",
-                    "Overlooked cache stampede risks when cache keys expire under heavy traffic spikes.",
-                    "Did not specify worker health check failure thresholds."
-                ],
-                "missing_concepts": [
-                    "Cache-aside pattern vs write-through caching trade-offs",
-                    "Distributed locks and mutex semantics in concurrent workers",
-                    "Telemetry telemetry metrics (p95 latency, saturations, error budgets)"
-                ],
-                "evidence_excerpts": [
-                    {"quote": "We added Redis and it made everything 10x faster.", "critique": "Unverified quantitative claim; could not explain benchmark baseline."},
-                    {"quote": "We used EXPLAIN ANALYZE to spot the sequential scan.", "critique": "Solid concrete debugging methodology."}
-                ],
-                "suggested_corrections": [
-                    "Whenever claiming a performance win in an interview, state the metric: 'Reduced median latency from 140ms to 18ms under 2,000 req/sec'.",
-                    "Proactively address cache failure modes: mention circuit breakers, stale-while-revalidate, or rate limiters."
-                ],
-                "uncertainty_notes": [
-                    "DSA algorithmic complexity was not tested in this round; recommend a dedicated DSA session."
-                ]
-            }
-
-        # 4. Planly Multi-Day Improvement Plan
-        elif "plan" in prompt_lower or "improvement" in prompt_lower or "planly" in sys_lower:
+        # 3. Planly Multi-Day Improvement Plan
+        elif "plan" in prompt_lower or "roadmap" in prompt_lower or "planly" in sys_lower or "planly" in prompt_lower or "improvement" in prompt_lower:
             parsed = {
                 "title": "7-Day High-Throughput Reliability & Systems Sprint",
                 "target_role": "Backend Software Engineer",
@@ -230,6 +172,64 @@ class MockProvider(BaseProvider):
                         "estimated_minutes": 30,
                         "external_resources": []
                     }
+                ]
+            }
+
+        # 4. Post-Interview Evaluation
+        elif "evaluat" in prompt_lower or "rubric" in prompt_lower or "score" in sys_lower:
+            parsed = {
+                "overall_score": 78.5,
+                "dimension_scores": {
+                    "technical_depth": {
+                        "score": 4,
+                        "max_score": 5,
+                        "explanation": "Demonstrated sound understanding of async I/O and database transactions, though lacked concrete p99 latency measurement methodology.",
+                        "evidence_quote": "We used Redis for caching to speed up user session lookups."
+                    },
+                    "system_design_tradeoffs": {
+                        "score": 3,
+                        "max_score": 5,
+                        "explanation": "Identified cache invalidation as a risk, but did not address network partition or failover modes.",
+                        "evidence_quote": "If the cache goes down we just fall back to Postgres queries."
+                    },
+                    "communication_clarity": {
+                        "score": 4,
+                        "max_score": 5,
+                        "explanation": "Direct and concise responses without filler words. Stayed focused on the technical mechanisms.",
+                        "evidence_quote": "We configured EXPLAIN ANALYZE to identify unindexed foreign key lookups."
+                    },
+                    "problem_solving_rigor": {
+                        "score": 4,
+                        "max_score": 5,
+                        "explanation": "Methodical debugging approach when asked about concurrency contention.",
+                        "evidence_quote": "We isolated the blocking database transaction with connection pool telemetry."
+                    }
+                },
+                "strengths": [
+                    "Strong mental model of asynchronous programming and database indexing fundamentals.",
+                    "Comfortable acknowledging boundaries of design decisions rather than bluffing.",
+                    "Direct communication style suited for senior engineering discussions."
+                ],
+                "weaknesses": [
+                    "Relies on vague claims of 'speed improvements' without citing quantitative benchmark numbers (p95/p99 latency, RPS).",
+                    "Overlooked cache stampede risks when cache keys expire under heavy traffic spikes.",
+                    "Did not specify worker health check failure thresholds."
+                ],
+                "missing_concepts": [
+                    "Cache-aside pattern vs write-through caching trade-offs",
+                    "Distributed locks and mutex semantics in concurrent workers",
+                    "Telemetry telemetry metrics (p95 latency, saturations, error budgets)"
+                ],
+                "evidence_excerpts": [
+                    {"quote": "We added Redis and it made everything 10x faster.", "critique": "Unverified quantitative claim; could not explain benchmark baseline."},
+                    {"quote": "We used EXPLAIN ANALYZE to spot the sequential scan.", "critique": "Solid concrete debugging methodology."}
+                ],
+                "suggested_corrections": [
+                    "Whenever claiming a performance win in an interview, state the metric: 'Reduced median latency from 140ms to 18ms under 2,000 req/sec'.",
+                    "Proactively address cache failure modes: mention circuit breakers, stale-while-revalidate, or rate limiters."
+                ],
+                "uncertainty_notes": [
+                    "DSA algorithmic complexity was not tested in this round; recommend a dedicated DSA session."
                 ]
             }
 

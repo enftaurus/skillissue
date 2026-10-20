@@ -59,17 +59,21 @@ class ModelFactory:
             mock_model = MOCK_MODEL_ID
             return MockProvider(model_id=mock_model)
 
+        # Enforce monthly spend and token ceiling
+        from backend.app.providers.service import ProviderConfigService
+        ProviderConfigService.check_spend_budget(config)
+
         # Select model: honor user choice, defaulting to coding specialist when using base default
         model_id = config.preferred_model or DEFAULT_MODEL_ID
         if task_type == "coding" and (not config.preferred_model or config.preferred_model == DEFAULT_MODEL_ID):
             model_id = DEFAULT_CODING_MODEL_ID
 
-        # Decrypt credentials bundle in ephemeral memory only
+        # Decrypt credentials bundle in ephemeral memory only using tenant DEK
         access_key = None
         secret_key = None
         if config.aws_secret_key_enc:
             try:
-                decrypted = decrypt_secret(config.aws_secret_key_enc)
+                decrypted = decrypt_secret(config.aws_secret_key_enc, user_id=user_id)
                 if decrypted:
                     try:
                         bundle = json.loads(decrypted)
@@ -79,7 +83,7 @@ class ModelFactory:
                     except Exception:
                         # Legacy plain secret string
                         secret_key = decrypted
-                        access_key = decrypt_secret(config.aws_access_key_masked) if config.aws_access_key_masked.startswith("gAAAA") else config.aws_access_key_masked
+                        access_key = decrypt_secret(config.aws_access_key_masked, user_id=user_id) if config.aws_access_key_masked.startswith("gAAAA") else config.aws_access_key_masked
             except Exception as e:
                 logger.warning(f"Failed to decrypt stored BYOC credentials for user {user_id}: {e}. Falling back to mock provider.")
                 return MockProvider(model_id=MOCK_MODEL_ID)

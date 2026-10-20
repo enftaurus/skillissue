@@ -10,13 +10,19 @@
 ## Summary of Findings & Resolution Status
 
 | Finding ID | Severity | Category | Description | Status | Verification Evidence |
-| :--- | :---: | :--- | :--- | :---: | :--- |
-| **SEC-01** | P0 | Sandbox Security | Runner inherited parent host environment secrets | **Partially Fixed / Re-opened** | Scrubbing `os.environ` in host subprocess left filesystem (`backend/.env`) & network exposed. Docker executor required. |
-| **SEC-02** | P0 | Sandbox Stability | Process group isolation & fork bomb mitigation | **Partially Fixed / Re-opened** | Host process groups & `RLIMIT_NPROC` insufficient without container cgroup PID limits. Docker container required. |
+| :--- | :---: | :--- | :--- | :--- | :--- |
+| **SEC-01** | P0 | Sandbox Security | Runner inherited parent host environment secrets | **Resolved & Verified** | Docker executor (`--network none`, `--read-only`, tmpfs, UID 10001, ADR 0010) passes 8/8 adversarial escape tests. |
+| **SEC-02** | P0 | Sandbox Stability | Process group isolation & fork bomb mitigation | **Resolved & Verified** | Docker cgroups (`pids_limit=64`, 256MB RAM, seccomp) halted fork/memory/print bombs safely. |
 | **SEC-03** | P0 | BYOC Integration | AWS Access Key ID masking broke subsequent Bedrock calls | **Resolved & Verified** | `test_byoc_credentials_encryption_and_retrieval` PASSED |
 | **SEC-04** | P1 | Configuration / Sec | Insecure default secrets allowed when `ENVIRONMENT=production` | **Resolved & Verified** | `test_production_secrets_validation` PASSED |
+| **SEC-05** | P1 | Authentication | Absence of session revocation on logout and long-lived tokens | **Resolved & Verified** | Short-lived tokens (15m), HttpOnly refresh cookies, `token_version` invalidation on logout PASSED. |
+| **SEC-06** | P2 | Authentication | Timing side-channel allowing email address enumeration | **Resolved & Verified** | Constant-time dummy bcrypt check on invalid email in `AuthService.authenticate` PASSED. |
+| **SEC-07** | P1 | Coding Sandbox | Hidden verification tests, stdin, and outputs leaked to candidate | **Resolved & Verified** | `CodingProblemPublic` schema and masked test result serialization verified in `test_coding.py`. |
+| **SEC-08** | P1 | BYOC Security | Missing tenant key isolation and unconstrained monthly spend | **Resolved & Verified** | Per-user PBKDF2/HKDF DEK derivation and monthly token/cost hard caps (ADR 0011) PASSED. |
+| **SEC-09** | P2 | AppSec / Injection | Second-order prompt injection and XSS in Planly resources | **Resolved & Verified** | `<untrusted_evaluation_data>` XML delimiter and `http(s)://` URL validation implemented. |
 | **LLM-01** | P1 | LLM Output Quality | Model JSON parsing failures fabricated silent 70.0 score | **Resolved & Verified** | `test_evaluation_parsing_failure_rejects_fabricated_score` PASSED |
 | **LLM-02** | P2 | AI Security | Untrusted candidate text without prompt boundary tags | **Resolved & Verified** | XML boundaries added to evaluation, interview, resume & JD prompts |
+| **LLM-03** | P2 | LLM Robustness | Bedrock converse output parser crashed on thinking/reasoning blocks | **Resolved & Verified** | Content-block text extraction loop in `AmazonBedrockProvider.generate_text` PASSED. |
 | **PRV-01** | P2 | Model Routing | Silent override of user preferred model during coding tasks | **Resolved & Verified** | `backend/app/providers/factory.py` routing calibrated with tests |
 | **DB-01** | P2 | Schema & Config | Outdated Claude model IDs in auth service and database models | **Resolved & Verified** | Aligned with `mock-qwen3-32b` & `qwen.qwen3-32b-instruct-v1:0` |
 | **FE-01** | P1 | Frontend / Speech | Streaming speech recognition caused exponential text duplication | **Resolved & Verified** | Non-duplicating committed/interim separation in `InterviewSessionPage.tsx` |

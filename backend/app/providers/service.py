@@ -30,6 +30,30 @@ class ProviderConfigService:
         return config
 
     @staticmethod
+    def check_spend_budget(config: ProviderConfig):
+        """Verify user has not exceeded their configured monthly token or cost ceiling."""
+        if config.provider_name == "mock":
+            return  # Mock provider is zero-cost and unlimited
+
+        if config.monthly_token_budget and config.monthly_tokens_used >= config.monthly_token_budget:
+            raise AppException(
+                f"Monthly token budget ({config.monthly_token_budget:,} tokens) reached. "
+                "Increase your budget under Settings → Model Provider or use Mock mode.",
+                code="TOKEN_BUDGET_EXCEEDED",
+                status_code=429
+            )
+
+        if config.monthly_cost_cents_budget and config.monthly_cost_cents_used >= config.monthly_cost_cents_budget:
+            spent_usd = config.monthly_cost_cents_used / 100.0
+            budget_usd = config.monthly_cost_cents_budget / 100.0
+            raise AppException(
+                f"Monthly cost limit (${budget_usd:.2f}) reached (spent: ${spent_usd:.2f}). "
+                "Increase your budget under Settings → Model Provider or use Mock mode.",
+                code="COST_BUDGET_EXCEEDED",
+                status_code=429
+            )
+
+    @staticmethod
     async def test_credentials(data: TestCredentialsRequest) -> TestCredentialsResponse:
         start_time = time.time()
         provider = ModelFactory.get_provider_by_type(
@@ -62,6 +86,10 @@ class ProviderConfigService:
         config.provider_name = data.provider_name
         config.aws_region = data.aws_region
         config.preferred_model = data.preferred_model
+        if data.monthly_token_budget is not None:
+            config.monthly_token_budget = data.monthly_token_budget
+        if data.monthly_cost_cents_budget is not None:
+            config.monthly_cost_cents_budget = data.monthly_cost_cents_budget
 
         if data.provider_name == "mock":
             config.is_valid = True
@@ -88,13 +116,13 @@ class ProviderConfigService:
                 if not test_res.success:
                     raise AppException(test_res.message, code="INVALID_CREDENTIALS")
 
-                # Store encrypted credentials bundle and masked display
+                # Store encrypted credentials bundle using tenant-isolated key and masked display
                 creds_bundle = json.dumps({
                     "access_key_id": data.aws_access_key_id,
                     "secret_access_key": data.aws_secret_access_key,
                 })
                 config.aws_access_key_masked = mask_access_key(data.aws_access_key_id)
-                config.aws_secret_key_enc = encrypt_secret(creds_bundle)
+                config.aws_secret_key_enc = encrypt_secret(creds_bundle, user_id=user_id)
                 config.is_valid = True
                 config.last_tested_at = datetime.now(timezone.utc)
 
@@ -124,4 +152,7 @@ class ProviderConfigService:
         if config:
             config.total_tokens_used += tokens_used
             config.estimated_cost_usd += cost_usd
+            config.monthly_tokens_used += tokens_used
+            cost_cents = int(round(cost_usd * 100))
+            config.monthly_cost_cents_used += cost_cents
             await db.commit()

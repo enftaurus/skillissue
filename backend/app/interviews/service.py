@@ -28,6 +28,8 @@ class InterviewService:
                 select(Resume).where(Resume.id == data.resume_id, Resume.user_id == user_id)
             )
             resume = res_result.scalar_one_or_none()
+            if not resume:
+                raise EntityNotFoundError("Resume", data.resume_id)
 
         title = f"{data.category.capitalize()} Interview: {', '.join(data.domain_skills[:3])}"
         interview = Interview(
@@ -105,6 +107,8 @@ class InterviewService:
                 select(Resume).where(Resume.id == data.resume_id, Resume.user_id == user_id)
             )
             resume = res_result.scalar_one_or_none()
+            if not resume:
+                raise EntityNotFoundError("Resume", data.resume_id)
 
         title = f"JD Interview: {jd.title}"
         if jd.company:
@@ -173,7 +177,16 @@ class InterviewService:
         interview_id: str,
         content: str,
     ) -> InterviewMessage:
-        interview = await cls.get_interview(db, user_id, interview_id)
+        result = await db.execute(
+            select(Interview)
+            .options(selectinload(Interview.messages))
+            .where(Interview.id == interview_id, Interview.user_id == user_id)
+            .with_for_update()
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise EntityNotFoundError("Interview", interview_id)
+
         if interview.status != "in_progress":
             raise AppException("Interview is no longer active", code="INTERVIEW_NOT_ACTIVE")
 
@@ -188,15 +201,36 @@ class InterviewService:
         db.add(user_msg)
         await db.flush()
 
+        # Check turn limit (auto-wrapup at 8 turns to avoid infinite loops and high token spend)
+        candidate_turns = len([m for m in interview.messages if m.role == "user"])
+        if candidate_turns >= 8:
+            wrapup_text = (
+                "That concludes our interview session. Thank you for your concrete explanations and trade-off walkthroughs. "
+                "We now have enough diagnostic data to assess your engineering readiness across all rubric dimensions."
+            )
+            assistant_msg = InterviewMessage(
+                interview_id=interview.id,
+                role="assistant",
+                content=wrapup_text,
+                question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
+                is_follow_up=False,
+            )
+            interview.status = "completed"
+            interview.completed_at = datetime.now(timezone.utc)
+            db.add(assistant_msg)
+            await db.commit()
+            await db.refresh(assistant_msg)
+            return assistant_msg
+
         # Load context for prompt
         jd = None
         if interview.jd_id:
-            jd_res = await db.execute(select(JobDescription).where(JobDescription.id == interview.jd_id))
+            jd_res = await db.execute(select(JobDescription).where(JobDescription.id == interview.jd_id, JobDescription.user_id == user_id))
             jd = jd_res.scalar_one_or_none()
 
         resume = None
         if interview.resume_id:
-            res_res = await db.execute(select(Resume).where(Resume.id == interview.resume_id))
+            res_res = await db.execute(select(Resume).where(Resume.id == interview.resume_id, Resume.user_id == user_id))
             resume = res_res.scalar_one_or_none()
 
         system_prompt = build_interviewer_system_prompt(
