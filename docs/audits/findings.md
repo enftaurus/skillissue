@@ -11,8 +11,8 @@
 
 | Finding ID | Severity | Category | Description | Status | Verification Evidence |
 | :--- | :---: | :--- | :--- | :---: | :--- |
-| **SEC-01** | P0 | Sandbox Security | Runner inherited parent host environment secrets | **Resolved & Verified** | `test_coding_sandbox_environment_isolation` PASSED |
-| **SEC-02** | P0 | Sandbox Stability | Process group isolation & fork bomb mitigation | **Resolved & Verified** | Process group `os.setsid` & `os.killpg` on timeout PASSED |
+| **SEC-01** | P0 | Sandbox Security | Runner inherited parent host environment secrets | **Partially Fixed / Re-opened** | Scrubbing `os.environ` in host subprocess left filesystem (`backend/.env`) & network exposed. Docker executor required. |
+| **SEC-02** | P0 | Sandbox Stability | Process group isolation & fork bomb mitigation | **Partially Fixed / Re-opened** | Host process groups & `RLIMIT_NPROC` insufficient without container cgroup PID limits. Docker container required. |
 | **SEC-03** | P0 | BYOC Integration | AWS Access Key ID masking broke subsequent Bedrock calls | **Resolved & Verified** | `test_byoc_credentials_encryption_and_retrieval` PASSED |
 | **SEC-04** | P1 | Configuration / Sec | Insecure default secrets allowed when `ENVIRONMENT=production` | **Resolved & Verified** | `test_production_secrets_validation` PASSED |
 | **LLM-01** | P1 | LLM Output Quality | Model JSON parsing failures fabricated silent 70.0 score | **Resolved & Verified** | `test_evaluation_parsing_failure_rejects_fabricated_score` PASSED |
@@ -34,20 +34,10 @@
 - **Severity**: P0 (High-Impact Security Vulnerability)
 - **Category**: Sandbox Security / Secret Isolation
 - **Location**: [`sandbox/runner.py`](file:///home/rajababu/intern/skillissue/sandbox/runner.py)
-- **Status**: **Resolved & Verified**
-- **Root Cause**: `subprocess.run` executed child processes with `env=None`, allowing untrusted candidate code to inspect `os.environ` and read `SECRET_KEY`, `DATABASE_URL`, and `ENCRYPTION_KEY`.
-- **Implemented Fix**:
-  Configured a sanitized runtime environment dictionary stripping all sensitive variables:
-  ```python
-  clean_env = {
-      "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-      "LANG": "en_US.UTF-8",
-      "HOME": temp_dir,
-      "TMPDIR": temp_dir,
-      "PYTHONDONTWRITEBYTECODE": "1",
-  }
-  ```
-- **Verification**: Added regression test `test_coding_sandbox_environment_isolation` in `backend/tests/test_coding.py`. Confirmed `SECRET_KEY`, `DATABASE_URL`, and `ENCRYPTION_KEY` are undefined in sandbox execution.
+- **Status**: **Partially Fixed / Re-opened (Pending Real Docker Isolation)**
+- **Root Cause**: `subprocess.run` executed child processes on the API host. While `clean_env` removed secrets from `os.environ`, the untrusted child process still runs on the host filesystem and can read any file the host user can access (e.g. `backend/.env` with `SECRET_KEY`, `ENCRYPTION_KEY`, `DATABASE_URL`) and open outbound network sockets.
+- **Interim Fix**: Sanitized `clean_env` dictionary stripping sensitive variables.
+- **Required Permanent Fix (Phase 1)**: Remove host subprocess execution completely from all production paths. Implement a dedicated, isolated Docker executor service with `--network none`, `--read-only`, tmpfs, unprivileged user, and no host filesystem bind mounts.
 
 ---
 
@@ -55,13 +45,10 @@
 - **Severity**: P0 (High-Impact DoS / Host Stability)
 - **Category**: Sandbox Security / Resource Limits
 - **Location**: [`sandbox/runner.py`](file:///home/rajababu/intern/skillissue/sandbox/runner.py)
-- **Status**: **Resolved & Verified**
-- **Root Cause**: Host processes were spawned in the parent process group without `os.setsid`. If code timed out, `subprocess.run` only signaled the root PID, leaving spawned worker threads or fork processes running on host.
-- **Implemented Fix**:
-  1. Configured process group creation via `os.setsid` in `preexec_fn`.
-  2. Implemented process tree termination via `os.killpg(os.getpgid(p.pid), signal.SIGKILL)` on timeouts.
-  3. Added conditional `RLIMIT_NPROC` limit for isolated container runners.
-- **Verification**: Verified bounded child execution and clean SIGKILL of entire process tree upon timeout.
+- **Status**: **Partially Fixed / Re-opened (Pending Real Docker Isolation)**
+- **Root Cause**: Running on the host means Linux system-wide UID process limits (`RLIMIT_NPROC`) collide with developer or API process threads, making strict in-process enforcement impossible without risking host instability or thread exhaustion.
+- **Interim Fix**: Process group creation via `os.setsid` and `os.killpg` on timeout.
+- **Required Permanent Fix (Phase 1)**: Isolated container execution with strict cgroup `--pids-limit 64`, memory caps (256MB), CPU limits, and seccomp filtering in an isolated executor service.
 
 ---
 

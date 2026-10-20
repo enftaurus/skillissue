@@ -1,13 +1,17 @@
 import asyncio
+import logging
 import os
-import resource
-import shutil
-import signal
-import subprocess
-import tempfile
 import time
-from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, asdict
+import uuid
+import httpx
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Literal
+
+from sandbox.executor.schemas import ExecuteRequest, TestCase as ExecutorTestCase, CheckerType
+from sandbox.executor.docker_manager import DockerSandboxManager
+from backend.app.core.errors import SandboxExecutionError
+
+logger = logging.getLogger("sandbox.runner")
 
 @dataclass
 class TestCase:
@@ -25,10 +29,11 @@ class TestCaseResult:
     stderr: str
     execution_time_ms: int
     is_hidden: bool = False
+    diff: Optional[str] = None
 
 @dataclass
 class ExecutionResult:
-    status: str  # 'passed', 'failed', 'timeout', 'compile_error', 'runtime_error'
+    status: str  # 'accepted', 'wrong_answer', 'runtime_error', 'time_limit_exceeded', 'memory_limit_exceeded', 'output_limit_exceeded', 'compile_error', 'internal_error'
     stdout: str
     stderr: str
     execution_time_ms: int
@@ -36,34 +41,19 @@ class ExecutionResult:
     test_results: List[TestCaseResult]
     total_passed: int
     total_tests: int
+    compile_output: str = ""
 
 class SandboxRunner:
-    TIMEOUT_SECONDS = 4.0
-    MAX_MEMORY_BYTES = 512 * 1024 * 1024  # 512 MB to support JVM initialization
-    MAX_OUTPUT_CHARS = 65536  # 64 KB maximum captured output
+    TIMEOUT_SECONDS = 3.0
+    MAX_MEMORY_MB = 256
 
     @classmethod
-    def _set_resource_limits(cls, lang: str = "python"):
-        """Set execution constraints for untrusted child process."""
-        # Establish isolated session/process group
-        try:
-            os.setsid()
-        except Exception:
-            pass
-
-        # CPU limit (seconds)
-        resource.setrlimit(resource.RLIMIT_CPU, (int(cls.TIMEOUT_SECONDS), int(cls.TIMEOUT_SECONDS) + 1))
-        # Prevent core dumps
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-        # Address space limit (for Python and C++)
-        if lang != "java":
-            resource.setrlimit(resource.RLIMIT_AS, (cls.MAX_MEMORY_BYTES, cls.MAX_MEMORY_BYTES))
-        # Limit process creation when running under dedicated container user
-        if hasattr(resource, 'RLIMIT_NPROC') and os.getuid() == 0:
-            try:
-                resource.setrlimit(resource.RLIMIT_NPROC, (64, 64))
-            except Exception:
-                pass
+    def get_execution_mode(cls) -> str:
+        mode = os.environ.get("SANDBOX_EXECUTION_MODE", "docker").lower()
+        if mode not in ("docker", "disabled", "mock"):
+            # Default to docker
+            mode = "docker"
+        return mode
 
     @classmethod
     def execute_submission(
@@ -71,85 +61,258 @@ class SandboxRunner:
         language: str,
         code: str,
         test_cases: List[TestCase],
+        checker_type: CheckerType = "exact",
+        float_tolerance: float = 1e-6,
     ) -> ExecutionResult:
-        lang = language.lower()
-        temp_dir = tempfile.mkdtemp(prefix="skillissue_sandbox_")
+        mode = cls.get_execution_mode()
+        env = os.environ.get("ENVIRONMENT", "development").lower()
+        is_production = env == "production"
 
+        # 1. Enforce Fail-Closed Policy in Production
+        if is_production and mode != "docker":
+            raise SandboxExecutionError(
+                f"Production requires SANDBOX_EXECUTION_MODE='docker'. Mode '{mode}' is disallowed in production."
+            )
+
+        # 2. Mock mode for offline development and fast unit testing
+        if mode == "mock":
+            return cls._execute_mock(language, code, test_cases)
+
+        # 3. Disabled mode
+        if mode == "disabled":
+            raise SandboxExecutionError("Code execution is currently disabled on this instance.")
+
+        # 4. Check for forbidden host execution attempt
+        allow_unsafe_host = os.environ.get("ALLOW_UNSAFE_HOST_EXECUTION", "0") == "1"
+        if allow_unsafe_host:
+            if is_production:
+                raise RuntimeError("ALLOW_UNSAFE_HOST_EXECUTION is strictly prohibited in production!")
+            logger.critical(
+                "CRITICAL SECURITY WARNING: ALLOW_UNSAFE_HOST_EXECUTION is enabled in development. "
+                "Code will run directly on the host without container isolation."
+            )
+            return cls._execute_host_subprocess_dev_only(language, code, test_cases)
+
+        # 5. Real Docker Container Execution (Production & Default)
+        executor_url = os.environ.get("EXECUTOR_URL")
+        executor_secret = os.environ.get("EXECUTOR_SECRET", "dev-executor-secret-token-32chars-min!")
+
+        job_id = str(uuid.uuid4())
+        executor_test_cases = [
+            ExecutorTestCase(
+                stdin=tc.stdin,
+                expected_stdout=tc.expected_stdout,
+                is_hidden=tc.is_hidden,
+            )
+            for tc in test_cases
+        ]
+        exec_req = ExecuteRequest(
+            job_id=job_id,
+            language=language.lower(),  # type: ignore
+            code=code,
+            test_cases=executor_test_cases,
+            checker_type=checker_type,
+            float_tolerance=float_tolerance,
+            time_limit_seconds=cls.TIMEOUT_SECONDS,
+            memory_limit_mb=cls.MAX_MEMORY_MB,
+        )
+
+        if executor_url:
+            # Delegate to remote/compose executor microservice
+            return cls._call_remote_executor(executor_url, executor_secret, exec_req, test_cases)
+        else:
+            # Execute via local Docker daemon with exact container security policy
+            return cls._call_local_docker(exec_req, test_cases)
+
+    @classmethod
+    def _call_remote_executor(
+        cls,
+        executor_url: str,
+        executor_secret: str,
+        exec_req: ExecuteRequest,
+        test_cases: List[TestCase],
+    ) -> ExecutionResult:
+        endpoint = f"{executor_url.rstrip('/')}/execute"
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                res = client.post(
+                    endpoint,
+                    json=exec_req.model_dump(),
+                    headers={"X-Executor-Secret": executor_secret},
+                )
+                if res.status_code == 429:
+                    raise SandboxExecutionError("Execution queue full. Please retry in a few seconds.")
+                if res.status_code != 200:
+                    raise SandboxExecutionError(f"Executor returned error {res.status_code}: {res.text}")
+                data = res.json()
+        except httpx.RequestError as e:
+            raise SandboxExecutionError(f"Failed to communicate with sandbox executor at {executor_url}: {str(e)}")
+
+        return cls._format_executor_response(data, test_cases)
+
+    @classmethod
+    def _call_local_docker(
+        cls,
+        exec_req: ExecuteRequest,
+        test_cases: List[TestCase],
+    ) -> ExecutionResult:
+        docker_mgr = DockerSandboxManager()
+        healthy, detail = docker_mgr.is_healthy()
+        if not healthy:
+            raise SandboxExecutionError(
+                f"Docker code execution is required but Docker is unavailable: {detail}. "
+                "Ensure Docker is running or set SANDBOX_EXECUTION_MODE=mock for offline development."
+            )
+
+        resp = docker_mgr.execute_job(exec_req)
+        return cls._format_executor_response(resp.model_dump(), test_cases)
+
+    @classmethod
+    def _format_executor_response(cls, data: Dict[str, Any], test_cases: List[TestCase]) -> ExecutionResult:
+        status_map = {
+            "accepted": "passed",
+            "wrong_answer": "failed",
+            "runtime_error": "runtime_error",
+            "time_limit_exceeded": "timeout",
+            "memory_limit_exceeded": "memory_limit_exceeded",
+            "output_limit_exceeded": "output_limit_exceeded",
+            "compile_error": "compile_error",
+            "internal_error": "runtime_error",
+        }
+        overall_status = status_map.get(data.get("status", "runtime_error"), "runtime_error")
+
+        results: List[TestCaseResult] = []
+        raw_test_results = data.get("test_results", [])
+        
+        for tr in raw_test_results:
+            idx = tr.get("test_index", 1)
+            t_status = tr.get("status", "failed")
+            is_passed = t_status == "passed"
+            is_hidden = tr.get("is_hidden", False)
+            
+            # Fetch corresponding expected stdout
+            exp_stdout = "[HIDDEN]"
+            inp_stdin = "[HIDDEN]"
+            if not is_hidden and idx <= len(test_cases):
+                exp_stdout = test_cases[idx - 1].expected_stdout
+                inp_stdin = test_cases[idx - 1].stdin
+
+            results.append(TestCaseResult(
+                test_index=idx,
+                passed=is_passed,
+                stdin=inp_stdin,
+                expected_stdout=exp_stdout,
+                actual_stdout=tr.get("stdout", "") if not is_hidden else ("[MATCH]" if is_passed else "[MISMATCH]"),
+                stderr=tr.get("stderr", "") if not is_hidden else "",
+                execution_time_ms=tr.get("execution_time_ms", 0),
+                is_hidden=is_hidden,
+                diff=tr.get("diff"),
+            ))
+
+        total_passed = data.get("tests_passed", sum(1 for r in results if r.passed))
+        total_tests = data.get("tests_total", len(test_cases))
+        peak_mem_kb = max(1024, data.get("peak_memory_bytes", 0) // 1024)
+
+        return ExecutionResult(
+            status=overall_status,
+            stdout="\n".join([r.actual_stdout for r in results if not r.is_hidden]),
+            stderr="\n".join([r.stderr for r in results if r.stderr and not r.is_hidden]),
+            execution_time_ms=data.get("execution_time_ms", 0),
+            memory_kb=peak_mem_kb,
+            test_results=results,
+            total_passed=total_passed,
+            total_tests=total_tests,
+            compile_output=data.get("compile_output", ""),
+        )
+
+    @classmethod
+    def _execute_mock(cls, language: str, code: str, test_cases: List[TestCase]) -> ExecutionResult:
+        # Check for syntax error indicators in code
+        if "syntax_error" in code.lower() or "compile_error" in code.lower():
+            return ExecutionResult(
+                status="compile_error",
+                stdout="",
+                stderr="Mock compiler error: syntax error on line 1",
+                execution_time_ms=10,
+                memory_kb=1024,
+                test_results=[],
+                total_passed=0,
+                total_tests=len(test_cases),
+                compile_output="Mock compiler error: syntax error on line 1",
+            )
+
+        # Check for timeout indicator
+        if "while true" in code.lower() or "timeout" in code.lower():
+            results = [
+                TestCaseResult(
+                    test_index=1,
+                    passed=False,
+                    stdin=test_cases[0].stdin if not test_cases[0].is_hidden else "[HIDDEN]",
+                    expected_stdout=test_cases[0].expected_stdout if not test_cases[0].is_hidden else "[HIDDEN]",
+                    actual_stdout="",
+                    stderr="Execution exceeded timeout limit",
+                    execution_time_ms=3000,
+                    is_hidden=test_cases[0].is_hidden,
+                )
+            ]
+            return ExecutionResult(
+                status="timeout",
+                stdout="",
+                stderr="Execution exceeded timeout limit of 3.0s",
+                execution_time_ms=3000,
+                memory_kb=1024,
+                test_results=results,
+                total_passed=0,
+                total_tests=len(test_cases),
+            )
+
+        results = []
+        for idx, tc in enumerate(test_cases, start=1):
+            results.append(TestCaseResult(
+                test_index=idx,
+                passed=True,
+                stdin=tc.stdin if not tc.is_hidden else "[HIDDEN]",
+                expected_stdout=tc.expected_stdout if not tc.is_hidden else "[HIDDEN]",
+                actual_stdout=tc.expected_stdout if not tc.is_hidden else "[MATCH]",
+                stderr="",
+                execution_time_ms=15,
+                is_hidden=tc.is_hidden,
+            ))
+
+        return ExecutionResult(
+            status="passed",
+            stdout=test_cases[0].expected_stdout if test_cases and not test_cases[0].is_hidden else "",
+            stderr="",
+            execution_time_ms=45,
+            memory_kb=2048,
+            test_results=results,
+            total_passed=len(test_cases),
+            total_tests=len(test_cases),
+        )
+
+    @classmethod
+    def _execute_host_subprocess_dev_only(cls, language: str, code: str, test_cases: List[TestCase]) -> ExecutionResult:
+        # Dev-only fallback behind explicit ALLOW_UNSAFE_HOST_EXECUTION=1
+        import tempfile, subprocess, shutil, resource
+        temp_dir = tempfile.mkdtemp(prefix="skillissue_unsafe_dev_")
         clean_env = {
-            "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-            "LANG": "en_US.UTF-8",
-            "LC_ALL": "en_US.UTF-8",
+            "PATH": "/usr/bin:/bin",
             "HOME": temp_dir,
             "TMPDIR": temp_dir,
-            "PYTHONPATH": "",
             "PYTHONDONTWRITEBYTECODE": "1",
         }
-
         try:
-            # 1. Compile step (if required)
-            if lang in ("cpp", "c++"):
-                src_path = os.path.join(temp_dir, "solution.cpp")
-                bin_path = os.path.join(temp_dir, "solution")
-                with open(src_path, "w", encoding="utf-8") as f:
+            lang = language.lower()
+            if lang in ("python", "py"):
+                src = os.path.join(temp_dir, "solution.py")
+                with open(src, "w") as f:
                     f.write(code)
-
-                comp = subprocess.run(
-                    ["g++", "-O2", "-std=c++17", "-o", bin_path, src_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    env=clean_env,
-                    cwd=temp_dir,
-                )
-                if comp.returncode != 0:
-                    return ExecutionResult(
-                        status="compile_error",
-                        stdout="",
-                        stderr=comp.stderr[:cls.MAX_OUTPUT_CHARS],
-                        execution_time_ms=0,
-                        memory_kb=0,
-                        test_results=[],
-                        total_passed=0,
-                        total_tests=len(test_cases),
-                    )
-                exec_cmd = [bin_path]
-
-            elif lang == "java":
-                src_path = os.path.join(temp_dir, "Solution.java")
-                with open(src_path, "w", encoding="utf-8") as f:
-                    f.write(code)
-
-                comp = subprocess.run(
-                    ["javac", src_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    env=clean_env,
-                    cwd=temp_dir,
-                )
-                if comp.returncode != 0:
-                    return ExecutionResult(
-                        status="compile_error",
-                        stdout="",
-                        stderr=comp.stderr[:cls.MAX_OUTPUT_CHARS],
-                        execution_time_ms=0,
-                        memory_kb=0,
-                        test_results=[],
-                        total_passed=0,
-                        total_tests=len(test_cases),
-                    )
-                exec_cmd = ["java", "-Xmx128m", "-XX:ReservedCodeCacheSize=32m", "-cp", temp_dir, "Solution"]
-
-            elif lang in ("python", "py"):
-                src_path = os.path.join(temp_dir, "solution.py")
-                with open(src_path, "w", encoding="utf-8") as f:
-                    f.write(code)
-                exec_cmd = ["python3", src_path]
+                cmd = ["python3", src]
             else:
                 return ExecutionResult(
                     status="runtime_error",
                     stdout="",
-                    stderr=f"Unsupported language: {language}. Supported: python, java, cpp",
+                    stderr="Host dev runner only supports Python.",
                     execution_time_ms=0,
                     memory_kb=0,
                     test_results=[],
@@ -157,109 +320,55 @@ class SandboxRunner:
                     total_tests=len(test_cases),
                 )
 
-            # 2. Execute against all test cases with process group limits
-            test_results: List[TestCaseResult] = []
-            overall_status = "passed"
-            all_stdout = []
-            all_stderr = []
-            max_time_ms = 0
-
+            results = []
             for idx, tc in enumerate(test_cases, start=1):
-                start = time.time()
-                timed_out = False
-                stdout = ""
-                stderr = ""
-                returncode = 0
-
                 p = subprocess.Popen(
-                    exec_cmd,
+                    cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                     cwd=temp_dir,
                     env=clean_env,
-                    preexec_fn=lambda: cls._set_resource_limits(lang),
                 )
-
                 try:
-                    stdout, stderr = p.communicate(input=tc.stdin, timeout=cls.TIMEOUT_SECONDS)
-                    returncode = p.returncode
-                except subprocess.TimeoutExpired:
-                    timed_out = True
-                    # Terminate the entire process tree using process group kill
-                    try:
-                        os.killpg(os.getpgid(p.pid), signal.SIGKILL)
-                    except Exception:
-                        try:
-                            p.kill()
-                        except Exception:
-                            pass
-                    try:
-                        p.communicate(timeout=0.2)
-                    except Exception:
-                        pass
-                    returncode = -9
-
-                elapsed_ms = int((time.time() - start) * 1000)
-                max_time_ms = max(max_time_ms, elapsed_ms)
-
-                # Bound captured outputs
-                stdout_bounded = (stdout or "")[:cls.MAX_OUTPUT_CHARS]
-                stderr_bounded = (stderr or "")[:cls.MAX_OUTPUT_CHARS]
-
-                if timed_out:
-                    overall_status = "timeout"
-                    test_results.append(
-                        TestCaseResult(
-                            test_index=idx,
-                            passed=False,
-                            stdin=tc.stdin if not tc.is_hidden else "[HIDDEN]",
-                            expected_stdout=tc.expected_stdout if not tc.is_hidden else "[HIDDEN]",
-                            actual_stdout="[EXECUTION_TIMEOUT]",
-                            stderr=f"Execution exceeded timeout limit of {cls.TIMEOUT_SECONDS}s",
-                            execution_time_ms=int(cls.TIMEOUT_SECONDS * 1000),
-                            is_hidden=tc.is_hidden,
-                        )
-                    )
-                    break
-
-                stdout_clean = stdout_bounded.strip()
-                expected_clean = tc.expected_stdout.strip()
-                passed = (returncode == 0) and (stdout_clean == expected_clean)
-
-                if not passed and overall_status == "passed":
-                    overall_status = "runtime_error" if returncode != 0 else "failed"
-
-                test_results.append(
-                    TestCaseResult(
+                    out, err = p.communicate(input=tc.stdin, timeout=cls.TIMEOUT_SECONDS)
+                    passed = (p.returncode == 0) and (out.strip() == tc.expected_stdout.strip())
+                    results.append(TestCaseResult(
                         test_index=idx,
                         passed=passed,
                         stdin=tc.stdin if not tc.is_hidden else "[HIDDEN]",
-                        expected_stdout=expected_clean if not tc.is_hidden else "[HIDDEN]",
-                        actual_stdout=stdout_clean if not tc.is_hidden else ("[MATCH]" if passed else "[MISMATCH]"),
-                        stderr=stderr_bounded,
-                        execution_time_ms=elapsed_ms,
+                        expected_stdout=tc.expected_stdout if not tc.is_hidden else "[HIDDEN]",
+                        actual_stdout=out.strip() if not tc.is_hidden else ("[MATCH]" if passed else "[MISMATCH]"),
+                        stderr=err if not tc.is_hidden else "",
+                        execution_time_ms=10,
                         is_hidden=tc.is_hidden,
-                    )
-                )
-                all_stdout.append(stdout_bounded)
-                if stderr_bounded:
-                    all_stderr.append(stderr_bounded)
+                    ))
+                except subprocess.TimeoutExpired:
+                    p.kill()
+                    results.append(TestCaseResult(
+                        test_index=idx,
+                        passed=False,
+                        stdin=tc.stdin if not tc.is_hidden else "[HIDDEN]",
+                        expected_stdout=tc.expected_stdout if not tc.is_hidden else "[HIDDEN]",
+                        actual_stdout="",
+                        stderr="Timeout",
+                        execution_time_ms=int(cls.TIMEOUT_SECONDS * 1000),
+                        is_hidden=tc.is_hidden,
+                    ))
 
-            total_passed = len([t for t in test_results if t.passed])
-
+            passed_count = sum(1 for r in results if r.passed)
+            status = "passed" if passed_count == len(test_cases) else "failed"
             return ExecutionResult(
-                status=overall_status,
-                stdout="\n".join(all_stdout),
-                stderr="\n".join(all_stderr),
-                execution_time_ms=max_time_ms,
+                status=status,
+                stdout="",
+                stderr="",
+                execution_time_ms=20,
                 memory_kb=1024,
-                test_results=test_results,
-                total_passed=total_passed,
+                test_results=results,
+                total_passed=passed_count,
                 total_tests=len(test_cases),
             )
-
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -269,5 +378,14 @@ class SandboxRunner:
         language: str,
         code: str,
         test_cases: List[TestCase],
+        checker_type: CheckerType = "exact",
+        float_tolerance: float = 1e-6,
     ) -> ExecutionResult:
-        return await asyncio.to_thread(cls.execute_submission, language, code, test_cases)
+        return await asyncio.to_thread(
+            cls.execute_submission,
+            language,
+            code,
+            test_cases,
+            checker_type,
+            float_tolerance,
+        )

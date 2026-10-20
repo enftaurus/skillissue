@@ -1,7 +1,7 @@
 # ADR 0007: Isolated Coding Sandbox Architecture
 
 - **Date:** 2026-10-20
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0010: Isolated Docker Code Execution Service](file:///home/rajababu/intern/skillissue/docs/decisions/0010-docker-code-execution-service.md)
 - **Context:** Candidate coding rounds in Python, Java, and C++ require running untrusted user-submitted code without endangering server infrastructure, hosting credentials, or adjacent user data.
 - **Decision:** Implement a private sandbox execution boundary with multi-layer isolation:
   1. Primary container mode: Ephemeral Docker container execution with `--net none`, memory caps (256MB), CPU time limit (5s), unprivileged UID (10001), and read-only rootfs.

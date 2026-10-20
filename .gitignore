@@ -57,3 +57,4 @@ sandbox/output/
 .DS_Store
 .vscode/
 .idea/
+digest.txt

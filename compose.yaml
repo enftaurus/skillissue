@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-skillissue}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      # Bound strictly to loopback to prevent external interface exposure
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - skillissue_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,7 +18,82 @@ services:
       timeout: 3s
       retries: 10
       start_period: 2s
+    networks:
+      - db_net
+
+  executor:
+    build:
+      context: .
+      dockerfile: sandbox/executor/Dockerfile
+    container_name: skillissue-executor
+    restart: unless-stopped
+    environment:
+      EXECUTOR_SECRET: ${EXECUTOR_SECRET:-dev-executor-secret-token-32chars-min!}
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-runc}
+      SANDBOX_MAX_WORKERS: ${SANDBOX_MAX_WORKERS:-4}
+    volumes:
+      # ONLY executor mounts docker socket; API never mounts docker socket
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - sandbox_net
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: skillissue-api
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-true}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-skillissue}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-skillissue}
+      SECRET_KEY: ${SECRET_KEY:-dev-insecure-secret-key-at-least-32-chars-long!}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-gH7_mK9_sP2_wL4_xR8_yT1_bV3_nQ6_zC5_dF0_jA=}
+      EXECUTOR_URL: http://executor:8001
+      EXECUTOR_SECRET: ${EXECUTOR_SECRET:-dev-executor-secret-token-32chars-min!}
+      SANDBOX_EXECUTION_MODE: ${SANDBOX_EXECUTION_MODE:-docker}
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      executor:
+        condition: service_healthy
+    networks:
+      - db_net
+      - sandbox_net
+      - frontend_net
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: skillissue-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      - api
+    networks:
+      - frontend_net
 
 volumes:
   skillissue_pgdata:
     name: skillissue_pgdata
+
+networks:
+  # Isolated network for database access (executor is NOT on db_net)
+  db_net:
+    driver: bridge
+  # Isolated network for API <-> Executor communication
+  sandbox_net:
+    driver: bridge
+  # Network for Frontend <-> API communication
+  frontend_net:
+    driver: bridge

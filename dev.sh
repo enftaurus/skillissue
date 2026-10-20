@@ -176,6 +176,15 @@ run_check() {
         log_warn "Frontend requires npm install."
     fi
 
+    log_info "Verifying sandbox Docker images..."
+    for img in skillissue-sandbox-python:latest skillissue-sandbox-cpp:latest skillissue-sandbox-java:latest; do
+        if docker image inspect "$img" &>/dev/null; then
+            log_info "Sandbox image $img is present."
+        else
+            log_warn "Sandbox image $img is missing. Run ./scripts/build_sandbox_images.sh to build."
+        fi
+    done
+
     log_info "All preliminary environment checks passed."
     exit 0
 }
