@@ -268,7 +268,14 @@ async def generate_question_node(
         elif m.get("role") == "assistant":
             prompt_messages.append(AIMessage(content=m.get("content", "")))
 
-    if next_action == "ask_follow_up":
+    if "Candidate Code Submission" in latest_answer or "Execution Status:" in latest_answer:
+        instruction = (
+            f"The candidate submitted their code solution. Execution details:\n{latest_answer}\n"
+            "Analyze their code and test outcomes. If tests passed, ask about time and space complexity (Big-O) or memory trade-offs. "
+            "If tests failed, timed out, or threw compilation/runtime errors, ask them what invariant was violated and how they would debug it. "
+            "Ask exactly ONE direct question. Under 3 sentences. No praise."
+        )
+    elif next_action == "ask_follow_up":
         instruction = (
             f"The candidate said: '{latest_answer}'. "
             "Ask exactly ONE direct follow-up probing concrete implementation details, numbers, or trade-offs. "

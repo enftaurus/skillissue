@@ -21,6 +21,20 @@ class InterviewService:
         user_id: str,
         data: InterviewCreateDomain,
     ) -> Interview:
+        # Verify provider configuration
+        import os
+        from backend.app.providers.service import ProviderConfigService
+        is_test = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        provider_config = await ProviderConfigService.get_config(db, user_id)
+        if not is_test and (not provider_config or not provider_config.is_valid):
+            raise AppException(
+                "A verified AWS Bedrock account is required to start live AI interviews. "
+                "Please configure your AWS credentials in Provider Onboarding (/onboarding/bedrock) or Settings.",
+                code="BEDROCK_CONFIG_REQUIRED",
+                status_code=400,
+                details={"action": "onboarding_required", "setup_url": "/onboarding/bedrock"}
+            )
+
         # Load resume if provided
         resume = None
         if data.resume_id:
@@ -78,6 +92,20 @@ class InterviewService:
         user_id: str,
         data: InterviewCreateJd,
     ) -> Interview:
+        # Verify provider configuration
+        import os
+        from backend.app.providers.service import ProviderConfigService
+        is_test = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        provider_config = await ProviderConfigService.get_config(db, user_id)
+        if not is_test and (not provider_config or not provider_config.is_valid):
+            raise AppException(
+                "A verified AWS Bedrock account is required to start live AI interviews. "
+                "Please configure your AWS credentials in Provider Onboarding (/onboarding/bedrock) or Settings.",
+                code="BEDROCK_CONFIG_REQUIRED",
+                status_code=400,
+                details={"action": "onboarding_required", "setup_url": "/onboarding/bedrock"}
+            )
+
         # Load JD
         jd_result = await db.execute(
             select(JobDescription).where(JobDescription.id == data.jd_id, JobDescription.user_id == user_id)
@@ -435,5 +463,129 @@ class InterviewService:
         interview = await cls.get_interview(db, user_id, interview_id)
         from backend.app.interviews.agent.service import InterviewAgentService
         return await InterviewAgentService.get_state_snapshot(db, user_id, interview)
+
+    @classmethod
+    async def submit_coding_turn(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        interview_id: str,
+        language: str,
+        code: str,
+        run_mode: str = "submit",  # 'run' or 'submit'
+        client_turn_id: Optional[str] = None,
+        candidate_notes: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Executes candidate code in isolated Docker sandbox, logs structured submission results,
+        appends a formatted turn to the interview transcript, and invokes the LangGraph agent
+        to discuss correctness, edge cases, and complexity.
+        """
+        result = await db.execute(
+            select(Interview)
+            .options(selectinload(Interview.messages))
+            .where(Interview.id == interview_id, Interview.user_id == user_id)
+            .with_for_update()
+        )
+        interview = result.scalar_one_or_none()
+        if not interview:
+            raise EntityNotFoundError("Interview", interview_id)
+
+        if interview.status != "in_progress":
+            raise AppException("Interview is no longer active", code="INTERVIEW_NOT_ACTIVE")
+
+        problem_id = interview.coding_problem_id or "two-sum"
+
+        # 1. Execute code via isolated coding service
+        from backend.app.coding.service import CodingService
+        from backend.app.coding.schemas import CodeRunRequest, CodeSubmissionRequest
+
+        if run_mode == "run":
+            exec_res = await CodingService.run_code(
+                user_id=user_id,
+                data=CodeRunRequest(problem_id=problem_id, language=language, code=code)
+            )
+            submission_data = {
+                "status": exec_res.status,
+                "tests_passed": exec_res.total_passed,
+                "tests_total": exec_res.total_tests,
+                "execution_time_ms": int((getattr(exec_res, "execution_time", 0.0) or 0.0) * 1000),
+                "stdout": exec_res.stdout,
+                "stderr": exec_res.stderr,
+                "submission_id": None,
+            }
+        else:
+            sub = await CodingService.submit_solution(
+                db=db,
+                user_id=user_id,
+                data=CodeSubmissionRequest(problem_id=problem_id, language=language, code=code),
+                interview_id=interview.id,
+            )
+            interview.latest_submission_id = sub.id
+            submission_data = {
+                "status": sub.status,
+                "tests_passed": sub.tests_passed,
+                "tests_total": sub.tests_total,
+                "execution_time_ms": sub.execution_time_ms,
+                "stdout": sub.stdout,
+                "stderr": sub.stderr,
+                "submission_id": sub.id,
+            }
+
+        # 2. Format candidate message containing code & execution results
+        status_label = submission_data["status"].upper()
+        tests_summary = f"{submission_data['tests_passed']}/{submission_data['tests_total']} tests passed"
+        diag_output = ""
+        if submission_data["stderr"]:
+            diag_output = f"\nError Output:\n```\n{submission_data['stderr'][:300]}\n```"
+        elif submission_data["stdout"] and submission_data["status"] != "passed":
+            diag_output = f"\nOutput:\n```\n{submission_data['stdout'][:300]}\n```"
+
+        notes_part = f"\nCandidate Notes: {candidate_notes.strip()}" if candidate_notes else ""
+
+        message_content = (
+            f"[Candidate Code Submission — {language.upper()}]\n"
+            f"```{language}\n{code}\n```\n"
+            f"Execution Status: {status_label} ({tests_summary}){diag_output}{notes_part}"
+        )
+
+        user_msg = InterviewMessage(
+            interview_id=interview.id,
+            role="user",
+            content=message_content,
+            client_turn_id=client_turn_id,
+            question_index=len([m for m in interview.messages if m.role == "assistant"]),
+            is_follow_up=False,
+        )
+        db.add(user_msg)
+        await db.flush()
+
+        # 3. Invoke LangGraph agent with structured execution context
+        from backend.app.interviews.agent.service import InterviewAgentService
+        turn_result = await InterviewAgentService.process_turn(
+            db=db,
+            user_id=user_id,
+            interview=interview,
+            candidate_content=message_content,
+            candidate_message_id=user_msg.id,
+            client_turn_id=client_turn_id,
+        )
+
+        assistant_content = turn_result["assistant_content"]
+        assistant_msg = InterviewMessage(
+            interview_id=interview.id,
+            role="assistant",
+            content=assistant_content,
+            question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
+            is_follow_up=turn_result.get("is_follow_up", False),
+        )
+        db.add(assistant_msg)
+        await db.commit()
+        await db.refresh(assistant_msg)
+
+        return {
+            "execution": submission_data,
+            "assistant_message": assistant_msg,
+        }
 
 

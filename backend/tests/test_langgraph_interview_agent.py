@@ -24,24 +24,24 @@ async def test_langgraph_interview_agent_workflow(client: httpx.AsyncClient):
         "/api/v1/providers/config",
         headers=headers,
         json={
-            "provider_name": "mock",
-            "preferred_model": "mock-qwen3-32b",
-            "default_model": "mock-qwen3-32b",
-            "interviewer_model": "mock-qwen3-32b",
-            "evaluation_model": "mock-qwen3-80b",
-            "coding_model": "mock-qwen3-coder",
-            "fallback_enabled": True,
-            "fallback_provider": "mock",
-            "fallback_model": "mock-fallback",
+            "provider_name": "bedrock",
+            "aws_region": "us-east-1",
+            "aws_access_key_id": "AKIAIOSFODNN7EXAMPLE",
+            "aws_secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            "preferred_model": "amazon.nova-lite-v1:0",
+            "default_model": "amazon.nova-lite-v1:0",
+            "interviewer_model": "amazon.nova-lite-v1:0",
+            "evaluation_model": "amazon.nova-pro-v1:0",
+            "coding_model": "amazon.nova-lite-v1:0",
             "temperature": 0.5,
             "max_tokens": 1024,
         }
     )
     assert config_res.status_code == 200
     cfg = config_res.json()
-    assert cfg["interviewer_model"] == "mock-qwen3-32b"
-    assert cfg["evaluation_model"] == "mock-qwen3-80b"
-    assert cfg["coding_model"] == "mock-qwen3-coder"
+    assert cfg["interviewer_model"] == "amazon.nova-lite-v1:0"
+    assert cfg["evaluation_model"] == "amazon.nova-pro-v1:0"
+    assert cfg["coding_model"] == "amazon.nova-lite-v1:0"
 
     # 3. Create domain interview powered by LangGraph agent
     start_res = await client.post(

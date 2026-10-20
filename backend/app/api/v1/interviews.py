@@ -7,7 +7,8 @@ from backend.app.auth.dependencies import get_current_active_user
 from backend.app.interviews.schemas import (
     InterviewCreateDomain, InterviewCreateJd, InterviewMessageCreate,
     InterviewResponse, InterviewDetailResponse, InterviewMessageResponse,
-    HintRequest, HintResponse, QuestionTurnResponse, InterviewStateResponse
+    HintRequest, HintResponse, QuestionTurnResponse, InterviewStateResponse,
+    CodingTurnRequest, CodingTurnResponse
 )
 from backend.app.interviews.service import InterviewService
 from backend.app.interviews.rubrics import get_rubric_for_category, RubricDimension
@@ -79,6 +80,28 @@ async def get_interview_state(
     db: AsyncSession = Depends(get_db),
 ):
     return await InterviewService.get_interview_state(db, current_user.id, interview_id)
+
+@router.post(
+    "/{interview_id}/coding-turn",
+    response_model=CodingTurnResponse,
+    dependencies=[Depends(rate_limit(max_requests=15, window_seconds=60))]
+)
+async def submit_coding_turn(
+    interview_id: str,
+    data: CodingTurnRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await InterviewService.submit_coding_turn(
+        db=db,
+        user_id=current_user.id,
+        interview_id=interview_id,
+        language=data.language,
+        code=data.code,
+        run_mode=data.run_mode,
+        client_turn_id=data.client_turn_id,
+        candidate_notes=data.candidate_notes,
+    )
 
 @router.post(
     "/{interview_id}/hint",

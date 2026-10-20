@@ -69,10 +69,10 @@ stop_services() {
         rm -f "$PID_DIR/frontend.pid"
     fi
 
-    # Check if postgres container should be stopped
+    # Check if containers should be stopped
     if [ "$1" == "--all" ]; then
-        log_info "Stopping Docker PostgreSQL container..."
-        docker compose stop postgres || true
+        log_info "Stopping Docker PostgreSQL and Executor containers..."
+        docker compose stop postgres executor || true
     fi
 }
 
@@ -176,14 +176,12 @@ run_check() {
         log_warn "Frontend requires npm install."
     fi
 
-    log_info "Verifying sandbox Docker images..."
-    for img in skillissue-sandbox-python:latest skillissue-sandbox-cpp:latest skillissue-sandbox-java:latest; do
-        if docker image inspect "$img" &>/dev/null; then
-            log_info "Sandbox image $img is present."
-        else
-            log_warn "Sandbox image $img is missing. Run ./scripts/build_sandbox_images.sh to build."
-        fi
-    done
+    log_info "Verifying persistent sandbox executor service..."
+    if docker compose ps executor &>/dev/null; then
+        log_info "Executor service definition verified in Compose."
+    else
+        log_warn "Executor container service not found."
+    fi
 
     log_info "All preliminary environment checks passed."
     exit 0
@@ -207,11 +205,11 @@ log_banner
 check_dependencies
 init_env
 
-# 1. Start PostgreSQL in Docker Compose
-log_info "Ensuring PostgreSQL 16 container is running..."
-docker compose up -d postgres
+# 1. Start PostgreSQL and Persistent Sandbox Executor in Docker Compose
+log_info "Ensuring PostgreSQL and Persistent Ubuntu Sandbox Executor are running..."
+docker compose up -d postgres executor
 
-log_info "Waiting for PostgreSQL to pass healthcheck..."
+log_info "Waiting for PostgreSQL and Executor readiness..."
 retries=25
 until docker compose exec -T postgres pg_isready -U postgres -d skillissue &>/dev/null || [ "$retries" -le 0 ]; do
     echo -n "."
@@ -225,6 +223,12 @@ if [ "$retries" -le 0 ]; then
     exit 1
 fi
 log_info "PostgreSQL is healthy on host port ${POSTGRES_PORT:-5433}."
+
+if curl -s -f http://127.0.0.1:8001/health &>/dev/null; then
+    log_info "Persistent Sandbox Executor is healthy on http://127.0.0.1:8001."
+else
+    log_warn "Persistent Executor is initializing in background."
+fi
 
 # 2. Check / Setup Python virtual environment
 if [ ! -d "backend/venv" ]; then

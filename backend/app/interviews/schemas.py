@@ -23,6 +23,13 @@ class InterviewMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
     client_turn_id: Optional[str] = Field(default=None, max_length=64)
 
+class CodingTurnRequest(BaseModel):
+    language: str = Field(default="python", pattern="^(python|cpp|java)$")
+    code: str = Field(min_length=1, max_length=50000)
+    run_mode: str = Field(default="submit", pattern="^(run|submit)$")
+    client_turn_id: Optional[str] = None
+    candidate_notes: Optional[str] = None
+
 class HintRequest(BaseModel):
     level: int = Field(ge=1, le=3, description="Socratic hint tier: 1=clarifying nudge, 2=algorithmic pattern, 3=pseudocode/structure")
     problem_id: Optional[str] = None
@@ -46,6 +53,10 @@ class InterviewMessageResponse(BaseModel):
     client_turn_id: Optional[str] = None
     created_at: datetime
 
+class CodingTurnResponse(BaseModel):
+    execution: Dict[str, Any]
+    assistant_message: InterviewMessageResponse
+
 class InterviewResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -59,6 +70,7 @@ class InterviewResponse(BaseModel):
     jd_id: Optional[str] = None
     resume_id: Optional[str] = None
     coding_problem_id: Optional[str] = None
+    latest_submission_id: Optional[str] = None
     hint_level_used: int = 0
     target_duration_minutes: int
     current_summary: str = ""

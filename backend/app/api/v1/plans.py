@@ -5,12 +5,22 @@ from backend.app.database.session import get_db
 from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
 from backend.app.plans.schemas import (
-    PlanResponse, PlanTaskResponse, TaskToggleRequest, PlanAdaptRequest, PlanAdaptPreviewResponse
+    PlanResponse, PlanTaskResponse, TaskToggleRequest, PlanAdaptRequest, PlanAdaptPreviewResponse,
+    CreateCustomPlanRequest, TaskStatusUpdateRequest, TaskRescheduleRequest,
+    AttachBacklogItemsRequest, SuggestedBacklogItemResponse
 )
 from backend.app.plans.service import PlanService
 
-
 router = APIRouter(prefix="/plans", tags=["Planly Improvement Plans"])
+
+@router.post("/custom", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
+async def create_custom_topic_plan(
+    data: CreateCustomPlanRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generates a structured, dated study curriculum based on user-selected topics and schedule."""
+    return await PlanService.create_custom_plan(db, current_user.id, data)
 
 @router.post("/generate/{evaluation_id}", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
 async def generate_plan_from_evaluation(
@@ -51,6 +61,24 @@ async def toggle_task_completion(
 ):
     return await PlanService.toggle_task_completion(db, current_user.id, task_id, data.is_completed)
 
+@router.put("/tasks/{task_id}/status", response_model=PlanTaskResponse)
+async def update_task_status(
+    task_id: str,
+    data: TaskStatusUpdateRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await PlanService.update_task_status(db, current_user.id, task_id, data.status)
+
+@router.put("/tasks/{task_id}/reschedule", response_model=PlanTaskResponse)
+async def reschedule_task(
+    task_id: str,
+    data: TaskRescheduleRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await PlanService.reschedule_task(db, current_user.id, task_id, data.new_date)
+
 @router.post("/{plan_id}/adapt/preview", response_model=PlanAdaptPreviewResponse)
 async def preview_plan_schedule_adaptation(
     plan_id: str,
@@ -67,5 +95,23 @@ async def adapt_plan_schedule(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await PlanService.adapt_plan(db, current_user.id, plan_id, data)
+    return await PlanService.adapt_plan(db, current_user.id, plan_id, data.days_behind)
 
+@router.get("/{plan_id}/suggested-backlog", response_model=List[SuggestedBacklogItemResponse])
+async def get_suggested_backlog(
+    plan_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Surfaces queued backlog items relevant to this sprint as suggestions."""
+    return await PlanService.get_suggested_backlog(db, current_user.id, plan_id)
+
+@router.post("/{plan_id}/backlog-items", response_model=PlanResponse)
+async def attach_backlog_items_to_plan(
+    plan_id: str,
+    data: AttachBacklogItemsRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Explicitly attaches selected backlog items to this sprint as dated tasks."""
+    return await PlanService.attach_backlog_items(db, current_user.id, plan_id, data.backlog_item_ids)
