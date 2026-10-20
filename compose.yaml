@@ -21,24 +21,36 @@ services:
     networks:
       - db_net
 
+  # --------------------------------------------------------------------------
+  # EXECUTOR (LOCAL DEVELOPMENT ONLY)
+  # WARNING: Runs with CAP_SYS_ADMIN and unconfined seccomp/apparmor solely to
+  # permit Bubblewrap namespaces inside Docker on local workstations.
+  # DO NOT deploy this container profile to production. See compose.prod.yaml.
+  # --------------------------------------------------------------------------
   executor:
     build:
       context: .
       dockerfile: sandbox/executor/Dockerfile
     container_name: skillissue-executor
     restart: unless-stopped
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SANDBOX_SECURITY_PROFILE: ${SANDBOX_SECURITY_PROFILE:-local_docker_dev}
       EXECUTOR_SECRET: ${EXECUTOR_SECRET:-dev-executor-secret-token-32chars-min!}
-      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-runc}
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-persistent}
       SANDBOX_MAX_WORKERS: ${SANDBOX_MAX_WORKERS:-4}
-    volumes:
-      # ONLY executor mounts docker socket; API never mounts docker socket
-      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:8001:8001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 3
+      retries: 5
     networks:
       - sandbox_net
 
@@ -57,7 +69,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-gH7_mK9_sP2_wL4_xR8_yT1_bV3_nQ6_zC5_dF0_jA=}
       EXECUTOR_URL: http://executor:8001
       EXECUTOR_SECRET: ${EXECUTOR_SECRET:-dev-executor-secret-token-32chars-min!}
-      SANDBOX_EXECUTION_MODE: ${SANDBOX_EXECUTION_MODE:-docker}
+      SANDBOX_EXECUTION_MODE: ${SANDBOX_EXECUTION_MODE:-persistent}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

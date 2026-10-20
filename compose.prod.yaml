@@ -1,0 +1,110 @@
+# ==============================================================================
+# Skill Issue — Production Deployment Specification (compose.prod.yaml)
+#
+# SECURITY ARCHITECTURE:
+# 1. Zero Host Privileges: Neither API nor Frontend ever holds CAP_SYS_ADMIN.
+# 2. Strict MicroVM Sandbox Boundary:
+#    In production, untrusted code execution MUST NOT share a Docker daemon
+#    with unconfined seccomp/AppArmor or CAP_SYS_ADMIN. The executor must run
+#    within a dedicated hardware-isolated microVM (AWS Firecracker, Kata Containers,
+#    or Fly.io isolated microVM) or under gVisor runsc runtime.
+# 3. Fail-Closed Guarantee: The executor container fails immediately on boot if
+#    ENVIRONMENT=production and SANDBOX_SECURITY_PROFILE != hardened_microvm / gvisor / dedicated_vm.
+# ==============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: skillissue-postgres-prod
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-skillissue}
+    volumes:
+      - skillissue_prod_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-skillissue}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - db_net
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: skillissue-api-prod
+    restart: always
+    # Security: Standard unprivileged container with read-only root where possible
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-skillissue}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-skillissue}
+      SECRET_KEY: ${SECRET_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      # In production, EXECUTOR_URL connects to the isolated microVM endpoint
+      EXECUTOR_URL: ${EXECUTOR_URL:-http://executor:8001}
+      EXECUTOR_SECRET: ${EXECUTOR_SECRET}
+      SANDBOX_EXECUTION_MODE: persistent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - db_net
+      - sandbox_net
+      - frontend_net
+
+  # In production clusters supporting Kata Containers or gVisor runtimes:
+  executor:
+    build:
+      context: .
+      dockerfile: sandbox/executor/Dockerfile
+    container_name: skillissue-executor-prod
+    restart: always
+    # When deployed with Kata Containers (microVM) or gVisor runtime:
+    # runtime: kata-qemu  # or: runsc
+    environment:
+      ENVIRONMENT: production
+      SANDBOX_SECURITY_PROFILE: ${SANDBOX_SECURITY_PROFILE:-hardened_microvm}
+      EXECUTOR_SECRET: ${EXECUTOR_SECRET}
+      SANDBOX_RUNTIME: persistent
+      SANDBOX_MAX_WORKERS: ${SANDBOX_MAX_WORKERS:-8}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - sandbox_net
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: skillissue-web-prod
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    networks:
+      - frontend_net
+
+volumes:
+  skillissue_prod_pgdata:
+    name: skillissue_prod_pgdata
+
+networks:
+  db_net:
+    internal: true
+  sandbox_net:
+    internal: true
+  frontend_net:

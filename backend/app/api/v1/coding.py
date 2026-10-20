@@ -6,10 +6,11 @@ from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
 from backend.app.coding.schemas import (
     CodeRunRequest, CodeExecutionResponse, CodingSubmissionResponse,
-    CodingProblemPublic, CodingLimitsResponse
+    CodingProblemPublic, CodingLimitsResponse, DsaCoachRequest, DsaCoachResponse
 )
 from backend.app.coding.problems import list_problems, get_problem
 from backend.app.coding.service import CodingService
+from backend.app.coding.coach import DsaCoachService
 from backend.app.core.errors import EntityNotFoundError
 from backend.app.core.rate_limit import rate_limit
 from backend.app.core.config import settings
@@ -82,3 +83,21 @@ async def list_submissions(
     db: AsyncSession = Depends(get_db),
 ):
     return await CodingService.list_user_submissions(db, current_user.id)
+
+@router.post(
+    "/problems/{problem_id}/coach",
+    response_model=DsaCoachResponse,
+    dependencies=[Depends(rate_limit(max_requests=10, window_seconds=60))]
+)
+async def get_dsa_coach_hint(
+    problem_id: str,
+    data: DsaCoachRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    On-demand Socratic DSA coaching agent.
+    Provides progressive hints without giving away the full solution.
+    Invoked ONLY on explicit user request.
+    """
+    return await DsaCoachService.get_hint(db, current_user.id, problem_id, data)

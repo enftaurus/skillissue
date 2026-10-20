@@ -49,10 +49,9 @@ class SandboxRunner:
 
     @classmethod
     def get_execution_mode(cls) -> str:
-        mode = os.environ.get("SANDBOX_EXECUTION_MODE", "docker").lower()
-        if mode not in ("docker", "disabled", "mock"):
-            # Default to docker
-            mode = "docker"
+        mode = os.environ.get("SANDBOX_EXECUTION_MODE", "persistent").lower()
+        if mode not in ("persistent", "docker", "disabled", "mock"):
+            mode = "persistent"
         return mode
 
     @classmethod
@@ -69,12 +68,12 @@ class SandboxRunner:
         is_production = env == "production"
 
         # 1. Enforce Fail-Closed Policy in Production
-        if is_production and mode != "docker":
+        if is_production and mode not in ("persistent", "docker"):
             raise SandboxExecutionError(
-                f"Production requires SANDBOX_EXECUTION_MODE='docker'. Mode '{mode}' is disallowed in production."
+                f"Production requires SANDBOX_EXECUTION_MODE='persistent' or 'docker'. Mode '{mode}' is disallowed in production."
             )
 
-        # 2. Mock mode for offline development and fast unit testing
+        # 2. Mock mode for unit tests only
         if mode == "mock":
             return cls._execute_mock(language, code, test_cases)
 
@@ -82,18 +81,7 @@ class SandboxRunner:
         if mode == "disabled":
             raise SandboxExecutionError("Code execution is currently disabled on this instance.")
 
-        # 4. Check for forbidden host execution attempt
-        allow_unsafe_host = os.environ.get("ALLOW_UNSAFE_HOST_EXECUTION", "0") == "1"
-        if allow_unsafe_host:
-            if is_production:
-                raise RuntimeError("ALLOW_UNSAFE_HOST_EXECUTION is strictly prohibited in production!")
-            logger.critical(
-                "CRITICAL SECURITY WARNING: ALLOW_UNSAFE_HOST_EXECUTION is enabled in development. "
-                "Code will run directly on the host without container isolation."
-            )
-            return cls._execute_host_subprocess_dev_only(language, code, test_cases)
-
-        # 5. Real Docker Container Execution (Production & Default)
+        # 4. Real Persistent Sandbox Execution (Default & Production)
         executor_url = os.environ.get("EXECUTOR_URL")
         executor_secret = os.environ.get("EXECUTOR_SECRET", "dev-executor-secret-token-32chars-min!")
 
@@ -118,11 +106,11 @@ class SandboxRunner:
         )
 
         if executor_url:
-            # Delegate to remote/compose executor microservice
+            # Delegate to persistent executor microservice
             return cls._call_remote_executor(executor_url, executor_secret, exec_req, test_cases)
         else:
-            # Execute via local Docker daemon with exact container security policy
-            return cls._call_local_docker(exec_req, test_cases)
+            # Execute via persistent isolated sandbox supervisor
+            return cls._call_local_isolated_sandbox(exec_req, test_cases)
 
     @classmethod
     def _call_remote_executor(
@@ -151,21 +139,22 @@ class SandboxRunner:
         return cls._format_executor_response(data, test_cases)
 
     @classmethod
-    def _call_local_docker(
+    def _call_local_isolated_sandbox(
         cls,
         exec_req: ExecuteRequest,
         test_cases: List[TestCase],
     ) -> ExecutionResult:
-        docker_mgr = DockerSandboxManager()
-        healthy, detail = docker_mgr.is_healthy()
+        from sandbox.executor.persistent_manager import PersistentSandboxManager
+        mgr = PersistentSandboxManager()
+        healthy, detail = mgr.is_healthy()
         if not healthy:
             raise SandboxExecutionError(
-                f"Docker code execution is required but Docker is unavailable: {detail}. "
-                "Ensure Docker is running or set SANDBOX_EXECUTION_MODE=mock for offline development."
+                f"Persistent isolated code executor is unavailable: {detail}."
             )
 
-        resp = docker_mgr.execute_job(exec_req)
+        resp = mgr.execute_job(exec_req)
         return cls._format_executor_response(resp.model_dump(), test_cases)
+
 
     @classmethod
     def _format_executor_response(cls, data: Dict[str, Any], test_cases: List[TestCase]) -> ExecutionResult:

@@ -1,7 +1,7 @@
 # ADR 0010: Isolated Docker Code Execution Service & Threat Model
 
 - **Date:** 2026-10-20
-- **Status:** Accepted (Supersedes [ADR 0007](file:///home/rajababu/intern/skillissue/docs/decisions/0007-coding-sandbox-architecture.md))
+- **Status:** Superseded by [ADR 0016](0016-persistent-executor-learning-backlog-and-dsa-coaching.md) (Container lifecycle updated to persistent Bubblewrap namespaces)
 - **Context:**
   The platform executes untrusted, student-submitted code in Python, Java, and C++. The previous implementation (ADR 0007) relied on in-process host subprocess execution with basic environment variable scrubbing. This left the host filesystem, network interfaces, and database credentials accessible to hostile code (`open("../.env").read()`). Host subprocess execution violates the core security invariants of Skill Issue and must be completely removed from production paths.
 
