@@ -35,3 +35,18 @@ class TaskToggleRequest(BaseModel):
 
 class PlanAdaptRequest(BaseModel):
     days_behind: int = Field(default=1, ge=1, le=14)
+
+class TaskShiftPreview(BaseModel):
+    task_id: str
+    title: str
+    current_day: int
+    new_day: int
+    task_type: str
+
+class PlanAdaptPreviewResponse(BaseModel):
+    plan_id: str
+    days_behind: int
+    current_total_days: int
+    new_total_days: int
+    shifted_tasks: List[TaskShiftPreview]
+

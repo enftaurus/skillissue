@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from backend.app.database.models import Interview, InterviewMessage, JobDescription, Resume
 from backend.app.interviews.schemas import (
-    InterviewCreateDomain, InterviewCreateJd, InterviewMessageCreate
+    InterviewCreateDomain, InterviewCreateJd, InterviewMessageCreate, HintResponse
 )
 from backend.app.interviews.prompts import build_interviewer_system_prompt
 from backend.app.providers.factory import ModelFactory
@@ -42,10 +42,12 @@ class InterviewService:
             status="in_progress",
             domain_skills=data.domain_skills,
             resume_id=data.resume_id,
+            coding_problem_id=data.coding_problem_id,
             target_duration_minutes=data.target_duration_minutes or 20,
         )
         db.add(interview)
         await db.flush()
+
 
         # Build system prompt
         system_prompt = build_interviewer_system_prompt(
@@ -125,6 +127,7 @@ class InterviewService:
             domain_skills=jd.extracted_skills,
             jd_id=jd.id,
             resume_id=data.resume_id,
+            coding_problem_id=data.coding_problem_id,
             target_duration_minutes=data.target_duration_minutes or 20,
         )
         db.add(interview)
@@ -324,3 +327,90 @@ class InterviewService:
             .order_by(Interview.created_at.desc())
         )
         return list(result.scalars().all())
+
+    @classmethod
+    async def request_hint(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        interview_id: str,
+        level: int,
+        problem_id: Optional[str] = None,
+        current_code: Optional[str] = None,
+    ) -> HintResponse:
+        interview = await cls.get_interview(db, user_id, interview_id)
+        if interview.status != "in_progress":
+            raise AppException("Cannot request hint on a completed interview", code="INTERVIEW_ALREADY_COMPLETED")
+
+        if level not in (1, 2, 3):
+            raise AppException("Hint level must be 1, 2, or 3", code="INVALID_HINT_LEVEL")
+
+        target_prob_id = problem_id or interview.coding_problem_id
+        problem = None
+        if target_prob_id:
+            from backend.app.coding.problems import get_problem
+            problem = get_problem(target_prob_id)
+
+        penalty_pct = 5 if level == 1 else (15 if level == 2 else 30)
+
+        tier_instructions = {
+            1: "Tier 1: Provide a clarifying question or subtle directional nudge without naming specific data structures or algorithms.",
+            2: "Tier 2: Reveal the core algorithmic pattern or optimal data structure (e.g., Two-Pointer, Hash Map, DP state representation) and explain why it fits.",
+            3: "Tier 3: Provide concrete pseudocode or structural step-by-step logic to implement the solution, but do not write finished code."
+        }
+        tier_desc = tier_instructions[level]
+
+        prob_context = f"Problem: {problem.title}\nDescription: {problem.description}" if problem else f"Interview Category: {interview.category}"
+        code_context = f"\nCandidate's Current Code:\n{current_code}" if current_code else ""
+
+        prompt = (
+            f"The candidate requested a Hint Level {level} during their technical coding round.\n"
+            f"{tier_desc}\n\n"
+            f"{prob_context}\n"
+            f"{code_context}\n\n"
+            "Provide the Socratic hint in 2-3 concise, direct sentences in a calm, professional engineering tone."
+        )
+        system_prompt = "You are a senior technical interviewer providing calibrated Socratic guidance to an engineering candidate."
+
+        provider = await ModelFactory.get_for_user(db, user_id, task_type="coding")
+        response = await provider.generate_text(prompt=prompt, system_prompt=system_prompt)
+        hint_text = response.text.strip()
+
+        prob_name = problem.title if problem else "Problem"
+        user_msg = InterviewMessage(
+            interview_id=interview.id,
+            role="user",
+            content=f"[Requested Level {level} Hint for {prob_name}]",
+            question_index=len(interview.messages) + 1,
+            is_follow_up=False,
+        )
+        db.add(user_msg)
+
+        assistant_msg = InterviewMessage(
+            interview_id=interview.id,
+            role="assistant",
+            content=f"[Level {level} Hint]: {hint_text}",
+            question_index=len(interview.messages) + 2,
+            is_follow_up=False,
+        )
+        db.add(assistant_msg)
+
+        interview.hint_level_used = max(interview.hint_level_used, level)
+        if target_prob_id and not interview.coding_problem_id:
+            interview.coding_problem_id = target_prob_id
+
+        await db.commit()
+        await db.refresh(assistant_msg)
+
+        await ProviderConfigService.record_usage(
+            db, user_id, response.input_tokens + response.output_tokens, response.estimated_cost_usd
+        )
+
+        return HintResponse(
+            level=level,
+            hint=hint_text,
+            penalty_pct=penalty_pct,
+            total_hint_level_used=interview.hint_level_used,
+            message_id=assistant_msg.id,
+        )
+

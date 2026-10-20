@@ -114,6 +114,8 @@ class Interview(Base):
     jd_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("job_descriptions.id", ondelete="SET NULL"), nullable=True)
     resume_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True)
     target_duration_minutes: Mapped[int] = mapped_column(Integer, default=20)
+    hint_level_used: Mapped[int] = mapped_column(Integer, default=0)
+    coding_problem_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -159,6 +161,7 @@ class Evaluation(Base):
     weaknesses: Mapped[List[str]] = mapped_column(JSON, default=list)
     missing_concepts: Mapped[List[str]] = mapped_column(JSON, default=list)
     evidence_excerpts: Mapped[List[Dict[str, str]]] = mapped_column(JSON, default=list)
+    question_feedback: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     suggested_corrections: Mapped[List[str]] = mapped_column(JSON, default=list)
     uncertainty_notes: Mapped[List[str]] = mapped_column(JSON, default=list)
     raw_llm_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

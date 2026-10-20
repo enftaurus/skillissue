@@ -4,9 +4,10 @@ from typing import Dict, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from backend.app.database.models import Interview, Evaluation, Plan, PlanTask
+from backend.app.database.models import Interview, Evaluation, Plan, PlanTask, UserSkill
 from backend.app.analytics.schemas import (
-    AnalyticsDashboardResponse, ScoreHistoryPoint, DimensionTrend, ReassessmentComparison
+    AnalyticsDashboardResponse, ScoreHistoryPoint, DimensionTrend, ReassessmentComparison,
+    UserSkillResponse
 )
 from backend.app.interviews.rubrics import get_rubric_for_category
 
@@ -140,6 +141,13 @@ class AnalyticsService:
         recurring_strengths = [s for s, count in strengths_counter.most_common(5)]
         recurring_weaknesses = [w for w, count in weaknesses_counter.most_common(5)]
 
+        # Fetch persistent user skill map
+        skills_res = await db.execute(
+            select(UserSkill).where(UserSkill.user_id == user_id).order_by(UserSkill.score.desc())
+        )
+        skills = list(skills_res.scalars().all())
+        skill_responses = [UserSkillResponse.model_validate(s) for s in skills]
+
         return AnalyticsDashboardResponse(
             total_interviews=total_interviews,
             completed_interviews=completed_interviews,
@@ -152,4 +160,12 @@ class AnalyticsService:
             recurring_strengths=recurring_strengths,
             recurring_weaknesses=recurring_weaknesses,
             reassessments=reassessments,
+            skills=skill_responses,
         )
+
+    @staticmethod
+    async def get_skills(db: AsyncSession, user_id: str) -> List[UserSkill]:
+        res = await db.execute(
+            select(UserSkill).where(UserSkill.user_id == user_id).order_by(UserSkill.score.desc())
+        )
+        return list(res.scalars().all())

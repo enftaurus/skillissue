@@ -1,9 +1,10 @@
+from datetime import datetime, timezone
 import json
-from typing import Optional
+from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from backend.app.database.models import Interview, Evaluation, SelfEvaluation
+from backend.app.database.models import Interview, Evaluation, SelfEvaluation, UserSkill
 from backend.app.evaluations.schemas import (
     SelfEvaluationCreate, EvaluationComparisonResponse, DimensionComparison
 )
@@ -83,6 +84,7 @@ class EvaluationService:
             target_role=interview.target_role,
             rubric=rubric,
             transcript_text=transcript_text,
+            hint_level_used=interview.hint_level_used,
         )
 
         provider = await ModelFactory.get_for_user(db, user_id, task_type="evaluation")
@@ -111,12 +113,63 @@ class EvaluationService:
             )
 
         dimension_scores = parsed.get("dimension_scores", {})
+
+        # Apply hint penalty if candidate used hints
+        if interview.hint_level_used > 0 and "problem_solving_rigor" in dimension_scores:
+            penalty_factor = 0.95 if interview.hint_level_used == 1 else (0.85 if interview.hint_level_used == 2 else 0.70)
+            orig_score = dimension_scores["problem_solving_rigor"].get("score", 3)
+            adjusted_score = max(1, int(round(orig_score * penalty_factor)))
+            dimension_scores["problem_solving_rigor"]["score"] = adjusted_score
+            dimension_scores["problem_solving_rigor"]["explanation"] += (
+                f" (Reflects Level {interview.hint_level_used} hint penalty)."
+            )
+
         strengths = parsed.get("strengths", [])
         weaknesses = parsed.get("weaknesses", [])
         missing_concepts = parsed.get("missing_concepts", [])
         evidence_excerpts = parsed.get("evidence_excerpts", [])
         suggested_corrections = parsed.get("suggested_corrections", [])
         uncertainty_notes = parsed.get("uncertainty_notes", [])
+
+        # Parse & verify question_feedback verbatim quotes against candidate transcript
+        candidate_turns = [m.content for m in interview.messages if m.role == "user"]
+        candidate_full_text = " ".join(candidate_turns)
+        raw_qf = parsed.get("question_feedback", [])
+        verified_question_feedback = []
+
+        for item in raw_qf:
+            if not isinstance(item, dict):
+                continue
+            q_idx = int(item.get("question_index", len(verified_question_feedback) + 1))
+            iq = str(item.get("interviewer_question", ""))
+            ca = str(item.get("candidate_answer", ""))
+            vq = str(item.get("verbatim_quote", "")).strip()
+            critique = str(item.get("critique", ""))
+            guide = str(item.get("strong_answer_guide", ""))
+            res = item.get("targeted_resource")
+
+            # Validate that verbatim quote actually exists in candidate's responses
+            if vq and vq.lower() in candidate_full_text.lower():
+                actual_quote = vq
+            elif 0 <= (q_idx - 1) < len(candidate_turns):
+                # Extract first substantive sentence from corresponding candidate response
+                cand_turn = candidate_turns[q_idx - 1]
+                sentences = [s.strip() for s in cand_turn.split(".") if len(s.strip()) > 10]
+                actual_quote = sentences[0] if sentences else cand_turn[:120]
+            elif candidate_turns:
+                actual_quote = candidate_turns[0][:120]
+            else:
+                actual_quote = vq
+
+            verified_question_feedback.append({
+                "question_index": q_idx,
+                "interviewer_question": iq,
+                "candidate_answer": ca,
+                "verbatim_quote": actual_quote,
+                "critique": critique,
+                "strong_answer_guide": guide,
+                "targeted_resource": res,
+            })
 
         # Check if an evaluation already exists for this interview
         existing_res = await db.execute(
@@ -130,6 +183,7 @@ class EvaluationService:
             evaluation.weaknesses = weaknesses
             evaluation.missing_concepts = missing_concepts
             evaluation.evidence_excerpts = evidence_excerpts
+            evaluation.question_feedback = verified_question_feedback
             evaluation.suggested_corrections = suggested_corrections
             evaluation.uncertainty_notes = uncertainty_notes
             evaluation.raw_llm_response = response.text
@@ -145,6 +199,7 @@ class EvaluationService:
                 weaknesses=weaknesses,
                 missing_concepts=missing_concepts,
                 evidence_excerpts=evidence_excerpts,
+                question_feedback=verified_question_feedback,
                 suggested_corrections=suggested_corrections,
                 uncertainty_notes=uncertainty_notes,
                 raw_llm_response=response.text,
@@ -157,6 +212,12 @@ class EvaluationService:
         if interview.status == "in_progress":
             interview.status = "completed"
 
+        # Update persistent UserSkill map for each evaluated rubric dimension using EMA
+        for dim_id, dim_data in dimension_scores.items():
+            dim_score_val = float(dim_data.get("score", 3))
+            normalized_score = round((dim_score_val / 5.0) * 100.0, 1)
+            await cls._update_user_skill(db, user_id, dim_id, normalized_score, evaluation.id)
+
         await db.commit()
         await db.refresh(evaluation)
 
@@ -166,6 +227,37 @@ class EvaluationService:
         )
 
         return evaluation
+
+    @classmethod
+    async def _update_user_skill(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        topic: str,
+        score: float,
+        eval_id: str,
+    ) -> None:
+        """Update or create persistent UserSkill with EMA (alpha=0.3) and confidence progression."""
+        skill_res = await db.execute(
+            select(UserSkill).where(UserSkill.user_id == user_id, UserSkill.topic == topic)
+        )
+        skill = skill_res.scalar_one_or_none()
+        if skill:
+            skill.score = round(0.7 * skill.score + 0.3 * score, 1)
+            skill.confidence = min(1.0, round(skill.confidence + 0.1, 2))
+            skill.last_seen = datetime.now(timezone.utc)
+            skill.evidence_refs = (skill.evidence_refs or []) + [{"type": "evaluation", "id": eval_id, "score": score}]
+        else:
+            skill = UserSkill(
+                user_id=user_id,
+                topic=topic,
+                score=score,
+                confidence=0.5,
+                last_seen=datetime.now(timezone.utc),
+                evidence_refs=[{"type": "evaluation", "id": eval_id, "score": score}]
+            )
+            db.add(skill)
+
 
     @staticmethod
     async def get_evaluation(db: AsyncSession, user_id: str, interview_id: str) -> Evaluation:

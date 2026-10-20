@@ -5,9 +5,10 @@ from backend.app.database.session import get_db
 from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
 from backend.app.plans.schemas import (
-    PlanResponse, PlanTaskResponse, TaskToggleRequest, PlanAdaptRequest
+    PlanResponse, PlanTaskResponse, TaskToggleRequest, PlanAdaptRequest, PlanAdaptPreviewResponse
 )
 from backend.app.plans.service import PlanService
+
 
 router = APIRouter(prefix="/plans", tags=["Planly Improvement Plans"])
 
@@ -50,6 +51,15 @@ async def toggle_task_completion(
 ):
     return await PlanService.toggle_task_completion(db, current_user.id, task_id, data.is_completed)
 
+@router.post("/{plan_id}/adapt/preview", response_model=PlanAdaptPreviewResponse)
+async def preview_plan_schedule_adaptation(
+    plan_id: str,
+    data: PlanAdaptRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await PlanService.preview_adapt_plan(db, current_user.id, plan_id, data.days_behind)
+
 @router.post("/{plan_id}/adapt", response_model=PlanResponse)
 async def adapt_plan_schedule(
     plan_id: str,
@@ -58,3 +68,4 @@ async def adapt_plan_schedule(
     db: AsyncSession = Depends(get_db),
 ):
     return await PlanService.adapt_plan(db, current_user.id, plan_id, data)
+

@@ -72,6 +72,12 @@ async def test_evaluation_and_planly_lifecycle(client: httpx.AsyncClient):
     assert len(eval_data["rubric_dimension_scores"]) > 0
     assert len(eval_data["strengths"]) > 0
     assert len(eval_data["weaknesses"]) > 0
+    assert "question_feedback" in eval_data
+    assert len(eval_data["question_feedback"]) > 0
+    qf_sample = eval_data["question_feedback"][0]
+    assert "verbatim_quote" in qf_sample
+    assert "critique" in qf_sample
+    assert "strong_answer_guide" in qf_sample
     eval_id = eval_data["id"]
 
     # 7. Get Self vs AI Comparison
@@ -109,7 +115,18 @@ async def test_evaluation_and_planly_lifecycle(client: httpx.AsyncClient):
     assert toggle_res.status_code == 200
     assert toggle_res.json()["is_completed"] is True
 
-    # 10. Adapt Plan (student missed 2 days)
+    # 10. Preview Plan Adaptation (without committing)
+    preview_res = await client.post(
+        f"/api/v1/plans/{plan_id}/adapt/preview",
+        headers=headers,
+        json={"days_behind": 2}
+    )
+    assert preview_res.status_code == 200
+    preview_data = preview_res.json()
+    assert preview_data["days_behind"] == 2
+    assert len(preview_data["shifted_tasks"]) > 0
+
+    # 11. Adapt Plan (student missed 2 days)
     adapt_res = await client.post(
         f"/api/v1/plans/{plan_id}/adapt",
         headers=headers,
@@ -119,7 +136,15 @@ async def test_evaluation_and_planly_lifecycle(client: httpx.AsyncClient):
     adapted_plan = adapt_res.json()
     assert adapted_plan["total_days"] >= plan["total_days"]
 
-    # 11. Verify Analytics Dashboard
+    # 12. Verify Persistent User Skills Endpoint
+    skills_res = await client.get("/api/v1/analytics/skills", headers=headers)
+    assert skills_res.status_code == 200
+    skills_list = skills_res.json()
+    assert len(skills_list) > 0
+    assert "score" in skills_list[0]
+    assert "confidence" in skills_list[0]
+
+    # 13. Verify Analytics Dashboard
     dash_res = await client.get("/api/v1/analytics/dashboard", headers=headers)
     assert dash_res.status_code == 200
     dash = dash_res.json()
@@ -128,6 +153,8 @@ async def test_evaluation_and_planly_lifecycle(client: httpx.AsyncClient):
     assert dash["plan_tasks_completed"] >= 1
     assert len(dash["score_history"]) >= 1
     assert len(dash["dimension_trends"]) > 0
+    assert len(dash["skills"]) > 0
+
 
 @pytest.mark.asyncio
 async def test_evaluation_parsing_failure_rejects_fabricated_score(client: httpx.AsyncClient):

@@ -33,8 +33,17 @@ class MockProvider(BaseProvider):
                     last_user_message = msg.get("content", "").lower()
                     break
 
+        # Socratic Hint Generation
+        if "hint level 1" in prompt_lower or "tier 1" in prompt_lower or ("hint" in prompt_lower and "level 1" in prompt_lower):
+            text = "Consider what data structure enables constant-time O(1) lookups for previously seen elements instead of scanning the array repeatedly."
+        elif "hint level 2" in prompt_lower or "tier 2" in prompt_lower or ("hint" in prompt_lower and "level 2" in prompt_lower):
+            text = "Use a Hash Map or Two-Pointer approach. For each element, check if the required complement or state is already present in your map before inserting."
+        elif "hint level 3" in prompt_lower or "tier 3" in prompt_lower or ("hint" in prompt_lower and "level 3" in prompt_lower):
+            text = "Iterate through elements with index: check if target minus current value exists in seen dictionary. If found, return indices. Otherwise store value with current index."
+        elif "hint" in prompt_lower:
+            text = "Focus on the invariant: what information do you need at each step, and what data structure lets you check or update that in O(1) time?"
         # Adaptive follow-up simulation
-        if "redis" in last_user_message or "redis" in prompt_lower:
+        elif "redis" in last_user_message or "redis" in prompt_lower:
             text = "You mentioned using Redis for caching. What specific eviction policy did you configure, and how did you verify that memory wouldn't be exhausted under peak throughput?"
         elif "fastapi" in last_user_message or "fastapi" in prompt_lower or "python" in last_user_message:
             text = "FastAPI handles concurrency with async event loops. Did your route handlers perform any blocking I/O or CPU-bound transformations that could block the main event loop thread?"
@@ -74,31 +83,155 @@ class MockProvider(BaseProvider):
         prompt_lower = prompt.lower()
         sys_lower = (system_prompt or "").lower()
 
-        # 1. Job Description Parsing
-        if "job description" in prompt_lower or "extract skills" in prompt_lower or "requirements" in prompt_lower:
-            parsed = {
-                "role": "Backend Software Engineer",
-                "extracted_skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "Distributed Systems", "REST APIs"],
-                "extracted_requirements": [
-                    "3+ years experience building concurrent backend services in Python or Go",
-                    "Deep understanding of relational database schema design, indexing, and query optimization in PostgreSQL",
-                    "Practical experience deploying containerized microservices in Docker/Kubernetes",
-                    "Solid grasp of asynchronous programming, message queues, and caching strategies"
-                ],
-                "recommended_focus": "Distributed system reliability, concurrency, and database query optimization."
-            }
+        # 1. Post-Interview Evaluation
+        if "<untrusted_candidate_transcript>" in prompt or "rubric" in sys_lower or "evaluat" in sys_lower:
+            # Extract candidate lines from prompt if present
+            candidate_lines = []
+            for line in prompt.split("\n"):
+                clean = line.strip()
+                if clean.startswith("Candidate:"):
+                    candidate_lines.append(clean.split("Candidate:", 1)[1].strip())
 
-        # 2. Resume Parsing
-        elif "resume" in prompt_lower or "extract resume" in prompt_lower:
+
+            first_cand_quote = candidate_lines[0] if candidate_lines else "We used Redis for caching to speed up user session lookups."
+            first_sentence = first_cand_quote.split(".")[0] + "." if "." in first_cand_quote else first_cand_quote
+            second_cand_quote = candidate_lines[1] if len(candidate_lines) > 1 else first_cand_quote
+            second_sentence = second_cand_quote.split(".")[0] + "." if "." in second_cand_quote else second_cand_quote
+
+            # Calibrate score and dimensions based on transcript signals
+            is_flawed = any(k in prompt_lower for k in [
+                "acid relational",
+                "replace postgresql",
+                "time.sleep",
+                "computers are fast",
+                "double for loop",
+                "linear time because",
+                "without a base case",
+                "unindexed n+1",
+                "dropped production table",
+                "shout at",
+                "shouted at",
+                "blame the intern",
+                "blamed the intern",
+            ])
+            is_exceptional = any(k in prompt_lower for k in [
+                "xfetch",
+                "saga",
+                "idempotency keys",
+                "isolation levels",
+                "ssi",
+                "sentinel nodes",
+                "chaos engineering",
+                "active-active",
+                "error budgets",
+                "blameless postmortem",
+                "prometheus",
+                "sliding window"
+            ])
+
+
+            if is_flawed:
+                overall_score = 38.0
+                dim_score = 1
+                explanation_prefix = "Significant architectural misconception or flawed complexity analysis. "
+                strengths = ["Communicates with confidence, though technical premises were incorrect."]
+                weaknesses = [
+                    "Fundamental misunderstanding of core principles or complexity guarantees.",
+                    "Unable to correctly analyze failure scenarios or trade-offs."
+                ]
+            elif is_exceptional:
+                overall_score = 88.5
+                dim_score = 5
+                explanation_prefix = "High-caliber engineering depth. Rigorous reasoning with explicit trade-offs and quantitative telemetry metrics. "
+                strengths = [
+                    "Staff-level mastery of failure modes, resilience patterns, and telemetry.",
+                    "Precise explanation of distributed consistency and algorithmic trade-offs."
+                ]
+                weaknesses = [
+                    "Could further articulate operational failure thresholds under regional network partitions."
+                ]
+            else:
+                overall_score = 76.5
+                dim_score = 4
+                explanation_prefix = "Solid baseline engineering competency with minor gaps in operational edge cases. "
+                strengths = [
+                    "Direct and concise technical explanations without buzzword padding.",
+                    "Demonstrated practical familiarity with primary frameworks and database tools."
+                ]
+                weaknesses = [
+                    "Relies on unverified assertions of speed or reliability without citing quantitative latency distributions (p95/p99)."
+                ]
+
             parsed = {
-                "detected_skills": ["Python", "FastAPI", "Docker", "PostgreSQL", "Git", "Redis", "SQLAlchemy", "Linux"],
-                "project_contexts": [
-                    {"name": "Skill Issue Core API", "tech": "Python, FastAPI, Postgres", "summary": "Engineered modular interview prep engine with AES-256 credential encryption and sandbox isolation."}
+                "overall_score": overall_score,
+                "dimension_scores": {
+                    "technical_depth": {
+                        "score": dim_score,
+                        "max_score": 5,
+                        "explanation": f"{explanation_prefix}Candidate addressed the system mechanisms.",
+                        "evidence_quote": first_sentence
+                    },
+                    "system_design_tradeoffs": {
+                        "score": max(1, dim_score - 1 if is_flawed else (dim_score if not is_exceptional else 4)),
+                        "max_score": 5,
+                        "explanation": f"{explanation_prefix}Evaluated boundary conditions and failure behavior.",
+                        "evidence_quote": second_sentence
+                    },
+                    "communication_clarity": {
+                        "score": 4 if not is_flawed else 3,
+                        "max_score": 5,
+                        "explanation": "Structured explanation without excessive conversational filler.",
+                        "evidence_quote": first_sentence
+                    },
+                    "problem_solving_rigor": {
+                        "score": dim_score,
+                        "max_score": 5,
+                        "explanation": f"{explanation_prefix}Methodical walk-through of the problem statement.",
+                        "evidence_quote": second_sentence
+                    }
+                },
+                "strengths": strengths,
+                "weaknesses": weaknesses,
+                "missing_concepts": [
+                    "Distributed locks and mutex semantics in concurrent workers",
+                    "Telemetry telemetry metrics (p95 latency, saturations, error budgets)"
+                ],
+                "evidence_excerpts": [
+                    {"quote": first_sentence, "critique": "Key assertion from candidate's response."},
+                    {"quote": second_sentence, "critique": "Follow-up explanation provided during the interview."}
+                ],
+                "question_feedback": [
+                    {
+                        "question_index": 1,
+                        "interviewer_question": "Can you walk me through your technical approach and key decisions?",
+                        "candidate_answer": first_cand_quote,
+                        "verbatim_quote": first_sentence,
+                        "critique": "Critique on technical depth and architectural assumptions." if not is_flawed else "Severe technical misconception cited directly in transcript.",
+                        "strong_answer_guide": "Senior answers establish baseline metrics, trade-offs, and failure boundaries clearly.",
+                        "targeted_resource": "Architecture & Engineering System Design Principles"
+                    },
+                    {
+                        "question_index": 2,
+                        "interviewer_question": "How do you handle system degradation or scale bottlenecks?",
+                        "candidate_answer": second_cand_quote,
+                        "verbatim_quote": second_sentence,
+                        "critique": "Proactively address edge cases, backpressure, and graceful degradation.",
+                        "strong_answer_guide": "Explain circuit breaker patterns, request coalescing, or exponential backoff with jitter.",
+                        "targeted_resource": "Resilient Distributed Systems Engineering"
+                    }
+                ],
+                "suggested_corrections": [
+                    "Whenever claiming a performance win in an interview, state the metric: 'Reduced median latency from 140ms to 18ms under 2,000 req/sec'.",
+                    "Proactively address failure modes: mention circuit breakers, timeouts, and fallback policies."
+                ],
+                "uncertainty_notes": [
+                    "DSA algorithmic complexity was evaluated based on the provided transcript turn."
                 ]
             }
 
-        # 3. Planly Multi-Day Improvement Plan
-        elif "plan" in prompt_lower or "roadmap" in prompt_lower or "planly" in sys_lower or "planly" in prompt_lower or "improvement" in prompt_lower:
+
+        # 4. Planly Multi-Day Improvement Plan
+        elif "<untrusted_evaluation_data>" in prompt_lower or "planly" in sys_lower or "daily practice routines" in sys_lower or "roadmap" in prompt_lower or "plan" in prompt_lower:
             parsed = {
                 "title": "7-Day High-Throughput Reliability & Systems Sprint",
                 "target_role": "Backend Software Engineer",
@@ -175,61 +308,26 @@ class MockProvider(BaseProvider):
                 ]
             }
 
-        # 4. Post-Interview Evaluation
-        elif "evaluat" in prompt_lower or "rubric" in prompt_lower or "score" in sys_lower:
+        # 3. Job Description Parsing
+        elif "<raw_job_description>" in prompt or "job description" in prompt_lower or "extract skills" in prompt_lower:
             parsed = {
-                "overall_score": 78.5,
-                "dimension_scores": {
-                    "technical_depth": {
-                        "score": 4,
-                        "max_score": 5,
-                        "explanation": "Demonstrated sound understanding of async I/O and database transactions, though lacked concrete p99 latency measurement methodology.",
-                        "evidence_quote": "We used Redis for caching to speed up user session lookups."
-                    },
-                    "system_design_tradeoffs": {
-                        "score": 3,
-                        "max_score": 5,
-                        "explanation": "Identified cache invalidation as a risk, but did not address network partition or failover modes.",
-                        "evidence_quote": "If the cache goes down we just fall back to Postgres queries."
-                    },
-                    "communication_clarity": {
-                        "score": 4,
-                        "max_score": 5,
-                        "explanation": "Direct and concise responses without filler words. Stayed focused on the technical mechanisms.",
-                        "evidence_quote": "We configured EXPLAIN ANALYZE to identify unindexed foreign key lookups."
-                    },
-                    "problem_solving_rigor": {
-                        "score": 4,
-                        "max_score": 5,
-                        "explanation": "Methodical debugging approach when asked about concurrency contention.",
-                        "evidence_quote": "We isolated the blocking database transaction with connection pool telemetry."
-                    }
-                },
-                "strengths": [
-                    "Strong mental model of asynchronous programming and database indexing fundamentals.",
-                    "Comfortable acknowledging boundaries of design decisions rather than bluffing.",
-                    "Direct communication style suited for senior engineering discussions."
+                "role": "Backend Software Engineer",
+                "extracted_skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "Distributed Systems", "REST APIs"],
+                "extracted_requirements": [
+                    "3+ years experience building concurrent backend services in Python or Go",
+                    "Deep understanding of relational database schema design, indexing, and query optimization in PostgreSQL",
+                    "Practical experience deploying containerized microservices in Docker/Kubernetes",
+                    "Solid grasp of asynchronous programming, message queues, and caching strategies"
                 ],
-                "weaknesses": [
-                    "Relies on vague claims of 'speed improvements' without citing quantitative benchmark numbers (p95/p99 latency, RPS).",
-                    "Overlooked cache stampede risks when cache keys expire under heavy traffic spikes.",
-                    "Did not specify worker health check failure thresholds."
-                ],
-                "missing_concepts": [
-                    "Cache-aside pattern vs write-through caching trade-offs",
-                    "Distributed locks and mutex semantics in concurrent workers",
-                    "Telemetry telemetry metrics (p95 latency, saturations, error budgets)"
-                ],
-                "evidence_excerpts": [
-                    {"quote": "We added Redis and it made everything 10x faster.", "critique": "Unverified quantitative claim; could not explain benchmark baseline."},
-                    {"quote": "We used EXPLAIN ANALYZE to spot the sequential scan.", "critique": "Solid concrete debugging methodology."}
-                ],
-                "suggested_corrections": [
-                    "Whenever claiming a performance win in an interview, state the metric: 'Reduced median latency from 140ms to 18ms under 2,000 req/sec'.",
-                    "Proactively address cache failure modes: mention circuit breakers, stale-while-revalidate, or rate limiters."
-                ],
-                "uncertainty_notes": [
-                    "DSA algorithmic complexity was not tested in this round; recommend a dedicated DSA session."
+                "recommended_focus": "Distributed system reliability, concurrency, and database query optimization."
+            }
+
+        # 4. Resume Parsing
+        elif "<raw_resume_text>" in prompt or "resume" in prompt_lower or "extract resume" in prompt_lower:
+            parsed = {
+                "detected_skills": ["Python", "FastAPI", "Docker", "PostgreSQL", "Git", "Redis", "SQLAlchemy", "Linux"],
+                "project_contexts": [
+                    {"name": "Skill Issue Core API", "tech": "Python, FastAPI, Postgres", "summary": "Engineered modular interview prep engine with AES-256 credential encryption and sandbox isolation."}
                 ]
             }
 

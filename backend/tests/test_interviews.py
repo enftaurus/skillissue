@@ -114,3 +114,28 @@ async def test_domain_and_jd_interview_workflows(client: httpx.AsyncClient):
     assert jd_interview["mode"] == "jd"
     assert jd_interview["jd_id"] == jd_id
     assert len(jd_interview["messages"]) == 1
+
+    # 9. Request Socratic hints (tiers 1 and 2)
+    hint_res1 = await client.post(
+        f"/api/v1/interviews/{jd_interview['id']}/hint",
+        headers=headers,
+        json={"level": 1, "problem_id": "two-sum", "current_code": "def twoSum(nums, target): pass"}
+    )
+    assert hint_res1.status_code == 200
+    hint1 = hint_res1.json()
+    assert hint1["level"] == 1
+    assert hint1["penalty_pct"] == 5
+    assert hint1["total_hint_level_used"] == 1
+    assert len(hint1["hint"]) > 10
+
+    hint_res2 = await client.post(
+        f"/api/v1/interviews/{jd_interview['id']}/hint",
+        headers=headers,
+        json={"level": 2, "problem_id": "two-sum"}
+    )
+    assert hint_res2.status_code == 200
+    hint2 = hint_res2.json()
+    assert hint2["level"] == 2
+    assert hint2["penalty_pct"] == 15
+    assert hint2["total_hint_level_used"] == 2
+

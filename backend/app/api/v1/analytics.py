@@ -1,9 +1,10 @@
+from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database.session import get_db
 from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
-from backend.app.analytics.schemas import AnalyticsDashboardResponse
+from backend.app.analytics.schemas import AnalyticsDashboardResponse, UserSkillResponse
 from backend.app.analytics.service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["Analytics & Progress"])
@@ -14,3 +15,11 @@ async def get_analytics_dashboard(
     db: AsyncSession = Depends(get_db),
 ):
     return await AnalyticsService.get_dashboard(db, current_user.id)
+
+@router.get("/skills", response_model=List[UserSkillResponse])
+async def get_user_skills(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    skills = await AnalyticsService.get_skills(db, current_user.id)
+    return [UserSkillResponse.model_validate(s) for s in skills]

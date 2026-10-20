@@ -3,11 +3,14 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from backend.app.database.models import Plan, PlanTask, Evaluation, UserProfile
-from backend.app.plans.schemas import PlanAdaptRequest
+from backend.app.database.models import Plan, PlanTask, Evaluation, UserProfile, UserSkill
+from backend.app.plans.schemas import (
+    PlanAdaptRequest, PlanAdaptPreviewResponse, TaskShiftPreview
+)
 from backend.app.providers.factory import ModelFactory
 from backend.app.core.errors import EntityNotFoundError, AppException
 from backend.app.core.logging import logger
+
 
 def sanitize_external_resources(resources: Any) -> List[Dict[str, str]]:
     """Sanitize external resources to strictly permit http:// and https:// URLs, preventing XSS."""
@@ -156,9 +159,50 @@ class PlanService:
                 if max_completed >= plan.current_day and max_completed < plan.total_days:
                     plan.current_day = max_completed + 1
 
+        # If task was marked completed, grant persistent skill progression
+        if is_completed and plan and plan.target_skills:
+            topic = plan.target_skills[0]
+            await cls._update_user_skill_from_task(db, user_id, topic, plan.id, task.id)
+
         await db.commit()
         await db.refresh(task)
         return task
+
+    @classmethod
+    async def preview_adapt_plan(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        plan_id: str,
+        days_behind: int,
+    ) -> PlanAdaptPreviewResponse:
+        """Computes projected task day shift without committing changes to database."""
+        plan = await cls.get_plan_by_id(db, user_id, plan_id)
+        uncompleted_tasks = [t for t in plan.tasks if not t.is_completed]
+        days_shift = max(1, min(14, days_behind))
+        new_total_days = min(14, plan.total_days + days_shift)
+
+        shifted_previews: List[TaskShiftPreview] = []
+        start_day = plan.current_day
+        for idx, task in enumerate(uncompleted_tasks):
+            projected_day = min(new_total_days, start_day + idx)
+            shifted_previews.append(
+                TaskShiftPreview(
+                    task_id=task.id,
+                    title=task.title,
+                    current_day=task.day_number,
+                    new_day=projected_day,
+                    task_type=task.task_type,
+                )
+            )
+
+        return PlanAdaptPreviewResponse(
+            plan_id=plan.id,
+            days_behind=days_shift,
+            current_total_days=plan.total_days,
+            new_total_days=new_total_days,
+            shifted_tasks=shifted_previews,
+        )
 
     @classmethod
     async def adapt_plan(
@@ -190,6 +234,37 @@ class PlanService:
 
         await db.commit()
         return await cls.get_plan_by_id(db, user_id, plan_id)
+
+    @classmethod
+    async def _update_user_skill_from_task(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        topic: str,
+        plan_id: str,
+        task_id: str,
+    ) -> None:
+        """Update or create persistent UserSkill when a student completes a Planly task."""
+        skill_res = await db.execute(
+            select(UserSkill).where(UserSkill.user_id == user_id, UserSkill.topic == topic)
+        )
+        skill = skill_res.scalar_one_or_none()
+        if skill:
+            skill.score = round(0.7 * skill.score + 0.3 * 85.0, 1)
+            skill.confidence = min(1.0, round(skill.confidence + 0.05, 2))
+            skill.last_seen = datetime.now(timezone.utc)
+            skill.evidence_refs = (skill.evidence_refs or []) + [{"type": "plan_task", "id": task_id, "score": 85.0}]
+        else:
+            skill = UserSkill(
+                user_id=user_id,
+                topic=topic,
+                score=80.0,
+                confidence=0.5,
+                last_seen=datetime.now(timezone.utc),
+                evidence_refs=[{"type": "plan_task", "id": task_id, "score": 85.0}]
+            )
+            db.add(skill)
+
 
     @staticmethod
     async def get_active_plan(db: AsyncSession, user_id: str) -> Optional[Plan]:

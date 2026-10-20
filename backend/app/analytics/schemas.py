@@ -33,6 +33,15 @@ class ReassessmentComparison(BaseModel):
     stable_dimensions: List[str]
     declined_dimensions: List[str]
 
+class UserSkillResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    topic: str
+    score: float
+    confidence: float
+    last_seen: datetime
+    evidence_refs: List[Dict[str, Any]] = []
+
 class AnalyticsDashboardResponse(BaseModel):
     total_interviews: int
     completed_interviews: int
@@ -45,3 +54,4 @@ class AnalyticsDashboardResponse(BaseModel):
     recurring_strengths: List[str]
     recurring_weaknesses: List[str]
     reassessments: List[ReassessmentComparison]
+    skills: List[UserSkillResponse] = []

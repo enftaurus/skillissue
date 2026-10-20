@@ -21,6 +21,7 @@ CRITICAL INVARIANTS:
 
 RUBRIC DIMENSIONS TO EVALUATE:
 {rubric_definitions}
+{hint_penalty_instructions}
 
 OUTPUT INSTRUCTIONS:
 Return a JSON object conforming strictly to this format:
@@ -40,6 +41,17 @@ Return a JSON object conforming strictly to this format:
   "evidence_excerpts": [
     {{"quote": "...", "critique": "..."}}
   ],
+  "question_feedback": [
+    {{
+      "question_index": 1,
+      "interviewer_question": "Exact question asked by interviewer",
+      "candidate_answer": "Summary of candidate's answer",
+      "verbatim_quote": "Exact substring quoted from candidate's answer in the transcript",
+      "critique": "Direct, dry, Gilfoyle-style critique highlighting technical gaps or unverified claims",
+      "strong_answer_guide": "Concrete explanation of what a staff-level answer would include",
+      "targeted_resource": "Specific technical topic or guide to study"
+    }}
+  ],
   "suggested_corrections": ["...", "..."],
   "uncertainty_notes": ["..."]
 }}
@@ -50,14 +62,25 @@ def build_evaluation_prompt(
     target_role: str,
     rubric: List[RubricDimension],
     transcript_text: str,
+    hint_level_used: int = 0,
 ) -> tuple[str, str]:
     rubric_defs = []
     for dim in rubric:
         criteria_str = "\n".join([f"      {score}/5: {text}" for score, text in dim.scoring_criteria.items()])
         rubric_defs.append(f"- **{dim.name}** (`{dim.id}`): {dim.description}\n{criteria_str}")
 
+    hint_penalty_text = ""
+    if hint_level_used > 0:
+        penalty_pct = 5 if hint_level_used == 1 else (15 if hint_level_used == 2 else 30)
+        hint_penalty_text = (
+            f"\nNOTE ON SOCRATIC HINTS USED: The candidate requested hints during this coding session "
+            f"up to Level {hint_level_used}. Apply a penalty of -{penalty_pct}% to the problem_solving_rigor "
+            f"dimension score and cite this in the explanation.\n"
+        )
+
     system_prompt = EVALUATION_SYSTEM_PROMPT.format(
-        rubric_definitions="\n\n".join(rubric_defs)
+        rubric_definitions="\n\n".join(rubric_defs),
+        hint_penalty_instructions=hint_penalty_text,
     )
 
     user_prompt = (
@@ -66,7 +89,8 @@ def build_evaluation_prompt(
         "<untrusted_candidate_transcript>\n"
         f"{transcript_text}\n"
         "</untrusted_candidate_transcript>\n\n"
-        "Evaluate the candidate transcript within the <untrusted_candidate_transcript> tags strictly against the rubric dimensions and output the structured JSON evaluation."
+        "Evaluate the candidate transcript within the <untrusted_candidate_transcript> tags strictly against the rubric dimensions and output the structured JSON evaluation including question_feedback."
     )
 
     return system_prompt, user_prompt
+

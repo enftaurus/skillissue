@@ -25,6 +25,15 @@ class EvidenceExcerpt(BaseModel):
     quote: str
     critique: str
 
+class QuestionFeedback(BaseModel):
+    question_index: int
+    interviewer_question: str
+    candidate_answer: str
+    verbatim_quote: str
+    critique: str
+    strong_answer_guide: str
+    targeted_resource: Optional[str] = None
+
 class EvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -35,6 +44,7 @@ class EvaluationResponse(BaseModel):
     weaknesses: List[str]
     missing_concepts: List[str]
     evidence_excerpts: List[Dict[str, str]]
+    question_feedback: List[QuestionFeedback] = []
     suggested_corrections: List[str]
     uncertainty_notes: List[str]
     tokens_used: int
