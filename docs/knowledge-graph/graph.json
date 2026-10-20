@@ -65,6 +65,18 @@
       "description": "Comparable rubric score trends and mastery indicators over time"
     },
     {
+      "id": "feat:learning_backlog",
+      "type": "ProductFeature",
+      "name": "Learning Backlog & Weakness Diagnostics",
+      "description": "Evidence-based interview weakness triage, persistent topic backlog, and manual sprint imports"
+    },
+    {
+      "id": "feat:dsa_coaching",
+      "type": "ProductFeature",
+      "name": "DSA Arena Socratic AI Coach",
+      "description": "On-demand 4-tier pedagogical guidance and mental model probing without code reveals"
+    },
+    {
       "id": "adr:0001",
       "type": "ADR",
       "path": "docs/decisions/0001-modular-monolith.md",
@@ -113,6 +125,54 @@
       "name": "Planly Adaptive Learning Engine"
     },
     {
+      "id": "adr:0009",
+      "type": "ADR",
+      "path": "docs/decisions/0009-recommended-model-lineup.md",
+      "name": "Recommended Model Lineup & Task-Based Routing"
+    },
+    {
+      "id": "adr:0010",
+      "type": "ADR",
+      "path": "docs/decisions/0010-docker-code-execution-service.md",
+      "name": "Isolated Docker Code Execution Service & Threat Model"
+    },
+    {
+      "id": "adr:0011",
+      "type": "ADR",
+      "path": "docs/decisions/0011-security-auth-session-and-judging-masking.md",
+      "name": "Auth Session Management, Outside-Sandbox Hardening & Judging Masking"
+    },
+    {
+      "id": "adr:0012",
+      "type": "ADR",
+      "path": "docs/decisions/0012-persistent-skills-verbatim-feedback-and-hints.md",
+      "name": "Persistent Skill Map, Verbatim Feedback, Socratic Hints & Planly Preview"
+    },
+    {
+      "id": "adr:0013",
+      "type": "ADR",
+      "path": "docs/decisions/0013-frontend-experience-and-design-system.md",
+      "name": "Frontend Experience, Design System, Monaco Workspace & Calibrated Analytics"
+    },
+    {
+      "id": "adr:0014",
+      "type": "ADR",
+      "path": "docs/decisions/0014-langchain-langgraph-agent-architecture.md",
+      "name": "LangChain + LangGraph Agent Architecture, Provider Preferences, Short-Term Memory & Evaluation"
+    },
+    {
+      "id": "adr:0015",
+      "type": "ADR",
+      "path": "docs/decisions/0015-reliability-audit-turn-idempotency-and-grounded-evaluations.md",
+      "name": "Reliability Audit, Turn Idempotency, Memory Rolling, and Grounded Evaluations"
+    },
+    {
+      "id": "adr:0016",
+      "type": "ADR",
+      "path": "docs/decisions/0016-persistent-executor-learning-backlog-and-dsa-coaching.md",
+      "name": "Persistent Sandboxed Executor, User-Controlled Learning Backlog, Bedrock BYOC Onboarding, and Socratic DSA Coaching"
+    },
+    {
       "id": "route:auth",
       "type": "APIRoute",
       "path": "backend/app/api/v1/auth.py",
@@ -141,6 +201,12 @@
       "type": "APIRoute",
       "path": "backend/app/api/v1/plans.py",
       "name": "/api/v1/plans/*"
+    },
+    {
+      "id": "route:learning_backlog",
+      "type": "APIRoute",
+      "path": "backend/app/api/v1/learning_backlog.py",
+      "name": "/api/v1/learning-backlog/*"
     },
     {
       "id": "route:resumes",
@@ -207,6 +273,18 @@
       "type": "Service",
       "path": "backend/app/plans/service.py",
       "name": "PlanService"
+    },
+    {
+      "id": "svc:learning_backlog",
+      "type": "Service",
+      "path": "backend/app/learning_backlog/service.py",
+      "name": "LearningBacklogService"
+    },
+    {
+      "id": "svc:dsa_coach",
+      "type": "Service",
+      "path": "backend/app/coding/coach.py",
+      "name": "DsaCoach"
     },
     {
       "id": "svc:resumes",
@@ -288,6 +366,11 @@
       "name": "plan_tasks"
     },
     {
+      "id": "tbl:learning_backlog",
+      "type": "DatabaseTable",
+      "name": "learning_backlog"
+    },
+    {
       "id": "tbl:coding_submissions",
       "type": "DatabaseTable",
       "name": "coding_submissions"
@@ -311,6 +394,12 @@
       "path": "sandbox/runner.py"
     },
     {
+      "id": "sand:persistent_executor",
+      "type": "Module",
+      "name": "PersistentSandboxSupervisor",
+      "path": "sandbox/executor/persistent_manager.py"
+    },
+    {
       "id": "fe:auth",
       "type": "FrontendFeature",
       "path": "frontend/src/features/auth",
@@ -321,6 +410,12 @@
       "type": "FrontendFeature",
       "path": "frontend/src/features/provider-settings",
       "name": "ProviderSettingsUI"
+    },
+    {
+      "id": "fe:onboarding",
+      "type": "FrontendFeature",
+      "path": "frontend/src/features/provider-settings/AwsBedrockOnboardingPage.tsx",
+      "name": "BedrockOnboardingUI"
     },
     {
       "id": "fe:setup",
@@ -345,6 +440,12 @@
       "type": "FrontendFeature",
       "path": "frontend/src/features/improvement-plan",
       "name": "PlanlyUI"
+    },
+    {
+      "id": "fe:coding",
+      "type": "FrontendFeature",
+      "path": "frontend/src/features/coding",
+      "name": "CodingPracticeUI"
     },
     {
       "id": "fe:progress",
@@ -445,6 +546,31 @@
       "type": "implements"
     },
     {
+      "source": "svc:learning_backlog",
+      "target": "feat:learning_backlog",
+      "type": "implements"
+    },
+    {
+      "source": "svc:dsa_coach",
+      "target": "feat:dsa_coaching",
+      "type": "implements"
+    },
+    {
+      "source": "fe:coding",
+      "target": "feat:dsa_coaching",
+      "type": "implements"
+    },
+    {
+      "source": "sand:persistent_executor",
+      "target": "feat:coding_sandbox",
+      "type": "implements"
+    },
+    {
+      "source": "fe:onboarding",
+      "target": "feat:byoc",
+      "type": "implements"
+    },
+    {
       "source": "adr:0001",
       "target": "feat:interview_session",
       "type": "governs"
@@ -490,6 +616,21 @@
       "type": "governs"
     },
     {
+      "source": "adr:0016",
+      "target": "feat:learning_backlog",
+      "type": "governs"
+    },
+    {
+      "source": "adr:0016",
+      "target": "feat:dsa_coaching",
+      "type": "governs"
+    },
+    {
+      "source": "adr:0016",
+      "target": "sand:persistent_executor",
+      "type": "governs"
+    },
+    {
       "source": "route:auth",
       "target": "svc:auth",
       "type": "calls"
@@ -515,6 +656,11 @@
       "type": "calls"
     },
     {
+      "source": "route:learning_backlog",
+      "target": "svc:learning_backlog",
+      "type": "calls"
+    },
+    {
       "source": "route:resumes",
       "target": "svc:resumes",
       "type": "calls"
@@ -527,6 +673,11 @@
     {
       "source": "route:coding",
       "target": "svc:coding",
+      "type": "calls"
+    },
+    {
+      "source": "route:coding",
+      "target": "svc:dsa_coach",
       "type": "calls"
     },
     {
@@ -560,6 +711,11 @@
       "type": "calls"
     },
     {
+      "source": "svc:dsa_coach",
+      "target": "svc:model_factory",
+      "type": "calls"
+    },
+    {
       "source": "svc:model_factory",
       "target": "prov:bedrock",
       "type": "resolves"
@@ -572,6 +728,11 @@
     {
       "source": "svc:coding",
       "target": "sand:runner",
+      "type": "calls"
+    },
+    {
+      "source": "sand:runner",
+      "target": "sand:persistent_executor",
       "type": "calls"
     },
     {
@@ -627,6 +788,16 @@
     {
       "source": "svc:plans",
       "target": "tbl:plan_tasks",
+      "type": "writes"
+    },
+    {
+      "source": "svc:plans",
+      "target": "tbl:learning_backlog",
+      "type": "writes"
+    },
+    {
+      "source": "svc:learning_backlog",
+      "target": "tbl:learning_backlog",
       "type": "writes"
     },
     {

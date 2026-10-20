@@ -23,6 +23,11 @@ graph TD
     sand_runner -->|implements| feat_coding_sandbox
     svc_analytics -->|implements| feat_progress_analytics
     fe_progress -->|implements| feat_progress_analytics
+    svc_learning_backlog -->|implements| feat_learning_backlog
+    svc_dsa_coach -->|implements| feat_dsa_coaching
+    fe_coding -->|implements| feat_dsa_coaching
+    sand_persistent_executor -->|implements| feat_coding_sandbox
+    fe_onboarding -->|implements| feat_byoc
     adr_0001 -->|governs| feat_interview_session
     adr_0002 -->|governs| svc_model_factory
     adr_0003 -->|governs| prov_bedrock
@@ -32,23 +37,30 @@ graph TD
     adr_0006 -->|governs| svc_evaluations
     adr_0007 -->|governs| sand_runner
     adr_0008 -->|governs| svc_plans
+    adr_0016 -->|governs| feat_learning_backlog
+    adr_0016 -->|governs| feat_dsa_coaching
+    adr_0016 -->|governs| sand_persistent_executor
     route_auth -->|calls| svc_auth
     route_providers -->|calls| svc_providers
     route_interviews -->|calls| svc_interviews
     route_evaluations -->|calls| svc_evaluations
     route_plans -->|calls| svc_plans
+    route_learning_backlog -->|calls| svc_learning_backlog
     route_resumes -->|calls| svc_resumes
     route_job_descriptions -->|calls| svc_jds
     route_coding -->|calls| svc_coding
+    route_coding -->|calls| svc_dsa_coach
     route_analytics -->|calls| svc_analytics
     svc_interviews -->|calls| svc_model_factory
     svc_evaluations -->|calls| svc_model_factory
     svc_resumes -->|calls| svc_model_factory
     svc_jds -->|calls| svc_model_factory
     svc_plans -->|calls| svc_model_factory
+    svc_dsa_coach -->|calls| svc_model_factory
     svc_model_factory -->|resolves| prov_bedrock
     svc_model_factory -->|resolves| prov_mock
     svc_coding -->|calls| sand_runner
+    sand_runner -->|calls| sand_persistent_executor
     svc_auth -->|writes| tbl_users
     svc_auth -->|writes| tbl_user_profiles
     svc_providers -->|writes| tbl_provider_configs
@@ -60,6 +72,8 @@ graph TD
     svc_evaluations -->|writes| tbl_evaluations
     svc_plans -->|writes| tbl_plans
     svc_plans -->|writes| tbl_plan_tasks
+    svc_plans -->|writes| tbl_learning_backlog
+    svc_learning_backlog -->|writes| tbl_learning_backlog
     svc_coding -->|writes| tbl_coding_submissions
     svc_analytics -->|reads| tbl_evaluations
     svc_analytics -->|reads| tbl_interviews

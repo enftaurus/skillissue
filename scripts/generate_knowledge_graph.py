@@ -28,6 +28,8 @@ NODES = [
     {"id": "feat:planly", "type": "ProductFeature", "name": "Planly Adaptive Improvement Engine", "description": "Dynamic multi-day task generation, learning resources, schedule adjustment"},
     {"id": "feat:coding_sandbox", "type": "ProductFeature", "name": "Secure Coding Sandbox", "description": "Isolated execution of Python, Java, and C++ code submissions"},
     {"id": "feat:progress_analytics", "type": "ProductFeature", "name": "Progress Tracking & Reassessment", "description": "Comparable rubric score trends and mastery indicators over time"},
+    {"id": "feat:learning_backlog", "type": "ProductFeature", "name": "Learning Backlog & Weakness Diagnostics", "description": "Evidence-based interview weakness triage, persistent topic backlog, and manual sprint imports"},
+    {"id": "feat:dsa_coaching", "type": "ProductFeature", "name": "DSA Arena Socratic AI Coach", "description": "On-demand 4-tier pedagogical guidance and mental model probing without code reveals"},
 
     # ADRs
     {"id": "adr:0001", "type": "ADR", "path": "docs/decisions/0001-modular-monolith.md", "name": "Modular Monolith Architecture"},
@@ -38,6 +40,14 @@ NODES = [
     {"id": "adr:0006", "type": "ADR", "path": "docs/decisions/0006-interview-engine-and-rubrics.md", "name": "Unified Interview Engine & Post-Evaluation"},
     {"id": "adr:0007", "type": "ADR", "path": "docs/decisions/0007-coding-sandbox-architecture.md", "name": "Isolated Execution Sandbox"},
     {"id": "adr:0008", "type": "ADR", "path": "docs/decisions/0008-planly-adaptive-engine.md", "name": "Planly Adaptive Learning Engine"},
+    {"id": "adr:0009", "type": "ADR", "path": "docs/decisions/0009-recommended-model-lineup.md", "name": "Recommended Model Lineup & Task-Based Routing"},
+    {"id": "adr:0010", "type": "ADR", "path": "docs/decisions/0010-docker-code-execution-service.md", "name": "Isolated Docker Code Execution Service & Threat Model"},
+    {"id": "adr:0011", "type": "ADR", "path": "docs/decisions/0011-security-auth-session-and-judging-masking.md", "name": "Auth Session Management, Outside-Sandbox Hardening & Judging Masking"},
+    {"id": "adr:0012", "type": "ADR", "path": "docs/decisions/0012-persistent-skills-verbatim-feedback-and-hints.md", "name": "Persistent Skill Map, Verbatim Feedback, Socratic Hints & Planly Preview"},
+    {"id": "adr:0013", "type": "ADR", "path": "docs/decisions/0013-frontend-experience-and-design-system.md", "name": "Frontend Experience, Design System, Monaco Workspace & Calibrated Analytics"},
+    {"id": "adr:0014", "type": "ADR", "path": "docs/decisions/0014-langchain-langgraph-agent-architecture.md", "name": "LangChain + LangGraph Agent Architecture, Provider Preferences, Short-Term Memory & Evaluation"},
+    {"id": "adr:0015", "type": "ADR", "path": "docs/decisions/0015-reliability-audit-turn-idempotency-and-grounded-evaluations.md", "name": "Reliability Audit, Turn Idempotency, Memory Rolling, and Grounded Evaluations"},
+    {"id": "adr:0016", "type": "ADR", "path": "docs/decisions/0016-persistent-executor-learning-backlog-and-dsa-coaching.md", "name": "Persistent Sandboxed Executor, User-Controlled Learning Backlog, Bedrock BYOC Onboarding, and Socratic DSA Coaching"},
 
     # API Routes
     {"id": "route:auth", "type": "APIRoute", "path": "backend/app/api/v1/auth.py", "name": "/api/v1/auth/*"},
@@ -45,6 +55,7 @@ NODES = [
     {"id": "route:interviews", "type": "APIRoute", "path": "backend/app/api/v1/interviews.py", "name": "/api/v1/interviews/*"},
     {"id": "route:evaluations", "type": "APIRoute", "path": "backend/app/api/v1/evaluations.py", "name": "/api/v1/evaluations/*"},
     {"id": "route:plans", "type": "APIRoute", "path": "backend/app/api/v1/plans.py", "name": "/api/v1/plans/*"},
+    {"id": "route:learning_backlog", "type": "APIRoute", "path": "backend/app/api/v1/learning_backlog.py", "name": "/api/v1/learning-backlog/*"},
     {"id": "route:resumes", "type": "APIRoute", "path": "backend/app/api/v1/resumes.py", "name": "/api/v1/resumes/*"},
     {"id": "route:job_descriptions", "type": "APIRoute", "path": "backend/app/api/v1/job_descriptions.py", "name": "/api/v1/job_descriptions/*"},
     {"id": "route:coding", "type": "APIRoute", "path": "backend/app/api/v1/coding.py", "name": "/api/v1/coding/*"},
@@ -58,6 +69,8 @@ NODES = [
     {"id": "svc:interviews", "type": "Service", "path": "backend/app/interviews/service.py", "name": "InterviewService"},
     {"id": "svc:evaluations", "type": "Service", "path": "backend/app/evaluations/service.py", "name": "EvaluationService"},
     {"id": "svc:plans", "type": "Service", "path": "backend/app/plans/service.py", "name": "PlanService"},
+    {"id": "svc:learning_backlog", "type": "Service", "path": "backend/app/learning_backlog/service.py", "name": "LearningBacklogService"},
+    {"id": "svc:dsa_coach", "type": "Service", "path": "backend/app/coding/coach.py", "name": "DsaCoach"},
     {"id": "svc:resumes", "type": "Service", "path": "backend/app/resumes/service.py", "name": "ResumeService"},
     {"id": "svc:jds", "type": "Service", "path": "backend/app/job_descriptions/service.py", "name": "JobDescriptionService"},
     {"id": "svc:coding", "type": "Service", "path": "backend/app/coding/service.py", "name": "CodingService"},
@@ -75,6 +88,7 @@ NODES = [
     {"id": "tbl:evaluations", "type": "DatabaseTable", "name": "evaluations"},
     {"id": "tbl:plans", "type": "DatabaseTable", "name": "plans"},
     {"id": "tbl:plan_tasks", "type": "DatabaseTable", "name": "plan_tasks"},
+    {"id": "tbl:learning_backlog", "type": "DatabaseTable", "name": "learning_backlog"},
     {"id": "tbl:coding_submissions", "type": "DatabaseTable", "name": "coding_submissions"},
 
     # Model Providers
@@ -83,14 +97,17 @@ NODES = [
 
     # Sandbox
     {"id": "sand:runner", "type": "Module", "name": "SandboxRunner", "path": "sandbox/runner.py"},
+    {"id": "sand:persistent_executor", "type": "Module", "name": "PersistentSandboxSupervisor", "path": "sandbox/executor/persistent_manager.py"},
 
     # Frontend Features
     {"id": "fe:auth", "type": "FrontendFeature", "path": "frontend/src/features/auth", "name": "AuthUI"},
     {"id": "fe:settings", "type": "FrontendFeature", "path": "frontend/src/features/provider-settings", "name": "ProviderSettingsUI"},
+    {"id": "fe:onboarding", "type": "FrontendFeature", "path": "frontend/src/features/provider-settings/AwsBedrockOnboardingPage.tsx", "name": "BedrockOnboardingUI"},
     {"id": "fe:setup", "type": "FrontendFeature", "path": "frontend/src/features/interview-setup", "name": "InterviewSetupUI"},
     {"id": "fe:session", "type": "FrontendFeature", "path": "frontend/src/features/interview-session", "name": "InterviewSessionUI"},
     {"id": "fe:evaluation", "type": "FrontendFeature", "path": "frontend/src/features/evaluation", "name": "EvaluationUI"},
     {"id": "fe:planly", "type": "FrontendFeature", "path": "frontend/src/features/improvement-plan", "name": "PlanlyUI"},
+    {"id": "fe:coding", "type": "FrontendFeature", "path": "frontend/src/features/coding", "name": "CodingPracticeUI"},
     {"id": "fe:progress", "type": "FrontendFeature", "path": "frontend/src/features/progress", "name": "ProgressUI"}
 ]
 
@@ -114,6 +131,11 @@ EDGES = [
     {"source": "sand:runner", "target": "feat:coding_sandbox", "type": "implements"},
     {"source": "svc:analytics", "target": "feat:progress_analytics", "type": "implements"},
     {"source": "fe:progress", "target": "feat:progress_analytics", "type": "implements"},
+    {"source": "svc:learning_backlog", "target": "feat:learning_backlog", "type": "implements"},
+    {"source": "svc:dsa_coach", "target": "feat:dsa_coaching", "type": "implements"},
+    {"source": "fe:coding", "target": "feat:dsa_coaching", "type": "implements"},
+    {"source": "sand:persistent_executor", "target": "feat:coding_sandbox", "type": "implements"},
+    {"source": "fe:onboarding", "target": "feat:byoc", "type": "implements"},
 
     # ADR constraints
     {"source": "adr:0001", "target": "feat:interview_session", "type": "governs"},
@@ -125,6 +147,9 @@ EDGES = [
     {"source": "adr:0006", "target": "svc:evaluations", "type": "governs"},
     {"source": "adr:0007", "target": "sand:runner", "type": "governs"},
     {"source": "adr:0008", "target": "svc:plans", "type": "governs"},
+    {"source": "adr:0016", "target": "feat:learning_backlog", "type": "governs"},
+    {"source": "adr:0016", "target": "feat:dsa_coaching", "type": "governs"},
+    {"source": "adr:0016", "target": "sand:persistent_executor", "type": "governs"},
 
     # Route calls Service
     {"source": "route:auth", "target": "svc:auth", "type": "calls"},
@@ -132,9 +157,11 @@ EDGES = [
     {"source": "route:interviews", "target": "svc:interviews", "type": "calls"},
     {"source": "route:evaluations", "target": "svc:evaluations", "type": "calls"},
     {"source": "route:plans", "target": "svc:plans", "type": "calls"},
+    {"source": "route:learning_backlog", "target": "svc:learning_backlog", "type": "calls"},
     {"source": "route:resumes", "target": "svc:resumes", "type": "calls"},
     {"source": "route:job_descriptions", "target": "svc:jds", "type": "calls"},
     {"source": "route:coding", "target": "svc:coding", "type": "calls"},
+    {"source": "route:coding", "target": "svc:dsa_coach", "type": "calls"},
     {"source": "route:analytics", "target": "svc:analytics", "type": "calls"},
 
     # Service calls Factory / Providers
@@ -143,9 +170,11 @@ EDGES = [
     {"source": "svc:resumes", "target": "svc:model_factory", "type": "calls"},
     {"source": "svc:jds", "target": "svc:model_factory", "type": "calls"},
     {"source": "svc:plans", "target": "svc:model_factory", "type": "calls"},
+    {"source": "svc:dsa_coach", "target": "svc:model_factory", "type": "calls"},
     {"source": "svc:model_factory", "target": "prov:bedrock", "type": "resolves"},
     {"source": "svc:model_factory", "target": "prov:mock", "type": "resolves"},
     {"source": "svc:coding", "target": "sand:runner", "type": "calls"},
+    {"source": "sand:runner", "target": "sand:persistent_executor", "type": "calls"},
 
     # Database Reads & Writes
     {"source": "svc:auth", "target": "tbl:users", "type": "writes"},
@@ -159,6 +188,8 @@ EDGES = [
     {"source": "svc:evaluations", "target": "tbl:evaluations", "type": "writes"},
     {"source": "svc:plans", "target": "tbl:plans", "type": "writes"},
     {"source": "svc:plans", "target": "tbl:plan_tasks", "type": "writes"},
+    {"source": "svc:plans", "target": "tbl:learning_backlog", "type": "writes"},
+    {"source": "svc:learning_backlog", "target": "tbl:learning_backlog", "type": "writes"},
     {"source": "svc:coding", "target": "tbl:coding_submissions", "type": "writes"},
     {"source": "svc:analytics", "target": "tbl:evaluations", "type": "reads"},
     {"source": "svc:analytics", "target": "tbl:interviews", "type": "reads"}
