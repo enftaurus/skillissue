@@ -14,6 +14,7 @@ class CodingProblem(BaseModel):
     starter_code: Dict[str, str]  # language: code template
     sample_test_cases: List[Dict[str, str]]
     test_cases: List[Dict[str, Any]] = []
+    ai_coaching_supported: bool = True
 
     def to_public(self) -> CodingProblemPublic:
         return CodingProblemPublic(
@@ -27,6 +28,7 @@ class CodingProblem(BaseModel):
             constraints=self.constraints,
             starter_code=self.starter_code,
             sample_test_cases=[{"stdin": tc["stdin"], "expected_stdout": tc["expected_stdout"]} for tc in self.sample_test_cases],
+            ai_coaching_supported=self.ai_coaching_supported,
         )
 
 CODING_PROBLEMS: Dict[str, CodingProblem] = {

@@ -2,9 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import { api, ApiError } from '../../lib/api';
-import { CodingProblem, CodeExecutionResult, CodingLimits } from '../../lib/types';
+import { CodingProblem, CodeExecutionResult, CodingLimits, DsaCoachResponse } from '../../lib/types';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { Modal } from '../../components/ui/Modal';
 import {
   AlertCircle,
   CheckCircle2,
@@ -13,6 +14,10 @@ import {
   Send,
   Terminal,
   XCircle,
+  HelpCircle,
+  Sparkles,
+  Bot,
+  MessageSquare,
 } from 'lucide-react';
 
 export const CodingPracticePage: React.FC = () => {
@@ -29,6 +34,14 @@ export const CodingPracticePage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [limits, setLimits] = useState<CodingLimits | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // AI Coaching Agent state (on-demand Socratic guidance)
+  const [isCoachOpen, setIsCoachOpen] = useState<boolean>(false);
+  const [coachLevel, setCoachLevel] = useState<number>(1);
+  const [coachHistory, setCoachHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string; level?: number; guidingQuestion?: string; focus?: string }>>([]);
+  const [coachUserMessage, setCoachUserMessage] = useState<string>('');
+  const [isCoachLoading, setIsCoachLoading] = useState<boolean>(false);
+  const [coachError, setCoachError] = useState<string>('');
 
   // Persistent code drafts cache per problem and language
   const draftsRef = useRef<Record<string, string>>({});
@@ -87,6 +100,58 @@ export const CodingPracticePage: React.FC = () => {
     setSubmissionSuccess(false);
     setExecutionError('');
     setActiveTab('problem');
+
+    // Reset coaching conversation for new problem
+    setCoachLevel(1);
+    setCoachHistory([]);
+    setCoachUserMessage('');
+    setCoachError('');
+    setIsCoachOpen(false);
+  };
+
+  const handleRequestCoachHint = async (levelToRequest?: number) => {
+    if (!selectedProblem) return;
+    const targetLevel = levelToRequest || coachLevel;
+    setIsCoachLoading(true);
+    setCoachError('');
+
+    try {
+      const conversationHistory = coachHistory.map((h) => ({
+        role: h.role,
+        content: h.content,
+      }));
+
+      const res = await api.post<DsaCoachResponse>(`/coding/problems/${selectedProblem.id}/coach`, {
+        hint_level: targetLevel,
+        user_code: code,
+        language,
+        user_message: coachUserMessage.trim() || undefined,
+        conversation_history: conversationHistory,
+      });
+
+      const updatedHistory = [...coachHistory];
+      if (coachUserMessage.trim()) {
+        updatedHistory.push({
+          role: 'user',
+          content: coachUserMessage.trim(),
+        });
+      }
+      updatedHistory.push({
+        role: 'assistant',
+        content: res.hint_text,
+        level: res.hint_level,
+        guidingQuestion: res.guiding_question,
+        focus: res.suggested_focus,
+      });
+
+      setCoachHistory(updatedHistory);
+      setCoachUserMessage('');
+      setCoachLevel(Math.min(4, res.hint_level + 1));
+    } catch (err: any) {
+      setCoachError(err.message || 'Failed to connect with coaching agent. Please verify AWS Bedrock credentials.');
+    } finally {
+      setIsCoachLoading(false);
+    }
   };
 
   const handleLanguageChange = (lang: 'python' | 'java' | 'cpp') => {
@@ -523,6 +588,25 @@ export const CodingPracticePage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2">
+                {selectedProblem?.ai_coaching_supported !== false && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsCoachOpen(true)}
+                    className="gap-1.5 text-xs text-lime-900 border-lime-300 bg-lime-50/60 hover:bg-lime-100"
+                    title="Request on-demand pedagogical hint from senior mentor"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 text-lime-700" />
+                    <span>Need Help?</span>
+                    {coachHistory.length > 0 && (
+                      <span className="w-4 h-4 rounded-full bg-lime-200 text-lime-900 text-[10px] font-bold flex items-center justify-center">
+                        {coachHistory.length}
+                      </span>
+                    )}
+                  </Button>
+                )}
+
                 <Button
                   variant="ghost"
                   size="sm"
@@ -592,6 +676,150 @@ export const CodingPracticePage: React.FC = () => {
           </Panel>
         </PanelGroup>
       </div>
+
+      {/* Socratic DSA Coaching Modal */}
+      <Modal
+        isOpen={isCoachOpen}
+        onClose={() => setIsCoachOpen(false)}
+        title="DSA Coaching Agent (Socratic Mentor)"
+      >
+        <div className="space-y-4 text-xs">
+          {/* Header explanation & level indicator */}
+          <div className="p-3 bg-surface-warm rounded-lg border border-surface-border space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-ink flex items-center gap-1.5">
+                <Bot className="w-4 h-4 text-lime-700" />
+                <span>Pedagogical Guidance Progression</span>
+              </span>
+              <Badge variant="lime" size="sm" className="font-mono">
+                Hint Level: {coachLevel}/4
+              </Badge>
+            </div>
+            <div className="grid grid-cols-4 gap-1 text-[10px] font-mono">
+              {[
+                { lvl: 1, label: '1. Nudge' },
+                { lvl: 2, label: '2. Pattern' },
+                { lvl: 3, label: '3. Derivation' },
+                { lvl: 4, label: '4. Pseudocode' },
+              ].map((step) => (
+                <div
+                  key={step.lvl}
+                  className={`p-1.5 text-center rounded border transition-colors ${
+                    coachLevel >= step.lvl
+                      ? 'bg-lime-100 border-lime-300 text-lime-900 font-semibold'
+                      : 'bg-white border-surface-border text-ink-faint'
+                  }`}
+                >
+                  {step.label}
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-ink-subtle">
+              The coach inspects your code and nudges your intuition. It will never provide complete copy-paste solutions.
+            </p>
+          </div>
+
+          {coachError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-900 rounded-md flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>{coachError}</span>
+            </div>
+          )}
+
+          {/* Conversation / Hint History */}
+          <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+            {coachHistory.length === 0 ? (
+              <div className="p-6 text-center text-ink-muted border border-dashed border-surface-border rounded-lg space-y-2">
+                <MessageSquare className="w-6 h-6 text-ink-subtle mx-auto" />
+                <p>No hints requested yet for this problem.</p>
+                <p className="text-[11px] text-ink-faint">
+                  Stuck on the data structure, Big-O complexity, or tricky edge case? Ask a question or request Level 1 guidance below.
+                </p>
+              </div>
+            ) : (
+              coachHistory.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg border ${
+                    msg.role === 'user'
+                      ? 'bg-surface-subtle border-surface-border text-ink'
+                      : 'bg-lime-50/40 border-lime-200 text-ink'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[11px] font-semibold mb-1">
+                    <span className={msg.role === 'user' ? 'text-ink-muted' : 'text-lime-800'}>
+                      {msg.role === 'user' ? 'Your Question' : `Mentor Hint (Level ${msg.level || idx + 1})`}
+                    </span>
+                    {msg.focus && (
+                      <Badge variant="zinc" size="sm">
+                        Focus: {msg.focus}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+
+                  {msg.guidingQuestion && (
+                    <div className="mt-2 pt-2 border-t border-lime-200/60 text-lime-900 font-medium flex items-start gap-1.5">
+                      <HelpCircle className="w-3.5 h-3.5 text-lime-700 shrink-0 mt-0.5" />
+                      <span>{msg.guidingQuestion}</span>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Hint Request Controls */}
+          <div className="space-y-2.5 pt-2 border-t border-surface-border">
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider">
+              Ask a question or describe what you've tried (Optional)
+            </label>
+            <textarea
+              rows={2}
+              value={coachUserMessage}
+              onChange={(e) => setCoachUserMessage(e.target.value)}
+              placeholder="e.g. I am thinking of using two pointers, but the array is unsorted. How do I optimize lookup?"
+              className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-1 focus:ring-lime-500"
+            />
+
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <span className="text-[11px] text-ink-subtle">
+                {coachLevel > 4 ? 'Max level reached' : `Next up: Level ${coachLevel} guidance`}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsCoachOpen(false)}
+                >
+                  Close
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => handleRequestCoachHint(coachLevel)}
+                  isLoading={isCoachLoading}
+                  className="flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>
+                    {coachHistory.length === 0
+                      ? 'Request Level 1 Hint'
+                      : coachUserMessage.trim()
+                      ? 'Ask Mentor'
+                      : `Request Level ${coachLevel} Hint`}
+                  </span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

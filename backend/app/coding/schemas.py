@@ -38,6 +38,21 @@ class CodingProblemPublic(BaseModel):
     constraints: List[str]
     starter_code: Dict[str, str]  # language: code template
     sample_test_cases: List[Dict[str, str]]
+    ai_coaching_supported: bool = True
+
+class DsaCoachRequest(BaseModel):
+    hint_level: int = Field(default=1, ge=1, le=4)
+    user_code: Optional[str] = None
+    language: Optional[str] = "python"
+    user_message: Optional[str] = None
+    conversation_history: List[Dict[str, str]] = []
+
+class DsaCoachResponse(BaseModel):
+    hint_level: int
+    hint_text: str
+    guiding_question: str
+    suggested_focus: Optional[str] = None
+    tokens_used: int = 0
 
 class CodingLimitsResponse(BaseModel):
     memory_limit_mb: int = 256
