@@ -22,10 +22,9 @@ RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --no-cache-dir fastapi "uvicorn[standard]" pydantic httpx
 
 COPY sandbox/ /app/sandbox/
+RUN mkdir -p /app/backend/app/core && \
+    touch /app/backend/__init__.py /app/backend/app/__init__.py /app/backend/app/core/__init__.py
 COPY backend/app/core/logging.py /app/backend/app/core/logging.py
-COPY backend/app/core/__init__.py /app/backend/app/core/__init__.py
-COPY backend/app/__init__.py /app/backend/app/__init__.py
-COPY backend/__init__.py /app/backend/__init__.py
 
 ENV PATH="/app/venv/bin:$PATH" \
     PYTHONPATH=/app \
