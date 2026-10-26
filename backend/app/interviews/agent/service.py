@@ -66,7 +66,38 @@ class InterviewAgentService:
         ]
 
         response = await model.ainvoke(prompt_messages)
-        initial_question = response.content.strip()
+        raw_content = response.content
+        if isinstance(raw_content, list):
+            initial_question = "".join(
+                b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text"
+            ).strip() or str(raw_content)
+        else:
+            initial_question = str(raw_content).strip()
+
+        resume_context = None
+        if resume:
+            parts = []
+            if resume.extracted_skills:
+                parts.append(f"Skills: {', '.join(resume.extracted_skills[:8])}")
+            if resume.projects_context:
+                proj_summaries = []
+                for p in resume.projects_context[:3]:
+                    if isinstance(p, dict):
+                        title = p.get("title") or p.get("name") or "Project"
+                        tech = p.get("technologies") or p.get("tech") or p.get("description") or ""
+                        if isinstance(tech, list):
+                            tech = ", ".join(tech)
+                        proj_summaries.append(f"{title}: {tech}")
+                if proj_summaries:
+                    parts.append(f"Projects: {'; '.join(proj_summaries)}")
+            resume_context = " | ".join(parts) if parts else None
+
+        jd_context = None
+        if jd:
+            jd_parts = [f"Role: {jd.extracted_role or jd.title}"]
+            if jd.extracted_skills:
+                jd_parts.append(f"Skills: {', '.join(jd.extracted_skills[:6])}")
+            jd_context = " | ".join(jd_parts)
 
         # Seed initial graph checkpoint in PostgreSQL
         async with get_interview_checkpointer() as checkpointer:
@@ -81,6 +112,8 @@ class InterviewAgentService:
                 "target_role": interview.target_role,
                 "difficulty": interview.difficulty,
                 "domain_skills": domain_skills,
+                "jd_context": jd_context,
+                "resume_context": resume_context,
                 "current_topic": current_topic,
                 "covered_topics": [current_topic],
                 "topic_statuses": topic_statuses,
@@ -167,6 +200,8 @@ class InterviewAgentService:
                 "target_role": interview.target_role,
                 "difficulty": interview.difficulty,
                 "domain_skills": domain_skills,
+                "jd_context": prior_state.get("jd_context"),
+                "resume_context": prior_state.get("resume_context"),
                 "current_topic": current_topic,
                 "covered_topics": covered_topics,
                 "topic_statuses": topic_statuses,

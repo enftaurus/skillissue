@@ -259,6 +259,10 @@ async def generate_question_node(
 
     if running_summary:
         system_prompt += f"\n\nContext from earlier in this interview:\n{running_summary}"
+    if state.get("resume_context"):
+        system_prompt += f"\n\nCandidate Resume Context:\n{state['resume_context']}"
+    if state.get("jd_context"):
+        system_prompt += f"\n\nJob Description Context:\n{state['jd_context']}"
 
     # Build prompt messages
     prompt_messages = [SystemMessage(content=system_prompt)]
@@ -301,7 +305,13 @@ async def generate_question_node(
     prompt_messages.append(HumanMessage(content=instruction))
 
     response = await model.ainvoke(prompt_messages)
-    question_text = response.content.strip()
+    raw_content = response.content
+    if isinstance(raw_content, list):
+        question_text = "".join(
+            b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text"
+        ).strip() or str(raw_content)
+    else:
+        question_text = str(raw_content).strip()
 
     # Fallback sanity filter
     if not question_text:

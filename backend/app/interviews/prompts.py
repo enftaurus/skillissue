@@ -47,8 +47,18 @@ def build_interviewer_system_prompt(
     if resume_skills:
         context_parts.append(f"Candidate Resume Skills: {', '.join(resume_skills[:8])}")
     if resume_projects:
-        project_summaries = [f"{p.get('name')}: {p.get('tech')}" for p in resume_projects[:2]]
-        context_parts.append(f"Candidate Projects: {'; '.join(project_summaries)}")
+        project_summaries = []
+        for p in resume_projects[:3]:
+            if isinstance(p, dict):
+                title = p.get("title") or p.get("name") or "Project"
+                tech = p.get("technologies") or p.get("tech") or p.get("description") or ""
+                if isinstance(tech, list):
+                    tech = ", ".join(tech)
+                project_summaries.append(f"{title}: {tech}")
+            elif isinstance(p, str):
+                project_summaries.append(p)
+        if project_summaries:
+            context_parts.append(f"Candidate Projects: {'; '.join(project_summaries)}")
 
     scope_context = " | ".join(context_parts) if context_parts else "General engineering fundamentals."
 
