@@ -30,7 +30,7 @@ export const AwsBedrockOnboardingPage: React.FC = () => {
 
   // Model & Region Selection
   const [models, setModels] = useState<ModelMetadata[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('amazon.nova-lite-v1:0');
+  const [selectedModel, setSelectedModel] = useState<string>('qwen.qwen3-32b-v1:0');
   const [selectedRegion, setSelectedRegion] = useState<string>('us-east-1');
 
   // IAM Policy

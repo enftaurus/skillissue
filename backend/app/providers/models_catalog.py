@@ -23,92 +23,139 @@ class ModelMetadata(BaseModel):
 
 # Explicit Server-Side Model Registry for Amazon Bedrock BYOC
 SUPPORTED_MODELS: Dict[str, ModelMetadata] = {
-    # 1. Default General-Purpose Interview Model: Amazon Nova Lite
-    "amazon.nova-lite-v1:0": ModelMetadata(
-        model_id="amazon.nova-lite-v1:0",
+    # 1. Default General-Purpose Interview Model: Qwen3 32B
+    "qwen.qwen3-32b-v1:0": ModelMetadata(
+        model_id="qwen.qwen3-32b-v1:0",
         provider="bedrock",
-        display_name="Amazon Nova Lite",
+        display_name="Qwen3 32B",
         role="Default general-purpose interview model",
-        description="High-speed, cost-effective multimodal model optimal for natural interview dialogue, adaptive follow-ups, and structured question-level evaluation.",
-        supported_regions=["us-east-1", "us-west-2", "ap-southeast-2", "ap-south-1", "eu-central-1"],
-        input_price_per_1m=0.06,
-        output_price_per_1m=0.24,
-        context_window=300000,
-        max_output_tokens=5000,
-        recommended_for="Primary live interview questioning, dynamic conversational follow-ups, and initial feedback.",
+        description="High-performance open-weight model by Qwen. Direct, technically rigorous questioning, realistic conversational follow-ups, and zero corporate fluff.",
+        supported_regions=["us-east-1", "us-west-2", "ap-southeast-2", "ap-south-1"],
+        input_price_per_1m=0.1545,
+        output_price_per_1m=0.618,
+        context_window=131072,
+        max_output_tokens=8192,
+        recommended_for="Primary live technical interviews, distributed systems, and dynamic conversational follow-ups.",
         is_default=True,
-        inference_profile_id="us.amazon.nova-lite-v1:0",
-        supports_vision=True
     ),
 
-    # 2. Stronger Reasoning & In-Depth Architecture Model: Amazon Nova Pro
-    "amazon.nova-pro-v1:0": ModelMetadata(
-        model_id="amazon.nova-pro-v1:0",
-        provider="bedrock",
-        display_name="Amazon Nova Pro",
-        role="Stronger model for complex evaluation & system design",
-        description="Advanced reasoning model designed for complex multi-step technical evaluations, distributed system design trade-offs, and nuanced code reviews.",
-        supported_regions=["us-east-1", "us-west-2", "eu-central-1"],
-        input_price_per_1m=0.80,
-        output_price_per_1m=3.20,
-        context_window=300000,
-        max_output_tokens=5000,
-        recommended_for="Final comprehensive evaluation, complex system design trade-offs, and rigorous Planly curricula generation.",
-        inference_profile_id="us.amazon.nova-pro-v1:0",
-        supports_vision=True
-    ),
-
-    # 3. Lightweight Fast Model: Amazon Nova Micro
-    "amazon.nova-micro-v1:0": ModelMetadata(
-        model_id="amazon.nova-micro-v1:0",
-        provider="bedrock",
-        display_name="Amazon Nova Micro",
-        role="Lightweight text model for fast classification & screening",
-        description="Ultra-low latency text-only model ideal for quick hint generation, response classification, and rapid topic transitions.",
-        supported_regions=["us-east-1", "us-west-2", "ap-south-1", "eu-central-1"],
-        input_price_per_1m=0.035,
-        output_price_per_1m=0.14,
-        context_window=128000,
-        max_output_tokens=4096,
-        recommended_for="Quick hint generation, topic categorization, and low-latency screening questions.",
-        inference_profile_id="us.amazon.nova-micro-v1:0",
-        supports_vision=False
-    ),
-
-    # 4. Coding Specialist: Qwen3 Coder 30B
+    # 2. Coding Specialist: Qwen3 Coder 30B
     "qwen.qwen3-coder-30b-a3b-v1:0": ModelMetadata(
         model_id="qwen.qwen3-coder-30b-a3b-v1:0",
         provider="bedrock",
         display_name="Qwen3 Coder 30B A3B",
         role="Coding specialist",
-        description="Specialized code reasoning. Use it for code explanations, debugging hints, complexity analysis, and DSA follow-up questions.",
-        supported_regions=["ap-southeast-2", "us-east-1", "us-west-2", "ap-south-1"],
+        description="Specialized code reasoning model by Qwen. Socratic hint generation, DSA code review, complexity analysis, and debugging hints.",
+        supported_regions=["us-east-1", "us-west-2", "ap-southeast-2", "ap-south-1"],
         input_price_per_1m=0.1545,
         output_price_per_1m=0.618,
         context_window=131072,
         max_output_tokens=8192,
-        recommended_for="DSA interview code review, debugging hints, algorithmic complexity discussions."
+        recommended_for="DSA Arena Socratic coaching, code review, debugging hints, and complexity analysis."
     ),
 
-    # 5. High-Capacity Technical Generalist: Qwen3 32B
-    "qwen.qwen3-32b-instruct-v1:0": ModelMetadata(
-        model_id="qwen.qwen3-32b-instruct-v1:0",
+    # 3. Technical Interviewer & Architecture Specialist: DeepSeek V3.2
+    "deepseek.v3.2": ModelMetadata(
+        model_id="deepseek.v3.2",
         provider="bedrock",
-        display_name="Qwen3 32B",
-        role="Alternative interview model",
-        description="Proven open-weight instruction model on Bedrock for technical domains and system design questioning.",
-        supported_regions=["ap-southeast-2", "us-east-1", "us-west-2", "ap-south-1"],
-        input_price_per_1m=0.1545,
-        output_price_per_1m=0.618,
+        display_name="DeepSeek V3.2",
+        role="Advanced technical interview & systems specialist",
+        description="Leading open MoE model by DeepSeek. Unforgiving technical depth, concurrency probing, and distributed architecture trade-offs at ultra-low cost.",
+        supported_regions=["us-east-1", "us-west-2"],
+        input_price_per_1m=0.14,
+        output_price_per_1m=0.28,
         context_window=131072,
         max_output_tokens=8192,
-        recommended_for="Domain-specific technical interviews and conversational follow-ups."
+        recommended_for="Senior/Staff systems engineering interviews, concurrency, and architecture design."
+    ),
+
+    # 4. In-Depth Evaluation & Reasoning: DeepSeek-R1
+    "us.deepseek.r1-v1:0": ModelMetadata(
+        model_id="us.deepseek.r1-v1:0",
+        provider="bedrock",
+        display_name="DeepSeek-R1 (Reasoning)",
+        role="Comprehensive evaluation & weakness analysis",
+        description="Frontier reasoning model with chain-of-thought verification. Rigorous rubric scoring, complexity audits, and weakness taxonomy synthesis.",
+        supported_regions=["us-east-1", "us-west-2", "us-east-2"],
+        input_price_per_1m=0.55,
+        output_price_per_1m=2.19,
+        context_window=131072,
+        max_output_tokens=8192,
+        inference_profile_id="us.deepseek.r1-v1:0",
+        recommended_for="Post-interview rubric evaluation, comprehensive feedback reports, and Planly weakness extraction."
+    ),
+
+    # 5. High-Capacity Generalist: Qwen3 Next 80B
+    "qwen.qwen3-next-80b-a3b": ModelMetadata(
+        model_id="qwen.qwen3-next-80b-a3b",
+        provider="bedrock",
+        display_name="Qwen3 Next 80B A3B",
+        role="High-capacity generalist",
+        description="High-parameter open model by Qwen for cross-domain engineering discussions and deep conceptual trade-offs.",
+        supported_regions=["us-east-1", "us-west-2"],
+        input_price_per_1m=0.30,
+        output_price_per_1m=1.20,
+        context_window=131072,
+        max_output_tokens=8192,
+        recommended_for="Broad technical rounds and cross-disciplinary architecture reviews."
+    ),
+
+    # 6. Ultra-Budget Fallback: Amazon Nova Lite
+    "amazon.nova-lite-v1:0": ModelMetadata(
+        model_id="amazon.nova-lite-v1:0",
+        provider="bedrock",
+        display_name="Amazon Nova Lite",
+        role="Budget general-purpose model",
+        description="Ultra-low cost text model for lightweight testing.",
+        supported_regions=["us-east-1", "us-west-2", "ap-southeast-2", "ap-south-1", "eu-central-1"],
+        input_price_per_1m=0.06,
+        output_price_per_1m=0.24,
+        context_window=300000,
+        max_output_tokens=5000,
+        recommended_for="Low-cost screening and budget fallback.",
+        is_default=False,
+        inference_profile_id="us.amazon.nova-lite-v1:0",
+        supports_vision=True
+    ),
+
+    # 7. Secondary Evaluation Option: Amazon Nova Pro
+    "amazon.nova-pro-v1:0": ModelMetadata(
+        model_id="amazon.nova-pro-v1:0",
+        provider="bedrock",
+        display_name="Amazon Nova Pro",
+        role="Secondary evaluation model",
+        description="Multimodal reasoning model for evaluations.",
+        supported_regions=["us-east-1", "us-west-2", "eu-central-1"],
+        input_price_per_1m=0.80,
+        output_price_per_1m=3.20,
+        context_window=300000,
+        max_output_tokens=5000,
+        recommended_for="Secondary evaluation option.",
+        inference_profile_id="us.amazon.nova-pro-v1:0",
+        supports_vision=True
+    ),
+
+    # 8. Lightweight Fast Model: Amazon Nova Micro
+    "amazon.nova-micro-v1:0": ModelMetadata(
+        model_id="amazon.nova-micro-v1:0",
+        provider="bedrock",
+        display_name="Amazon Nova Micro",
+        role="Lightweight text model",
+        description="Ultra-low latency text-only model.",
+        supported_regions=["us-east-1", "us-west-2", "ap-south-1", "eu-central-1"],
+        input_price_per_1m=0.035,
+        output_price_per_1m=0.14,
+        context_window=128000,
+        max_output_tokens=4096,
+        recommended_for="Quick hint generation and screening.",
+        inference_profile_id="us.amazon.nova-micro-v1:0",
+        supports_vision=False
     )
 }
 
-DEFAULT_MODEL_ID = "amazon.nova-lite-v1:0"
-DEFAULT_CODING_MODEL_ID = "amazon.nova-lite-v1:0"
-DEFAULT_EVALUATION_MODEL_ID = "amazon.nova-pro-v1:0"
+DEFAULT_MODEL_ID = "qwen.qwen3-32b-v1:0"
+DEFAULT_CODING_MODEL_ID = "qwen.qwen3-coder-30b-a3b-v1:0"
+DEFAULT_EVALUATION_MODEL_ID = "us.deepseek.r1-v1:0"
 
 def get_model_metadata(model_id: str) -> Optional[ModelMetadata]:
     return SUPPORTED_MODELS.get(model_id)
@@ -119,7 +166,7 @@ def get_recommended_lineup() -> List[ModelMetadata]:
 def calculate_token_cost(model_id: str, input_tokens: int, output_tokens: int) -> float:
     meta = get_model_metadata(model_id)
     if not meta:
-        # Fallback to Nova Lite rates if unknown
+        # Fallback to default Qwen rates if unknown
         meta = SUPPORTED_MODELS[DEFAULT_MODEL_ID]
     cost_in = (input_tokens / 1_000_000.0) * meta.input_price_per_1m
     cost_out = (output_tokens / 1_000_000.0) * meta.output_price_per_1m
@@ -137,7 +184,25 @@ def generate_iam_policy(model_id: str, aws_region: str, aws_account_id: str = "*
         f"arn:aws:bedrock:*::foundation-model/{model_id}"
     ]
 
+    # Handle inference profile models (e.g. us.deepseek.r1-v1:0)
+    if model_id.startswith(("us.", "eu.")):
+        base_model = model_id.split(".", 1)[1]
+        resources.append(f"arn:aws:bedrock:{aws_region}::foundation-model/{base_model}")
+        resources.append(f"arn:aws:bedrock:*::foundation-model/{base_model}")
+        resources.append(f"arn:aws:bedrock:{aws_region}:{aws_account_id}:inference-profile/{model_id}")
+        resources.append(f"arn:aws:bedrock:*:{aws_account_id}:inference-profile/{model_id}")
+
     if meta and meta.inference_profile_id:
+        resources.append(
+            f"arn:aws:bedrock:{aws_region}:{aws_account_id}:inference-profile/{meta.inference_profile_id}"
+        )
+        resources.append(
+            f"arn:aws:bedrock:*:{aws_account_id}:inference-profile/{meta.inference_profile_id}"
+        )
+        if meta.inference_profile_id.startswith(("us.", "eu.")):
+            base_model = meta.inference_profile_id.split(".", 1)[1]
+            resources.append(f"arn:aws:bedrock:{aws_region}::foundation-model/{base_model}")
+            resources.append(f"arn:aws:bedrock:*::foundation-model/{base_model}")
         resources.append(
             f"arn:aws:bedrock:{aws_region}:{aws_account_id}:inference-profile/{meta.inference_profile_id}"
         )

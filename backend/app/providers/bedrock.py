@@ -152,6 +152,12 @@ class AmazonBedrockProvider(BaseProvider):
                 )
                 content_blocks = response.get("output", {}).get("message", {}).get("content", [])
                 output_text = "".join(b.get("text", "") for b in content_blocks if "text" in b)
+                if not output_text.strip():
+                    for b in content_blocks:
+                        reasoning = b.get("reasoningContent", {}).get("reasoningText", {}).get("text", "")
+                        if reasoning:
+                            output_text = reasoning
+                            break
                 usage = response.get("usage", {})
                 in_tokens = usage.get("inputTokens", 0)
                 out_tokens = usage.get("outputTokens", 0)

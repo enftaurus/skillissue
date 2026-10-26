@@ -13,38 +13,45 @@ async def test_models_catalog_lineup(client: httpx.AsyncClient):
     models = res.json()
     model_ids = [m["model_id"] for m in models]
 
-    # Verify Amazon Nova lineup is primary
-    assert "amazon.nova-lite-v1:0" in model_ids
-    assert "amazon.nova-pro-v1:0" in model_ids
-    assert "amazon.nova-micro-v1:0" in model_ids
+    # Verify Chinese models lineup is primary
+    assert "qwen.qwen3-32b-v1:0" in model_ids
+    assert "qwen.qwen3-coder-30b-a3b-v1:0" in model_ids
+    assert "deepseek.v3.2" in model_ids
+    assert "us.deepseek.r1-v1:0" in model_ids
     assert "mock-qwen3-32b" not in model_ids
 
-    # Verify Nova Lite pricing ($0.06 in / $0.24 out per 1M)
-    nova_lite = next(m for m in models if m["model_id"] == "amazon.nova-lite-v1:0")
-    assert nova_lite["input_price_per_1m"] == 0.06
-    assert nova_lite["output_price_per_1m"] == 0.24
-    assert nova_lite["is_default"] is True
+    # Verify Qwen3 32B is default model ($0.1545 in / $0.618 out per 1M)
+    qwen_default = next(m for m in models if m["model_id"] == "qwen.qwen3-32b-v1:0")
+    assert qwen_default["input_price_per_1m"] == 0.1545
+    assert qwen_default["output_price_per_1m"] == 0.618
+    assert qwen_default["is_default"] is True
 
     # Verify pricing calculation
-    # 10,000 in, 2,000 out with Nova Lite:
-    # in: 10000 / 1000000 * 0.06 = 0.0006
-    # out: 2000 / 1000000 * 0.24 = 0.00048
-    # total = 0.00108
-    cost = calculate_token_cost("amazon.nova-lite-v1:0", 10_000, 2_000)
-    assert cost == pytest.approx(0.00108, rel=1e-3)
+    # 10,000 in, 2,000 out with Qwen3 32B:
+    # in: 10000 / 1000000 * 0.1545 = 0.001545
+    # out: 2000 / 1000000 * 0.618 = 0.001236
+    # total = 0.002781
+    cost = calculate_token_cost("qwen.qwen3-32b-v1:0", 10_000, 2_000)
+    assert cost == pytest.approx(0.002781, rel=1e-3)
 
 @pytest.mark.asyncio
 async def test_iam_policy_generation(client: httpx.AsyncClient):
-    # Test IAM policy generator endpoint
-    res = await client.get("/api/v1/providers/iam-policy?model_id=amazon.nova-lite-v1:0&region=us-east-1")
+    # Test IAM policy generator endpoint with Qwen and DeepSeek
+    res = await client.get("/api/v1/providers/iam-policy?model_id=qwen.qwen3-32b-v1:0&region=us-east-1")
     assert res.status_code == 200
     data = res.json()
     assert "policy_json" in data
     assert "bedrock:InvokeModel" in data["policy_json"]
     assert "bedrock:InvokeModelWithResponseStream" in data["policy_json"]
-    assert "amazon.nova-lite-v1:0" in data["policy_json"]
-    assert "us.amazon.nova-lite-v1:0" in data["policy_json"]
+    assert "qwen.qwen3-32b-v1:0" in data["policy_json"]
     assert "actions_explained" in data
+
+    # Test IAM policy generator for DeepSeek-R1 inference profile
+    res_ds = await client.get("/api/v1/providers/iam-policy?model_id=us.deepseek.r1-v1:0&region=us-east-1")
+    assert res_ds.status_code == 200
+    ds_data = res_ds.json()
+    assert "us.deepseek.r1-v1:0" in ds_data["policy_json"]
+    assert "deepseek.r1-v1:0" in ds_data["policy_json"]
 
 @pytest.mark.asyncio
 async def test_mock_provider_test_double():
