@@ -14,7 +14,7 @@ export const ProviderSettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Form State
-  const [providerName, setProviderName] = useState<'bedrock' | 'mock'>('mock');
+  const [providerName, setProviderName] = useState<'bedrock'>('bedrock');
   const [awsRegion, setAwsRegion] = useState('us-east-1');
   const [accessKeyId, setAccessKeyId] = useState('');
   const [secretAccessKey, setSecretAccessKey] = useState('');
@@ -41,7 +41,7 @@ export const ProviderSettingsPage: React.FC = () => {
       .then(([cfg, modelList]) => {
         setConfig(cfg);
         setModels(modelList);
-        setProviderName(cfg.provider_name as 'bedrock' | 'mock');
+        setProviderName('bedrock');
         setAwsRegion(cfg.aws_region || 'us-east-1');
         setPreferredModel(cfg.preferred_model || 'qwen.qwen3-32b-instruct-v1:0');
         setInterviewerModel(cfg.interviewer_model || cfg.preferred_model || 'qwen.qwen3-32b-instruct-v1:0');
@@ -150,7 +150,7 @@ export const ProviderSettingsPage: React.FC = () => {
           </Link>
         </div>
         <p className="mt-1 text-sm text-ink-muted">
-          Connect your own Amazon Bedrock cloud credentials with zero markup, or run in offline mock mode.
+          Connect your own Amazon Bedrock cloud credentials with zero markup.
         </p>
       </div>
 
