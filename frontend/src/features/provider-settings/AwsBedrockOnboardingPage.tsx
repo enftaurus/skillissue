@@ -18,10 +18,13 @@ import {
 } from 'lucide-react';
 
 interface IamPolicyResponse {
-  policy_document: string;
-  statement: any;
-  models: string[];
-  regions: string[];
+  policy_json?: string;
+  policy_document?: string;
+  model_id: string;
+  region: string;
+  actions_explained?: Record<string, string>;
+  resources_explained?: string[];
+  setup_notes?: string[];
 }
 
 export const AwsBedrockOnboardingPage: React.FC = () => {
@@ -33,8 +36,27 @@ export const AwsBedrockOnboardingPage: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('qwen.qwen3-32b-v1:0');
   const [selectedRegion, setSelectedRegion] = useState<string>('us-east-1');
 
-  // IAM Policy
-  const [policyDoc, setPolicyDoc] = useState<string>('');
+  // IAM Policy initialized with default least-privilege policy so it is never stuck
+  const [policyDoc, setPolicyDoc] = useState<string>(() => {
+    const initialFallback = {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Sid: 'SkillIssueBedrockInvocation',
+          Effect: 'Allow',
+          Action: [
+            'bedrock:InvokeModel',
+            'bedrock:InvokeModelWithResponseStream',
+          ],
+          Resource: [
+            'arn:aws:bedrock:us-east-1::foundation-model/qwen.qwen3-32b-v1:0',
+            'arn:aws:bedrock:us-east-1:*:inference-profile/*',
+          ],
+        },
+      ],
+    };
+    return JSON.stringify(initialFallback, null, 2);
+  });
   const [policyCopied, setPolicyCopied] = useState(false);
 
   // Credentials
@@ -70,9 +92,12 @@ export const AwsBedrockOnboardingPage: React.FC = () => {
   useEffect(() => {
     if (!selectedModel) return;
     api
-      .get<IamPolicyResponse>(`/providers/iam-policy?models=${encodeURIComponent(selectedModel)}&regions=${encodeURIComponent(selectedRegion)}`)
+      .get<IamPolicyResponse>(`/providers/iam-policy?model_id=${encodeURIComponent(selectedModel)}&region=${encodeURIComponent(selectedRegion)}`)
       .then((res) => {
-        setPolicyDoc(res.policy_document);
+        const doc = res.policy_json || res.policy_document;
+        if (doc) {
+          setPolicyDoc(doc);
+        }
       })
       .catch(() => {
         // Fallback default policy if endpoint fails

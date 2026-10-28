@@ -54,5 +54,9 @@ async def list_available_models():
 async def get_iam_policy(
     model_id: str = Query(default=DEFAULT_MODEL_ID, description="Target Bedrock model ID"),
     region: str = Query(default="us-east-1", description="AWS Region"),
+    models: Optional[str] = Query(default=None, description="Alias for model_id"),
+    regions: Optional[str] = Query(default=None, description="Alias for region"),
 ):
-    return ProviderConfigService.get_iam_policy_doc(model_id=model_id, region=region)
+    effective_model = models or model_id
+    effective_region = regions or region
+    return ProviderConfigService.get_iam_policy_doc(model_id=effective_model, region=effective_region)

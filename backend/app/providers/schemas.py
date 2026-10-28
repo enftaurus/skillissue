@@ -74,8 +74,16 @@ class TestCredentialsResponse(BaseModel):
 
 class IamPolicyResponse(BaseModel):
     policy_json: str
+    policy_document: Optional[str] = None
     model_id: str
     region: str
-    actions_explained: Dict[str, str]
-    resources_explained: List[str]
-    setup_notes: List[str]
+    actions_explained: Dict[str, str] = {}
+    resources_explained: List[str] = []
+    setup_notes: List[str] = []
+
+    def __init__(self, **data):
+        if "policy_json" in data and not data.get("policy_document"):
+            data["policy_document"] = data["policy_json"]
+        elif "policy_document" in data and not data.get("policy_json"):
+            data["policy_json"] = data["policy_document"]
+        super().__init__(**data)
