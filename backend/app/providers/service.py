@@ -99,6 +99,8 @@ class ProviderConfigService:
         config.evaluation_model = data.evaluation_model
         config.coding_model = data.coding_model
         config.planning_model = data.planning_model
+        if data.fallback_enabled is not None:
+            config.fallback_enabled = data.fallback_enabled
         if data.temperature is not None:
             config.temperature = data.temperature
         if data.max_tokens is not None:

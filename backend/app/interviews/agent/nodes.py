@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict, List, Optional
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
@@ -312,6 +313,12 @@ async def generate_question_node(
         ).strip() or str(raw_content)
     else:
         question_text = str(raw_content).strip()
+
+    # Strip embedded <think> tags if present
+    cleaned_q = re.sub(r"<think>[\s\S]*?</think>", "", question_text, flags=re.DOTALL).strip()
+    cleaned_q = re.sub(r"^[\s\S]*?</think>", "", cleaned_q, flags=re.DOTALL).strip()
+    if cleaned_q:
+        question_text = cleaned_q
 
     # Fallback sanity filter
     if not question_text:

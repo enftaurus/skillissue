@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from backend.app.providers.models_catalog import ModelMetadata
+from backend.app.providers.models_catalog import ModelMetadata, DEFAULT_MODEL_ID
 
 ALLOWED_AWS_REGIONS = {"us-east-1", "us-west-2", "ap-south-1", "ap-southeast-2", "eu-central-1"}
 
@@ -11,12 +11,13 @@ class ProviderConfigSave(BaseModel):
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None
     aws_session_token: Optional[str] = None
-    preferred_model: str = "amazon.nova-lite-v1:0"
-    default_model: Optional[str] = "amazon.nova-lite-v1:0"
+    preferred_model: str = DEFAULT_MODEL_ID
+    default_model: Optional[str] = DEFAULT_MODEL_ID
     interviewer_model: Optional[str] = None
     evaluation_model: Optional[str] = None
     coding_model: Optional[str] = None
     planning_model: Optional[str] = None
+    fallback_enabled: Optional[bool] = False
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 2048
     monthly_token_budget: Optional[int] = Field(default=1_000_000, ge=10_000, le=50_000_000)
@@ -40,6 +41,7 @@ class ProviderConfigResponse(BaseModel):
     evaluation_model: Optional[str] = None
     coding_model: Optional[str] = None
     planning_model: Optional[str] = None
+    fallback_enabled: bool = False
     temperature: float = 0.7
     max_tokens: int = 2048
     is_valid: bool
@@ -58,7 +60,7 @@ class TestCredentialsRequest(BaseModel):
     aws_access_key_id: str
     aws_secret_access_key: str
     aws_session_token: Optional[str] = None
-    preferred_model: str = "amazon.nova-lite-v1:0"
+    preferred_model: str = DEFAULT_MODEL_ID
 
     @field_validator("aws_region")
     def validate_region(cls, v: str) -> str:

@@ -158,6 +158,12 @@ class AmazonBedrockProvider(BaseProvider):
                         if reasoning:
                             output_text = reasoning
                             break
+                # Strip embedded <think> tags if present
+                cleaned_output = re.sub(r"<think>[\s\S]*?</think>", "", output_text, flags=re.DOTALL).strip()
+                cleaned_output = re.sub(r"^[\s\S]*?</think>", "", cleaned_output, flags=re.DOTALL).strip()
+                if cleaned_output:
+                    output_text = cleaned_output
+
                 usage = response.get("usage", {})
                 in_tokens = usage.get("inputTokens", 0)
                 out_tokens = usage.get("outputTokens", 0)
@@ -213,7 +219,21 @@ class AmazonBedrockProvider(BaseProvider):
         )
 
         cleaned_text = res.text.strip()
-        # Strip potential markdown fences if model included them
+        # Strip reasoning thoughts if present
+        cleaned_text = re.sub(r"<think>[\s\S]*?</think>", "", cleaned_text, flags=re.DOTALL).strip()
+        cleaned_text = re.sub(r"^[\s\S]*?</think>", "", cleaned_text, flags=re.DOTALL).strip()
+
+        # Check for markdown code fences anywhere in response
+        md_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned_text)
+        if md_match:
+            candidate = md_match.group(1).strip()
+            try:
+                res.parsed_json = json.loads(candidate)
+                return res
+            except Exception:
+                pass
+
+        # Strip potential markdown fences if model included them at edges
         if cleaned_text.startswith("```"):
             cleaned_text = re.sub(r"^```(?:json)?\s*", "", cleaned_text)
             cleaned_text = re.sub(r"\s*```$", "", cleaned_text)
@@ -224,7 +244,7 @@ class AmazonBedrockProvider(BaseProvider):
             res.parsed_json = parsed
         except json.JSONDecodeError as err:
             logger.warning(f"Model failed strict JSON parsing: {err}. Raw output snippet: {cleaned_text[:100]}")
-            match = re.search(r"(\{.*\})", cleaned_text, re.DOTALL)
+            match = re.search(r"(\{[\s\S]*\})", cleaned_text)
             if match:
                 try:
                     res.parsed_json = json.loads(match.group(1))

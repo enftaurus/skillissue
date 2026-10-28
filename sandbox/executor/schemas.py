@@ -14,6 +14,7 @@ ExecutionStatus = Literal[
 ]
 
 class TestCase(BaseModel):
+    __test__ = False
     stdin: str = ""
     expected_stdout: str = ""
     is_hidden: bool = False

@@ -175,40 +175,51 @@ def calculate_token_cost(model_id: str, input_tokens: int, output_tokens: int) -
 def generate_iam_policy(model_id: str, aws_region: str, aws_account_id: str = "*") -> Dict[str, Any]:
     """
     Generates a least-privilege AWS IAM policy JSON document granting ONLY
-    the minimum required inference permissions for the selected Bedrock model.
-    Accounts for foundation model ARNs and inference profile ARNs.
+    the minimum required inference permissions for the selected Bedrock model(s).
+    Accounts for foundation model ARNs and inference profile ARNs across all selected models and regions.
     """
-    meta = get_model_metadata(model_id)
-    resources: List[str] = [
-        f"arn:aws:bedrock:{aws_region}::foundation-model/{model_id}",
-        f"arn:aws:bedrock:*::foundation-model/{model_id}"
-    ]
+    if isinstance(model_id, str):
+        model_ids = [m.strip() for m in model_id.split(",") if m.strip()]
+    elif isinstance(model_id, (list, tuple, set)):
+        model_ids = [str(m).strip() for m in model_id if str(m).strip()]
+    else:
+        model_ids = [str(model_id)]
 
-    # Handle inference profile models (e.g. us.deepseek.r1-v1:0)
-    if model_id.startswith(("us.", "eu.")):
-        base_model = model_id.split(".", 1)[1]
-        resources.append(f"arn:aws:bedrock:{aws_region}::foundation-model/{base_model}")
-        resources.append(f"arn:aws:bedrock:*::foundation-model/{base_model}")
-        resources.append(f"arn:aws:bedrock:{aws_region}:{aws_account_id}:inference-profile/{model_id}")
-        resources.append(f"arn:aws:bedrock:*:{aws_account_id}:inference-profile/{model_id}")
+    if isinstance(aws_region, str):
+        regions = [r.strip() for r in aws_region.split(",") if r.strip()]
+    elif isinstance(aws_region, (list, tuple, set)):
+        regions = [str(r).strip() for r in aws_region if str(r).strip()]
+    else:
+        regions = [str(aws_region)]
 
-    if meta and meta.inference_profile_id:
-        resources.append(
-            f"arn:aws:bedrock:{aws_region}:{aws_account_id}:inference-profile/{meta.inference_profile_id}"
-        )
-        resources.append(
-            f"arn:aws:bedrock:*:{aws_account_id}:inference-profile/{meta.inference_profile_id}"
-        )
-        if meta.inference_profile_id.startswith(("us.", "eu.")):
-            base_model = meta.inference_profile_id.split(".", 1)[1]
-            resources.append(f"arn:aws:bedrock:{aws_region}::foundation-model/{base_model}")
-            resources.append(f"arn:aws:bedrock:*::foundation-model/{base_model}")
-        resources.append(
-            f"arn:aws:bedrock:{aws_region}:{aws_account_id}:inference-profile/{meta.inference_profile_id}"
-        )
-        resources.append(
-            f"arn:aws:bedrock:*:{aws_account_id}:inference-profile/{meta.inference_profile_id}"
-        )
+    if not model_ids:
+        model_ids = [DEFAULT_MODEL_ID]
+    if not regions:
+        regions = ["us-east-1"]
+
+    resources = set()
+    for mid in model_ids:
+        meta = get_model_metadata(mid)
+        for reg in regions:
+            resources.add(f"arn:aws:bedrock:{reg}::foundation-model/{mid}")
+            resources.add(f"arn:aws:bedrock:*::foundation-model/{mid}")
+
+            # Handle inference profile models (e.g. us.deepseek.r1-v1:0)
+            if mid.startswith(("us.", "eu.")):
+                base_model = mid.split(".", 1)[1]
+                resources.add(f"arn:aws:bedrock:{reg}::foundation-model/{base_model}")
+                resources.add(f"arn:aws:bedrock:*::foundation-model/{base_model}")
+                resources.add(f"arn:aws:bedrock:{reg}:{aws_account_id}:inference-profile/{mid}")
+                resources.add(f"arn:aws:bedrock:*:{aws_account_id}:inference-profile/{mid}")
+
+            if meta and meta.inference_profile_id:
+                prof = meta.inference_profile_id
+                resources.add(f"arn:aws:bedrock:{reg}:{aws_account_id}:inference-profile/{prof}")
+                resources.add(f"arn:aws:bedrock:*:{aws_account_id}:inference-profile/{prof}")
+                if prof.startswith(("us.", "eu.")):
+                    base_model = prof.split(".", 1)[1]
+                    resources.add(f"arn:aws:bedrock:{reg}::foundation-model/{base_model}")
+                    resources.add(f"arn:aws:bedrock:*::foundation-model/{base_model}")
 
     policy = {
         "Version": "2012-10-17",
@@ -220,13 +231,15 @@ def generate_iam_policy(model_id: str, aws_region: str, aws_account_id: str = "*
                     "bedrock:InvokeModel",
                     "bedrock:InvokeModelWithResponseStream"
                 ],
-                "Resource": sorted(list(set(resources)))
+                "Resource": sorted(list(resources))
             }
         ]
     }
 
+    policy_rendered = json.dumps(policy, indent=2)
     return {
-        "policy_json": json.dumps(policy, indent=2),
+        "policy_json": policy_rendered,
+        "policy_document": policy_rendered,
         "model_id": model_id,
         "region": aws_region,
         "actions_explained": {
@@ -234,10 +247,10 @@ def generate_iam_policy(model_id: str, aws_region: str, aws_account_id: str = "*
             "bedrock:InvokeModelWithResponseStream": "Allows streaming model responses for low-latency conversational feedback."
         },
         "resources_explained": [
-            f"Restricted exclusively to model '{model_id}' in region '{aws_region}' and cross-region inference profiles."
+            f"Restricted exclusively to model(s) '{', '.join(model_ids)}' in region(s) '{', '.join(regions)}' and associated cross-region inference profiles."
         ],
         "setup_notes": [
-            "1. In the AWS Bedrock Console, ensure 'Model Access' is requested and active for the chosen model in your region.",
+            "1. In the AWS Bedrock Console, ensure 'Model Access' is requested and active for the chosen model(s) in your region(s).",
             "2. Attach this policy to an IAM user or role with programmatic access keys.",
             "3. Do not grant administrator access or bedrock:*."
         ]
