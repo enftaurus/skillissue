@@ -6,7 +6,18 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
-import { AlertCircle, CheckCircle2, Cpu, ExternalLink, Key, ShieldCheck, Trash2 } from 'lucide-react';
+import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Cloud,
+  Cpu,
+  ExternalLink,
+  GraduationCap,
+  Key,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react';
 
 export const ProviderSettingsPage: React.FC = () => {
   const [config, setConfig] = useState<ProviderConfig | null>(null);
@@ -14,14 +25,24 @@ export const ProviderSettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   // Form State
-  const [providerName, setProviderName] = useState<'bedrock'>('bedrock');
+  const [providerName, setProviderName] = useState<'azure' | 'bedrock'>('azure');
+
+  // AWS Bedrock State
   const [awsRegion, setAwsRegion] = useState('us-east-1');
   const [accessKeyId, setAccessKeyId] = useState('');
   const [secretAccessKey, setSecretAccessKey] = useState('');
-  const [preferredModel, setPreferredModel] = useState('qwen.qwen3-32b-v1:0');
-  const [interviewerModel, setInterviewerModel] = useState('qwen.qwen3-32b-v1:0');
-  const [evaluationModel, setEvaluationModel] = useState('us.deepseek.r1-v1:0');
-  const [codingModel, setCodingModel] = useState('qwen.qwen3-coder-30b-a3b-v1:0');
+
+  // Azure State
+  const [azureEndpoint, setAzureEndpoint] = useState('');
+  const [azureApiKey, setAzureApiKey] = useState('');
+  const [azureApiVersion, setAzureApiVersion] = useState('2024-06-01');
+  const [azureDeploymentName, setAzureDeploymentName] = useState('gpt-4o-mini');
+
+  // Model Routing & Inference State
+  const [preferredModel, setPreferredModel] = useState('azure.gpt-4o-mini');
+  const [interviewerModel, setInterviewerModel] = useState('azure.gpt-4o-mini');
+  const [evaluationModel, setEvaluationModel] = useState('azure.gpt-4o');
+  const [codingModel, setCodingModel] = useState('azure.gpt-4o-mini');
   const [fallbackEnabled, setFallbackEnabled] = useState(false);
   const [fallbackProvider, setFallbackProvider] = useState('mock');
   const [fallbackModel, setFallbackModel] = useState('mock-qwen3-32b');
@@ -41,15 +62,34 @@ export const ProviderSettingsPage: React.FC = () => {
       .then(([cfg, modelList]) => {
         setConfig(cfg);
         setModels(modelList);
-        setProviderName('bedrock');
+
+        const currentProvider = (cfg.provider_name === 'azure' ? 'azure' : 'bedrock') as 'azure' | 'bedrock';
+        setProviderName(currentProvider);
+
+        // Bedrock fields
         setAwsRegion(cfg.aws_region || 'us-east-1');
-        setPreferredModel(cfg.preferred_model || 'qwen.qwen3-32b-v1:0');
-        setInterviewerModel(cfg.interviewer_model || cfg.preferred_model || 'qwen.qwen3-32b-v1:0');
-        setEvaluationModel(cfg.evaluation_model || 'us.deepseek.r1-v1:0');
-        setCodingModel(cfg.coding_model || 'qwen.qwen3-coder-30b-a3b-v1:0');
+
+        // Azure fields
+        setAzureEndpoint(cfg.azure_endpoint || '');
+        setAzureApiVersion(cfg.azure_api_version || '2024-06-01');
+        setAzureDeploymentName(cfg.azure_deployment_name || 'gpt-4o-mini');
+
+        // Models
+        if (currentProvider === 'azure') {
+          setPreferredModel(cfg.preferred_model || 'azure.gpt-4o-mini');
+          setInterviewerModel(cfg.interviewer_model || cfg.preferred_model || 'azure.gpt-4o-mini');
+          setEvaluationModel(cfg.evaluation_model || 'azure.gpt-4o');
+          setCodingModel(cfg.coding_model || 'azure.gpt-4o-mini');
+        } else {
+          setPreferredModel(cfg.preferred_model || 'qwen.qwen3-32b-v1:0');
+          setInterviewerModel(cfg.interviewer_model || cfg.preferred_model || 'qwen.qwen3-32b-v1:0');
+          setEvaluationModel(cfg.evaluation_model || 'us.deepseek.r1-v1:0');
+          setCodingModel(cfg.coding_model || 'qwen.qwen3-coder-30b-a3b-v1:0');
+        }
+
         setFallbackEnabled(Boolean(cfg.fallback_enabled));
         setFallbackProvider(cfg.fallback_provider || 'mock');
-        setFallbackModel(cfg.fallback_model || 'mock-qwen3-32b');
+        setFallbackModel(cfg.fallback_model || (currentProvider === 'azure' ? 'mock-gpt-4o-mini' : 'mock-qwen3-32b'));
         setTemperature(cfg.temperature ?? 0.7);
         setMaxTokens(cfg.max_tokens ?? 1024);
       })
@@ -59,17 +99,49 @@ export const ProviderSettingsPage: React.FC = () => {
       .finally(() => setLoading(false));
   }, []);
 
+  const handleProviderSwitch = (newProvider: 'azure' | 'bedrock') => {
+    setProviderName(newProvider);
+    setTestResult(null);
+    setNotification(null);
+
+    if (newProvider === 'azure') {
+      setPreferredModel('azure.gpt-4o-mini');
+      setInterviewerModel('azure.gpt-4o-mini');
+      setEvaluationModel('azure.gpt-4o');
+      setCodingModel('azure.gpt-4o-mini');
+      setFallbackModel('mock-gpt-4o-mini');
+    } else {
+      setPreferredModel('qwen.qwen3-32b-v1:0');
+      setInterviewerModel('qwen.qwen3-32b-v1:0');
+      setEvaluationModel('us.deepseek.r1-v1:0');
+      setCodingModel('qwen.qwen3-coder-30b-a3b-v1:0');
+      setFallbackModel('mock-qwen3-32b');
+    }
+  };
+
   const handleTest = async () => {
     setIsTesting(true);
     setTestResult(null);
     try {
-      const res = await api.post<{ success: boolean; message: string; latency_ms?: number }>('/providers/test', {
-        provider_name: providerName,
-        aws_region: awsRegion,
-        aws_access_key_id: accessKeyId,
-        aws_secret_access_key: secretAccessKey,
-        preferred_model: preferredModel,
-      });
+      const payload =
+        providerName === 'azure'
+          ? {
+              provider_name: 'azure',
+              azure_endpoint: azureEndpoint,
+              azure_api_key: azureApiKey || undefined,
+              azure_api_version: azureApiVersion,
+              azure_deployment_name: azureDeploymentName,
+              preferred_model: preferredModel,
+            }
+          : {
+              provider_name: 'bedrock',
+              aws_region: awsRegion,
+              aws_access_key_id: accessKeyId || undefined,
+              aws_secret_access_key: secretAccessKey || undefined,
+              preferred_model: preferredModel,
+            };
+
+      const res = await api.post<{ success: boolean; message: string; latency_ms?: number }>('/providers/test', payload);
       setTestResult(res);
     } catch (err: any) {
       setTestResult({ success: false, message: err.message || 'Connection test failed' });
@@ -84,11 +156,8 @@ export const ProviderSettingsPage: React.FC = () => {
     setNotification(null);
 
     try {
-      const updated = await api.put<ProviderConfig>('/providers/config', {
+      const payload: any = {
         provider_name: providerName,
-        aws_region: awsRegion,
-        aws_access_key_id: accessKeyId || undefined,
-        aws_secret_access_key: secretAccessKey || undefined,
         preferred_model: preferredModel,
         default_model: preferredModel,
         interviewer_model: interviewerModel,
@@ -99,11 +168,25 @@ export const ProviderSettingsPage: React.FC = () => {
         fallback_model: fallbackModel,
         temperature,
         max_tokens: maxTokens,
-      });
+      };
+
+      if (providerName === 'azure') {
+        payload.azure_endpoint = azureEndpoint;
+        if (azureApiKey) payload.azure_api_key = azureApiKey;
+        payload.azure_api_version = azureApiVersion;
+        payload.azure_deployment_name = azureDeploymentName;
+      } else {
+        payload.aws_region = awsRegion;
+        if (accessKeyId) payload.aws_access_key_id = accessKeyId;
+        if (secretAccessKey) payload.aws_secret_access_key = secretAccessKey;
+      }
+
+      const updated = await api.put<ProviderConfig>('/providers/config', payload);
       setConfig(updated);
       setAccessKeyId('');
       setSecretAccessKey('');
-      setNotification({ type: 'success', message: 'Provider configuration and task routing saved successfully.' });
+      setAzureApiKey('');
+      setNotification({ type: 'success', message: `${providerName === 'azure' ? 'Azure OpenAI' : 'Amazon Bedrock'} configuration saved successfully.` });
     } catch (err: any) {
       setNotification({ type: 'error', message: err.message || 'Failed to save configuration.' });
     } finally {
@@ -112,13 +195,14 @@ export const ProviderSettingsPage: React.FC = () => {
   };
 
   const handleDeleteCredentials = async () => {
-    if (!window.confirm('Are you sure you want to delete your stored AWS credentials? You will need to reconfigure Bedrock before running further interviews or coaching sessions.')) {
+    const cloudName = providerName === 'azure' ? 'Azure' : 'AWS';
+    if (!window.confirm(`Are you sure you want to delete your stored ${cloudName} credentials? You will need to reconfigure before running further interviews.`)) {
       return;
     }
     try {
       const updated = await api.delete<ProviderConfig>('/providers/credentials');
       setConfig(updated);
-      setNotification({ type: 'success', message: 'Stored AWS credentials permanently deleted from the database.' });
+      setNotification({ type: 'success', message: `Stored ${cloudName} credentials permanently deleted from the database.` });
     } catch (err: any) {
       setNotification({ type: 'error', message: err.message });
     }
@@ -133,6 +217,14 @@ export const ProviderSettingsPage: React.FC = () => {
     );
   }
 
+  const activeProviderModels = models.filter((m) => {
+    if (providerName === 'azure') return m.provider === 'azure';
+    return m.provider === 'bedrock' || m.provider === 'mock';
+  });
+
+  const isConfiguredForActiveProvider =
+    config?.provider_name === providerName && Boolean(config?.aws_access_key_masked);
+
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8">
       {/* Page Title & Context */}
@@ -142,15 +234,15 @@ export const ProviderSettingsPage: React.FC = () => {
             <Cpu className="w-6 h-6 text-lime-700" />
             AI Provider Settings (BYOC)
           </h1>
-          <Link to="/docs/aws-bedrock-setup">
+          <Link to="/onboarding/bedrock">
             <Button variant="outline" size="sm">
               <ExternalLink className="w-3.5 h-3.5" />
-              AWS Setup Guide
+              Onboarding Wizard
             </Button>
           </Link>
         </div>
         <p className="mt-1 text-sm text-ink-muted">
-          Connect your own Amazon Bedrock cloud credentials with zero markup.
+          Connect your own cloud credentials (Azure OpenAI or Amazon Bedrock) with zero markup.
         </p>
       </div>
 
@@ -176,7 +268,7 @@ export const ProviderSettingsPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <span className="text-xs font-semibold uppercase tracking-wider text-lime-800">
-              $20 Planning Budget Headroom
+              Estimated Spend & Logged Tokens
             </span>
             <div className="mt-1 flex items-baseline gap-3">
               <span className="text-2xl font-bold text-ink">
@@ -187,50 +279,267 @@ export const ProviderSettingsPage: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-ink-subtle mt-1">
-              At Qwen3 32B rates ($0.1545 / $0.618 per 1M tokens), a $20 budget allows ~500+ full interviews.
+              {providerName === 'azure'
+                ? 'Using GPT-4o Mini ($0.15 / $0.60 per 1M tokens), a $100 student credit covers 1,000+ full interviews.'
+                : 'Using Qwen3 32B ($0.1545 / $0.618 per 1M tokens), a $20 budget allows ~500+ full interviews.'}
             </p>
           </div>
           <div className="shrink-0 flex items-center gap-2">
-            <Badge variant={config?.provider_name === 'bedrock' ? 'lime' : 'zinc'}>
-              Mode: {config?.provider_name.toUpperCase()}
+            <Badge variant={config?.provider_name === providerName ? 'lime' : 'zinc'}>
+              Active: {config?.provider_name.toUpperCase()}
             </Badge>
           </div>
         </div>
       </Card>
 
-      {/* Configuration Form */}
+      {/* Provider Selector Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Azure Option */}
+        <div
+          onClick={() => handleProviderSwitch('azure')}
+          className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex flex-col justify-between ${
+            providerName === 'azure'
+              ? 'border-lime-600 bg-white shadow-sm ring-2 ring-lime-500/20'
+              : 'border-surface-border bg-surface-card hover:border-ink-subtle/40'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
+                <Cloud className="w-4 h-4" />
+              </div>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-lime-100 text-lime-800">
+                <GraduationCap className="w-3 h-3" />
+                Recommended for Students
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-ink">Microsoft Azure (OpenAI)</h3>
+            <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+              Fast setup with $100 free student credit. Direct access to GPT-4o Mini & GPT-4o.
+            </p>
+          </div>
+          <div className="mt-3 pt-2 border-t border-surface-border flex items-center justify-between text-xs font-medium">
+            <span className="text-ink">GPT-4o Mini & GPT-4o</span>
+            <span className={providerName === 'azure' ? 'text-lime-700 font-bold' : 'text-ink-muted'}>
+              {providerName === 'azure' ? '✓ Selected' : 'Switch to Azure'}
+            </span>
+          </div>
+        </div>
+
+        {/* AWS Bedrock Option */}
+        <div
+          onClick={() => handleProviderSwitch('bedrock')}
+          className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex flex-col justify-between ${
+            providerName === 'bedrock'
+              ? 'border-lime-600 bg-white shadow-sm ring-2 ring-lime-500/20'
+              : 'border-surface-border bg-surface-card hover:border-ink-subtle/40'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700">
+                Open-Weights BYOC
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-ink">Amazon Web Services (Bedrock)</h3>
+            <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+              Direct access to open-weights models: Qwen 32B, DeepSeek-R1, and Amazon Nova.
+            </p>
+          </div>
+          <div className="mt-3 pt-2 border-t border-surface-border flex items-center justify-between text-xs font-medium">
+            <span className="text-ink">Qwen 32B & DeepSeek-R1</span>
+            <span className={providerName === 'bedrock' ? 'text-lime-700 font-bold' : 'text-ink-muted'}>
+              {providerName === 'bedrock' ? '✓ Selected' : 'Switch to AWS'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Cloud-Specific Budget Warning */}
+      {providerName === 'azure' ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50/70 p-4 flex gap-3 items-start">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-900 leading-relaxed">
+            <strong className="font-semibold block text-amber-950 mb-0.5">
+              Azure Student Account Budget Advisory:
+            </strong>
+            Remember to set a spending alert in <strong>Azure Portal → Cost Management + Billing → Budgets</strong> (e.g. at $20.00). This protects your $100 student credits and ensures uninterrupted access.
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-rose-300 bg-rose-50/70 p-4 flex gap-3 items-start">
+          <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-rose-900 leading-relaxed">
+            <strong className="font-semibold block text-rose-950 mb-0.5">
+              AWS Credit Card Billing Advisory:
+            </strong>
+            AWS Bedrock token usage bills directly to your credit card. Create an alert in <strong>AWS Billing Console → Budgets</strong> (e.g. at $10.00) so you never encounter unexpected charges.
+          </div>
+        </div>
+      )}
+
+      {/* Main Configuration Form */}
       <Card>
         <form onSubmit={handleSave} className="space-y-6">
-          {/* Provider Info */}
-          <div>
-            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
-              Inference Provider
-            </label>
-            <div className="p-4 rounded-lg border border-lime-600 bg-lime-50/30 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm text-ink">Amazon Bedrock (BYOC)</span>
-                  <Badge variant="lime" size="sm">Active</Badge>
-                </div>
-                <p className="text-xs text-ink-subtle mt-1">
-                  Live AI inference via your secure AWS IAM credentials. Pay AWS token prices directly with zero markup.
-                </p>
-              </div>
-              <Link to="/docs/aws-bedrock-setup">
-                <Button variant="outline" size="sm" type="button">
-                  Setup Docs
-                </Button>
-              </Link>
+          {/* Credentials Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
+                {providerName === 'azure' ? 'Azure OpenAI Credentials & Endpoint' : 'AWS IAM Credentials & Region'}
+              </span>
+              <span className="text-xs text-ink-subtle flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-lime-700" />
+                Encrypted at rest with AES-256
+              </span>
             </div>
+
+            {isConfiguredForActiveProvider && config?.aws_access_key_masked && (
+              <div className="p-3 bg-surface-warm rounded-md border border-surface-border flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs">
+                  <Key className="w-3.5 h-3.5 text-ink-subtle" />
+                  <span>Saved Key:</span>
+                  <code className="font-mono font-semibold bg-white px-2 py-0.5 rounded border border-surface-border">
+                    {config.aws_access_key_masked}
+                  </code>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDeleteCredentials}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                  Purge Credentials
+                </Button>
+              </div>
+            )}
+
+            {providerName === 'azure' ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-ink mb-1.5">
+                    Azure OpenAI Endpoint URL <span className="text-rose-500">*</span>
+                  </label>
+                  <Input
+                    type="text"
+                    value={azureEndpoint}
+                    onChange={(e) => setAzureEndpoint(e.target.value)}
+                    placeholder="https://your-resource-name.openai.azure.com/"
+                  />
+                  <span className="text-[11px] text-ink-subtle mt-1 block">
+                    Found under Keys and Endpoint in your Azure OpenAI resource.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-ink mb-1.5">
+                    {isConfiguredForActiveProvider ? 'Update Azure API Key (Leave blank to keep saved)' : 'Azure API Key'} <span className="text-rose-500">*</span>
+                  </label>
+                  <Input
+                    type="password"
+                    value={azureApiKey}
+                    onChange={(e) => setAzureApiKey(e.target.value)}
+                    placeholder={isConfiguredForActiveProvider ? '••••••••••••••••' : 'Paste Key 1 or Key 2'}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-ink mb-1.5">
+                      Deployment Name (Optional)
+                    </label>
+                    <Input
+                      type="text"
+                      value={azureDeploymentName}
+                      onChange={(e) => setAzureDeploymentName(e.target.value)}
+                      placeholder="gpt-4o-mini"
+                    />
+                    <span className="text-[11px] text-ink-subtle mt-1 block">
+                      Name of your deployment in Azure OpenAI Studio.
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-ink mb-1.5">
+                      API Version
+                    </label>
+                    <Input
+                      type="text"
+                      value={azureApiVersion}
+                      onChange={(e) => setAzureApiVersion(e.target.value)}
+                      placeholder="2024-06-01"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-1">
+                    <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
+                      AWS Region
+                    </label>
+                    <select
+                      value={awsRegion}
+                      onChange={(e) => setAwsRegion(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500"
+                    >
+                      <option value="us-east-1">us-east-1 (N. Virginia)</option>
+                      <option value="us-west-2">us-west-2 (Oregon)</option>
+                      <option value="ap-south-1">ap-south-1 (Mumbai)</option>
+                      <option value="ap-southeast-2">ap-southeast-2 (Sydney)</option>
+                      <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <Input
+                      label={isConfiguredForActiveProvider ? "Update Access Key ID (Leave blank to keep saved)" : "AWS Access Key ID"}
+                      type="text"
+                      value={accessKeyId}
+                      onChange={(e) => setAccessKeyId(e.target.value)}
+                      placeholder="AKIA..."
+                    />
+                  </div>
+                </div>
+
+                <Input
+                  label={isConfiguredForActiveProvider ? "Update Secret Access Key (Leave blank to keep saved)" : "AWS Secret Access Key"}
+                  type="password"
+                  value={secretAccessKey}
+                  onChange={(e) => setSecretAccessKey(e.target.value)}
+                  placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                />
+              </div>
+            )}
+
+            {/* Test Results */}
+            {testResult && (
+              <div
+                className={`p-3 rounded-md text-xs flex items-center justify-between border ${
+                  testResult.success
+                    ? 'bg-lime-50 border-lime-200 text-lime-900'
+                    : 'bg-red-50 border-red-200 text-red-900'
+                }`}
+              >
+                <span>{testResult.message}</span>
+                {testResult.latency_ms && (
+                  <span className="font-mono font-semibold">{testResult.latency_ms}ms</span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Model Selection Lineup */}
-          <div>
+          <div className="pt-4 border-t border-surface-border">
             <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
-              Recommended Model Lineup
+              Available Models ({providerName === 'azure' ? 'Azure OpenAI' : 'AWS Bedrock'})
             </label>
             <div className="space-y-2.5">
-              {models.map((m) => {
+              {activeProviderModels.map((m) => {
                 const isSelected = preferredModel === m.model_id;
                 return (
                   <label
@@ -283,10 +592,10 @@ export const ProviderSettingsPage: React.FC = () => {
           <div className="pt-4 border-t border-surface-border space-y-4">
             <div>
               <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider">
-                Task-Specific Routing (LangGraph Orchestration)
+                Task-Specific Routing
               </label>
               <p className="text-xs text-ink-subtle mt-1">
-                Assign specialized models for specific stages in your preparation loop.
+                Assign specialized models for interview dialogue, evaluations, and coding hints.
               </p>
             </div>
 
@@ -300,7 +609,7 @@ export const ProviderSettingsPage: React.FC = () => {
                   onChange={(e) => setInterviewerModel(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
                 >
-                  {models.map((m) => (
+                  {activeProviderModels.map((m) => (
                     <option key={m.model_id} value={m.model_id}>
                       {m.display_name} ({m.role})
                     </option>
@@ -318,7 +627,7 @@ export const ProviderSettingsPage: React.FC = () => {
                   onChange={(e) => setEvaluationModel(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
                 >
-                  {models.map((m) => (
+                  {activeProviderModels.map((m) => (
                     <option key={m.model_id} value={m.model_id}>
                       {m.display_name} ({m.role})
                     </option>
@@ -336,7 +645,7 @@ export const ProviderSettingsPage: React.FC = () => {
                   onChange={(e) => setCodingModel(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
                 >
-                  {models.map((m) => (
+                  {activeProviderModels.map((m) => (
                     <option key={m.model_id} value={m.model_id}>
                       {m.display_name} ({m.role})
                     </option>
@@ -357,7 +666,7 @@ export const ProviderSettingsPage: React.FC = () => {
               <div>
                 <span className="text-sm font-medium text-ink block">Automatic Provider Fallback</span>
                 <span className="text-xs text-ink-subtle">
-                  Gracefully route to a secondary model or local mock when cloud rate limits or timeouts occur.
+                  Gracefully route to a local mock when cloud rate limits or timeouts occur.
                 </span>
               </div>
               <input
@@ -367,32 +676,6 @@ export const ProviderSettingsPage: React.FC = () => {
                 className="w-4 h-4 accent-lime-600 rounded"
               />
             </div>
-
-            {fallbackEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-surface-subtle rounded-md border border-surface-border">
-                <div>
-                  <label className="block text-xs font-medium text-ink mb-1.5">Fallback Provider</label>
-                  <select
-                    value={fallbackProvider}
-                    onChange={(e) => setFallbackProvider(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink"
-                  >
-                    <option value="mock">Local Mock Provider (Zero Cost)</option>
-                    <option value="bedrock">Amazon Bedrock</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-ink mb-1.5">Fallback Model</label>
-                  <input
-                    type="text"
-                    value={fallbackModel}
-                    onChange={(e) => setFallbackModel(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink font-mono"
-                    placeholder="mock-qwen3-32b"
-                  />
-                </div>
-              </div>
-            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -428,109 +711,17 @@ export const ProviderSettingsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Bedrock IAM Credentials (Only visible when Bedrock is selected) */}
-          {providerName === 'bedrock' && (
-            <div className="pt-4 border-t border-surface-border space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
-                  AWS IAM Credentials & Region
-                </span>
-                <span className="text-xs text-ink-subtle flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-lime-700" />
-                  Encrypted at rest with AES-256
-                </span>
-              </div>
-
-              {config?.aws_access_key_masked && (
-                <div className="p-3 bg-surface-warm rounded-md border border-surface-border flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Key className="w-3.5 h-3.5 text-ink-subtle" />
-                    <span>Saved Access Key:</span>
-                    <code className="font-mono font-semibold bg-white px-2 py-0.5 rounded border border-surface-border">
-                      {config.aws_access_key_masked}
-                    </code>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleDeleteCredentials}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 mr-1" />
-                    Purge Credentials
-                  </Button>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-1">
-                  <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
-                    AWS Region
-                  </label>
-                  <select
-                    value={awsRegion}
-                    onChange={(e) => setAwsRegion(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500"
-                  >
-                    <option value="us-east-1">us-east-1 (N. Virginia)</option>
-                    <option value="us-west-2">us-west-2 (Oregon)</option>
-                    <option value="ap-south-1">ap-south-1 (Mumbai)</option>
-                    <option value="ap-southeast-2">ap-southeast-2 (Sydney)</option>
-                    <option value="eu-central-1">eu-central-1 (Frankfurt)</option>
-                  </select>
-                </div>
-
-                <div className="sm:col-span-2">
-                  <Input
-                    label={config?.aws_access_key_masked ? "Update Access Key ID (Leave blank to keep saved)" : "AWS Access Key ID"}
-                    type="text"
-                    value={accessKeyId}
-                    onChange={(e) => setAccessKeyId(e.target.value)}
-                    placeholder="AKIA..."
-                  />
-                </div>
-              </div>
-
-              <Input
-                label={config?.aws_access_key_masked ? "Update Secret Access Key (Leave blank to keep saved)" : "AWS Secret Access Key"}
-                type="password"
-                value={secretAccessKey}
-                onChange={(e) => setSecretAccessKey(e.target.value)}
-                placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-              />
-
-              {/* Live Test Results */}
-              {testResult && (
-                <div
-                  className={`p-3 rounded-md text-xs flex items-center justify-between border ${
-                    testResult.success
-                      ? 'bg-lime-50 border-lime-200 text-lime-900'
-                      : 'bg-red-50 border-red-200 text-red-900'
-                  }`}
-                >
-                  <span>{testResult.message}</span>
-                  {testResult.latency_ms && (
-                    <span className="font-mono font-semibold">{testResult.latency_ms}ms</span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Action Buttons */}
           <div className="pt-4 border-t border-surface-border flex items-center justify-between">
-            {providerName === 'bedrock' && (accessKeyId || config?.aws_access_key_masked) ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="md"
-                onClick={handleTest}
-                isLoading={isTesting}
-              >
-                Test Connection
-              </Button>
-            ) : <div />}
+            <Button
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={handleTest}
+              isLoading={isTesting}
+            >
+              Test Connection
+            </Button>
 
             <Button type="submit" variant="primary" size="md" isLoading={isSaving}>
               Save Provider Configuration

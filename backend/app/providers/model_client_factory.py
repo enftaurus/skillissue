@@ -26,6 +26,7 @@ class ClientCacheKey:
     model_id: str
     temperature: float
     max_tokens: int
+    provider_name: str = "bedrock"
 
 @dataclass
 class CacheEntry:
@@ -199,14 +200,16 @@ class ModelClientFactory:
         effective_tokens = max_tokens_override if max_tokens_override is not None else metadata.max_tokens
 
         # Step 2: Build cache key based on effective construction parameters
+        region_str = metadata.aws_region if metadata.provider_name == "bedrock" else (metadata.azure_endpoint or "azure")
         cache_key = ClientCacheKey(
             client_type=client_type,
             user_id=user_id,
             config_version=metadata.config_version,
-            region=metadata.aws_region,
+            region=region_str,
             model_id=effective_model,
             temperature=effective_temp,
             max_tokens=effective_tokens,
+            provider_name=metadata.provider_name,
         )
 
         # Step 3: Fast Cache Hit Path
@@ -215,7 +218,7 @@ class ModelClientFactory:
             return cached_client
 
         if client_type == "langchain":
-            if metadata.provider_name in ("test_double", "mock") or (is_test_run and not is_real_bedrock_test):
+            if metadata.provider_name in ("test_double", "mock") or (is_test_run and not is_real_bedrock_test and not os.environ.get("TEST_WITH_REAL_AZURE")):
                 from backend.app.providers.mock_chat_model import MockChatModel
                 client = MockChatModel(model_id=effective_model)
                 _CLIENT_CACHE.set(cache_key, client)
@@ -228,38 +231,61 @@ class ModelClientFactory:
                 return client
 
         # Step 4: Cache Miss Path — Decrypt credentials ONLY on miss
-        access_key, secret_key, session_token = await ModelResolver.resolve_credentials(db, user_id)
+        creds = await ModelResolver.resolve_credentials(db, user_id)
 
         try:
-            if client_type == "langchain":
-                extra_kwargs = {}
-                if session_token:
-                    extra_kwargs["aws_session_token"] = session_token
-
-                client = ChatBedrockConverse(
-                    model_id=effective_model,
-                    aws_access_key_id=access_key,
-                    aws_secret_access_key=secret_key,
-                    region_name=metadata.aws_region,
-                    temperature=effective_temp,
-                    max_tokens=effective_tokens,
-                    **extra_kwargs
-                )
+            if metadata.provider_name == "azure":
+                if client_type == "langchain":
+                    from langchain_openai import AzureChatOpenAI
+                    deployment = creds.azure_deployment_name or metadata.azure_deployment_name or effective_model.replace("azure.", "")
+                    client = AzureChatOpenAI(
+                        azure_endpoint=creds.azure_endpoint or metadata.azure_endpoint,
+                        api_key=creds.azure_api_key,
+                        api_version=creds.azure_api_version or metadata.azure_api_version or "2024-06-01",
+                        azure_deployment=deployment,
+                        temperature=effective_temp,
+                        max_tokens=effective_tokens,
+                    )
+                else:
+                    from backend.app.providers.azure import AzureOpenAIProvider
+                    client = AzureOpenAIProvider(
+                        azure_endpoint=creds.azure_endpoint or metadata.azure_endpoint,
+                        api_key=creds.azure_api_key,
+                        api_version=creds.azure_api_version or metadata.azure_api_version or "2024-06-01",
+                        deployment_name=creds.azure_deployment_name or metadata.azure_deployment_name or effective_model.replace("azure.", ""),
+                        model_id=effective_model,
+                    )
             else:
-                client = AmazonBedrockProvider(
-                    aws_access_key_id=access_key,
-                    aws_secret_access_key=secret_key,
-                    aws_region=metadata.aws_region,
-                    aws_session_token=session_token,
-                    model_id=effective_model,
-                )
+                if client_type == "langchain":
+                    extra_kwargs = {}
+                    if creds.aws_session_token:
+                        extra_kwargs["aws_session_token"] = creds.aws_session_token
+
+                    client = ChatBedrockConverse(
+                        model_id=effective_model,
+                        aws_access_key_id=creds.aws_access_key,
+                        aws_secret_access_key=creds.aws_secret_key,
+                        region_name=metadata.aws_region,
+                        temperature=effective_temp,
+                        max_tokens=effective_tokens,
+                        **extra_kwargs
+                    )
+                else:
+                    client = AmazonBedrockProvider(
+                        aws_access_key_id=creds.aws_access_key,
+                        aws_secret_access_key=creds.aws_secret_key,
+                        aws_region=metadata.aws_region,
+                        aws_session_token=creds.aws_session_token,
+                        model_id=effective_model,
+                    )
 
             _CLIENT_CACHE.set(cache_key, client)
             return client
         except Exception as e:
             logger.error(f"Failed to initialize {client_type} client for user {user_id}: {e}")
+            provider_label = "Azure OpenAI" if metadata.provider_name == "azure" else "Amazon Bedrock"
             raise ProviderError(
-                f"Failed to initialize Amazon Bedrock model '{effective_model}' in '{metadata.aws_region}': {e}. "
+                f"Failed to initialize {provider_label} model '{effective_model}': {e}. "
                 "Verify model access and credentials in Settings → Model Provider.",
                 "PROVIDER_INITIALIZATION_FAILED"
             )

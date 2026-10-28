@@ -9,6 +9,7 @@ from backend.app.providers.schemas import ProviderConfigSave, TestCredentialsReq
 from backend.app.providers.factory import ModelFactory
 from backend.app.providers.models_catalog import (
     DEFAULT_MODEL_ID, DEFAULT_CODING_MODEL_ID, DEFAULT_EVALUATION_MODEL_ID,
+    DEFAULT_AZURE_MODEL_ID, DEFAULT_AZURE_CODING_MODEL_ID, DEFAULT_AZURE_EVALUATION_MODEL_ID,
     generate_iam_policy
 )
 from backend.app.core.security import encrypt_secret, mask_access_key
@@ -59,28 +60,45 @@ class ProviderConfigService:
     @staticmethod
     async def test_credentials(data: TestCredentialsRequest) -> TestCredentialsResponse:
         start_time = time.time()
-        provider = ModelFactory.get_provider_by_type(
-            provider_name=data.provider_name,
-            model_id=data.preferred_model,
-            aws_access_key=data.aws_access_key_id,
-            aws_secret_key=data.aws_secret_access_key,
-            aws_region=data.aws_region,
-            aws_session_token=data.aws_session_token,
-        )
+        preferred_model = data.preferred_model
+        if not preferred_model:
+            preferred_model = DEFAULT_AZURE_MODEL_ID if data.provider_name == "azure" else DEFAULT_MODEL_ID
+
+        if data.provider_name == "azure":
+            provider = ModelFactory.get_provider_by_type(
+                provider_name="azure",
+                model_id=preferred_model,
+                azure_endpoint=data.azure_endpoint,
+                azure_api_key=data.azure_api_key,
+                azure_api_version=data.azure_api_version,
+                azure_deployment_name=data.azure_deployment_name,
+            )
+            location_label = data.azure_endpoint or "Azure"
+        else:
+            provider = ModelFactory.get_provider_by_type(
+                provider_name=data.provider_name,
+                model_id=preferred_model,
+                aws_access_key=data.aws_access_key_id,
+                aws_secret_key=data.aws_secret_access_key,
+                aws_region=data.aws_region,
+                aws_session_token=data.aws_session_token,
+            )
+            location_label = data.aws_region or "AWS"
+
         try:
             await provider.validate_credentials()
             latency = int((time.time() - start_time) * 1000)
             return TestCredentialsResponse(
                 success=True,
-                message=f"Successfully verified access to {data.preferred_model} in {data.aws_region}.",
-                model_id=data.preferred_model,
+                message=f"Successfully verified access to {preferred_model} ({location_label}).",
+                model_id=preferred_model,
                 latency_ms=latency
             )
         except ProviderError as e:
             return TestCredentialsResponse(
                 success=False,
                 message=f"Validation failed: {e.message}",
-                model_id=data.preferred_model
+                model_id=preferred_model
             )
 
     @staticmethod
@@ -91,14 +109,23 @@ class ProviderConfigService:
     async def save_config(db: AsyncSession, user_id: str, data: ProviderConfigSave) -> ProviderConfig:
         config = await ProviderConfigService.get_config(db, user_id)
 
-        config.provider_name = "bedrock"
-        config.aws_region = data.aws_region
-        config.preferred_model = data.preferred_model or DEFAULT_MODEL_ID
-        config.default_model = data.default_model or config.preferred_model
-        config.interviewer_model = data.interviewer_model
-        config.evaluation_model = data.evaluation_model
-        config.coding_model = data.coding_model
-        config.planning_model = data.planning_model
+        config.provider_name = data.provider_name or "bedrock"
+        config.aws_region = data.aws_region or "us-east-1"
+        if data.provider_name == "azure":
+            config.preferred_model = data.preferred_model or DEFAULT_AZURE_MODEL_ID
+            config.default_model = data.default_model or config.preferred_model
+            config.interviewer_model = data.interviewer_model or DEFAULT_AZURE_MODEL_ID
+            config.evaluation_model = data.evaluation_model or DEFAULT_AZURE_EVALUATION_MODEL_ID
+            config.coding_model = data.coding_model or DEFAULT_AZURE_CODING_MODEL_ID
+            config.planning_model = data.planning_model or DEFAULT_AZURE_MODEL_ID
+        else:
+            config.preferred_model = data.preferred_model or DEFAULT_MODEL_ID
+            config.default_model = data.default_model or config.preferred_model
+            config.interviewer_model = data.interviewer_model
+            config.evaluation_model = data.evaluation_model
+            config.coding_model = data.coding_model
+            config.planning_model = data.planning_model
+
         if data.fallback_enabled is not None:
             config.fallback_enabled = data.fallback_enabled
         if data.temperature is not None:
@@ -110,38 +137,84 @@ class ProviderConfigService:
         if data.monthly_cost_cents_budget is not None:
             config.monthly_cost_cents_budget = data.monthly_cost_cents_budget
 
-        # If new access keys are submitted, test before saving
-        if data.aws_access_key_id and data.aws_secret_access_key:
-            test_res = await ProviderConfigService.test_credentials(
-                TestCredentialsRequest(
-                    provider_name="bedrock",
-                    aws_region=data.aws_region,
-                    aws_access_key_id=data.aws_access_key_id,
-                    aws_secret_access_key=data.aws_secret_access_key,
-                    aws_session_token=data.aws_session_token,
-                    preferred_model=config.preferred_model,
+        # If Azure provider is selected
+        if data.provider_name == "azure":
+            if data.azure_endpoint and data.azure_api_key:
+                test_res = await ProviderConfigService.test_credentials(
+                    TestCredentialsRequest(
+                        provider_name="azure",
+                        azure_endpoint=data.azure_endpoint,
+                        azure_api_key=data.azure_api_key,
+                        azure_api_version=data.azure_api_version or "2024-06-01",
+                        azure_deployment_name=data.azure_deployment_name,
+                        preferred_model=config.preferred_model,
+                    )
                 )
-            )
-            if not test_res.success:
-                raise AppException(test_res.message, code="INVALID_CREDENTIALS")
+                if not test_res.success:
+                    raise AppException(test_res.message, code="INVALID_CREDENTIALS")
 
-            creds_bundle = json.dumps({
-                "access_key_id": data.aws_access_key_id,
-                "secret_access_key": data.aws_secret_access_key,
-                "session_token": data.aws_session_token,
-            })
-            config.aws_access_key_masked = mask_access_key(data.aws_access_key_id)
-            config.aws_secret_key_enc = encrypt_secret(creds_bundle, user_id=user_id)
-            config.is_valid = True
-            config.last_tested_at = datetime.now(timezone.utc)
+                creds_bundle = json.dumps({
+                    "azure_api_key": data.azure_api_key,
+                    "azure_endpoint": data.azure_endpoint,
+                    "azure_api_version": data.azure_api_version or "2024-06-01",
+                    "azure_deployment_name": data.azure_deployment_name,
+                })
+                config.azure_endpoint = data.azure_endpoint
+                config.azure_api_version = data.azure_api_version or "2024-06-01"
+                config.azure_deployment_name = data.azure_deployment_name
+                config.aws_access_key_masked = mask_access_key(data.azure_api_key)
+                config.aws_secret_key_enc = encrypt_secret(creds_bundle, user_id=user_id)
+                config.is_valid = True
+                config.last_tested_at = datetime.now(timezone.utc)
 
-            # Mark user onboarding complete
-            user_res = await db.execute(select(User).where(User.id == user_id))
-            user = user_res.scalar_one_or_none()
-            if user:
-                user.onboarding_completed = True
-        elif not config.aws_secret_key_enc:
-            raise AppException("AWS Access Key ID and Secret Access Key are required.", code="MISSING_CREDENTIALS")
+                user_res = await db.execute(select(User).where(User.id == user_id))
+                user = user_res.scalar_one_or_none()
+                if user:
+                    user.onboarding_completed = True
+            elif config.provider_name == "azure" and config.aws_secret_key_enc:
+                if data.azure_endpoint:
+                    config.azure_endpoint = data.azure_endpoint
+                if data.azure_api_version:
+                    config.azure_api_version = data.azure_api_version
+                if data.azure_deployment_name:
+                    config.azure_deployment_name = data.azure_deployment_name
+            else:
+                raise AppException("Azure Endpoint and API Key are required.", code="MISSING_CREDENTIALS")
+        else:
+            # If new access keys are submitted, test before saving
+            if data.aws_access_key_id and data.aws_secret_access_key:
+                test_res = await ProviderConfigService.test_credentials(
+                    TestCredentialsRequest(
+                        provider_name="bedrock",
+                        aws_region=data.aws_region,
+                        aws_access_key_id=data.aws_access_key_id,
+                        aws_secret_access_key=data.aws_secret_access_key,
+                        aws_session_token=data.aws_session_token,
+                        preferred_model=config.preferred_model,
+                    )
+                )
+                if not test_res.success:
+                    raise AppException(test_res.message, code="INVALID_CREDENTIALS")
+
+                creds_bundle = json.dumps({
+                    "access_key_id": data.aws_access_key_id,
+                    "secret_access_key": data.aws_secret_access_key,
+                    "session_token": data.aws_session_token,
+                })
+                config.aws_access_key_masked = mask_access_key(data.aws_access_key_id)
+                config.aws_secret_key_enc = encrypt_secret(creds_bundle, user_id=user_id)
+                config.is_valid = True
+                config.last_tested_at = datetime.now(timezone.utc)
+
+                # Mark user onboarding complete
+                user_res = await db.execute(select(User).where(User.id == user_id))
+                user = user_res.scalar_one_or_none()
+                if user:
+                    user.onboarding_completed = True
+            elif config.provider_name == "bedrock" and config.aws_secret_key_enc:
+                pass
+            else:
+                raise AppException("AWS Access Key ID and Secret Access Key are required.", code="MISSING_CREDENTIALS")
 
         # Increment configuration version to reliably invalidate cached clients across processes/replicas
         config.config_version = (config.config_version or 1) + 1

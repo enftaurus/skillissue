@@ -1,3 +1,4 @@
+import os
 import uuid
 import pytest
 import httpx
@@ -18,6 +19,9 @@ async def test_models_catalog_lineup(client: httpx.AsyncClient):
     assert "qwen.qwen3-coder-30b-a3b-v1:0" in model_ids
     assert "deepseek.v3.2" in model_ids
     assert "us.deepseek.r1-v1:0" in model_ids
+    assert "azure.gpt-4o-mini" in model_ids
+    assert "azure.gpt-4o" in model_ids
+    assert "azure.phi-3.5-mini" in model_ids
     assert "mock-qwen3-32b" not in model_ids
 
     # Verify Qwen3 32B is default model ($0.1545 in / $0.618 out per 1M)
@@ -139,3 +143,104 @@ async def test_provider_credential_encryption_and_routing():
     mock_config.aws_secret_key_enc = "corrupted-ciphertext-invalid-token"
     with pytest.raises(ProviderError, match="could not be decrypted or are incomplete"):
         await ModelFactory.get_for_user(db_mock, "test-user-123", task_type="general")
+
+@pytest.mark.asyncio
+async def test_azure_openai_provider_unit():
+    """Verify AzureOpenAIProvider executes validation, text, and JSON generation cleanly."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from backend.app.providers.azure import AzureOpenAIProvider
+
+    provider = AzureOpenAIProvider(
+        model_id="azure.gpt-4o-mini",
+        azure_endpoint="https://test-resource.openai.azure.com/",
+        azure_api_key="test-secret-azure-api-key-12345",
+        azure_api_version="2024-06-01",
+        azure_deployment_name="gpt-4o-mini",
+    )
+
+    # Exercise client methods with real Azure code paths enabled via TEST_WITH_REAL_AZURE
+    with patch.dict(os.environ, {"TEST_WITH_REAL_AZURE": "1"}):
+        # 1. Validation test
+        mock_ping_completion = MagicMock()
+        mock_ping_completion.choices = [MagicMock(message=MagicMock(content="pong"))]
+        with patch.object(provider.client.chat.completions, "create", new=AsyncMock(return_value=mock_ping_completion)):
+            valid = await provider.validate_credentials()
+            assert valid is True
+
+        # 2. Text generation test
+        mock_completion = MagicMock()
+        mock_completion.choices = [
+            MagicMock(message=MagicMock(content="Explain what a database deadlock is and how to prevent it."))
+        ]
+        mock_completion.usage = MagicMock(prompt_tokens=42, completion_tokens=15)
+        with patch.object(provider.client.chat.completions, "create", new=AsyncMock(return_value=mock_completion)):
+            res = await provider.generate_text("Ask me an interview question", conversation_history=[])
+            assert "deadlock" in res.text
+            assert res.input_tokens == 42
+            assert res.output_tokens == 15
+            assert res.model_id == "azure.gpt-4o-mini"
+
+        # 3. Structured JSON generation test
+        mock_json_completion = MagicMock()
+        mock_json_completion.choices = [
+            MagicMock(message=MagicMock(content='{"score": 85, "verdict": "strong"}'))
+        ]
+        mock_json_completion.usage = MagicMock(prompt_tokens=120, completion_tokens=25)
+        with patch.object(provider.client.chat.completions, "create", new=AsyncMock(return_value=mock_json_completion)):
+            json_res = await provider.generate_json("Evaluate answer")
+            assert json_res.parsed_json == {"score": 85, "verdict": "strong"}
+            assert json_res.input_tokens == 120
+            assert json_res.output_tokens == 25
+
+@pytest.mark.asyncio
+async def test_azure_provider_credential_encryption_and_routing():
+    """Verify ProviderConfig stores and decrypts Azure credentials and maps task routing."""
+    import json
+    from unittest.mock import AsyncMock, MagicMock
+    from backend.app.database.models import ProviderConfig
+    from backend.app.core.security import encrypt_secret
+    from backend.app.providers.factory import ModelFactory
+    from backend.app.providers.azure import AzureOpenAIProvider
+    from backend.app.providers.model_client_factory import ModelClientFactory
+
+    azure_bundle = json.dumps({
+        "azure_api_key": "test-azure-key-xyz987",
+        "azure_endpoint": "https://university-student.openai.azure.com/",
+        "azure_api_version": "2024-06-01",
+        "azure_deployment_name": "gpt-4o-mini",
+    })
+
+    azure_config = ProviderConfig(
+        user_id="student-user-456",
+        provider_name="azure",
+        aws_region="us-east-1",
+        azure_endpoint="https://university-student.openai.azure.com/",
+        azure_api_version="2024-06-01",
+        azure_deployment_name="gpt-4o-mini",
+        aws_access_key_masked="test...y987",
+        aws_secret_key_enc=encrypt_secret(azure_bundle),
+        preferred_model="azure.gpt-4o-mini",
+        interviewer_model="azure.gpt-4o-mini",
+        evaluation_model="azure.gpt-4o",
+        coding_model="azure.gpt-4o-mini",
+        is_valid=True,
+    )
+
+    db_mock = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalar_one_or_none.return_value = azure_config
+    db_mock.execute.return_value = mock_res
+
+    ModelClientFactory.clear_cache_for_user("student-user-456")
+
+    # Interviewer routing
+    interviewer_provider = await ModelFactory.get_for_user(db_mock, "student-user-456", task_type="interviewer")
+    assert isinstance(interviewer_provider, AzureOpenAIProvider)
+    assert interviewer_provider.azure_api_key == "test-azure-key-xyz987"
+    assert interviewer_provider.model_id == "azure.gpt-4o-mini"
+
+    # Evaluation routing
+    eval_provider = await ModelFactory.get_for_user(db_mock, "student-user-456", task_type="evaluation")
+    assert isinstance(eval_provider, AzureOpenAIProvider)
+    assert eval_provider.model_id == "azure.gpt-4o"
+

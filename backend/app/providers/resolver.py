@@ -8,11 +8,28 @@ from sqlalchemy import select
 from backend.app.database.models import ProviderConfig
 from backend.app.providers.models_catalog import (
     DEFAULT_MODEL_ID, DEFAULT_CODING_MODEL_ID, DEFAULT_EVALUATION_MODEL_ID,
+    DEFAULT_AZURE_MODEL_ID, DEFAULT_AZURE_CODING_MODEL_ID, DEFAULT_AZURE_EVALUATION_MODEL_ID,
     get_model_metadata
 )
 from backend.app.core.security import decrypt_secret
 from backend.app.core.errors import ProviderError, AppException
 from backend.app.core.logging import logger
+
+@dataclass
+class ResolvedCredentials:
+    provider_name: str
+    aws_access_key: Optional[str] = None
+    aws_secret_key: Optional[str] = None
+    aws_session_token: Optional[str] = None
+    azure_api_key: Optional[str] = None
+    azure_endpoint: Optional[str] = None
+    azure_api_version: Optional[str] = "2024-06-01"
+    azure_deployment_name: Optional[str] = None
+
+    def __iter__(self):
+        if self.provider_name == "azure":
+            return iter((self.azure_api_key, self.azure_endpoint, self.azure_api_version))
+        return iter((self.aws_access_key, self.aws_secret_key, self.aws_session_token))
 
 @dataclass
 class UserConfigMetadata:
@@ -32,6 +49,9 @@ class UserConfigMetadata:
     evaluation_model: Optional[str] = None
     coding_model: Optional[str] = None
     planning_model: Optional[str] = None
+    azure_endpoint: Optional[str] = None
+    azure_api_version: Optional[str] = "2024-06-01"
+    azure_deployment_name: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 2048
     monthly_token_budget: int = 1_000_000
@@ -92,12 +112,17 @@ class ModelResolver:
 
     @classmethod
     def resolve_model_id(cls, config: Optional[Union[ProviderConfig, UserConfigMetadata]], task_type: str = "general") -> str:
+        is_azure = config and getattr(config, "provider_name", None) == "azure"
+        default_general = DEFAULT_AZURE_MODEL_ID if is_azure else DEFAULT_MODEL_ID
+        default_coding = DEFAULT_AZURE_CODING_MODEL_ID if is_azure else DEFAULT_CODING_MODEL_ID
+        default_evaluation = DEFAULT_AZURE_EVALUATION_MODEL_ID if is_azure else DEFAULT_EVALUATION_MODEL_ID
+
         if not config:
             if task_type == "coding":
-                return DEFAULT_CODING_MODEL_ID
+                return default_coding
             elif task_type == "evaluation":
-                return DEFAULT_EVALUATION_MODEL_ID
-            return DEFAULT_MODEL_ID
+                return default_evaluation
+            return default_general
 
         # 1. Task-specific override
         if task_type == "interviewer" and config.interviewer_model:
@@ -117,10 +142,10 @@ class ModelResolver:
 
         # 3. Catalog fallback
         if task_type == "coding":
-            return DEFAULT_CODING_MODEL_ID
+            return default_coding
         elif task_type == "evaluation":
-            return DEFAULT_EVALUATION_MODEL_ID
-        return DEFAULT_MODEL_ID
+            return default_evaluation
+        return default_general
 
     @classmethod
     def check_spend_budget(cls, config: Union[ProviderConfig, UserConfigMetadata]):
@@ -166,15 +191,20 @@ class ModelResolver:
         result = await db.execute(select(ProviderConfig).where(ProviderConfig.user_id == user_id))
         config = result.scalar_one_or_none()
 
-        if is_test_run and not is_real_bedrock_test and (not config or not config.is_valid or config.provider_name == "test_double"):
+        if is_test_run and not is_real_bedrock_test and not os.environ.get("TEST_WITH_REAL_AZURE") and (not config or not config.is_valid or config.provider_name == "test_double"):
+            provider_name = config.provider_name if config else "bedrock"
+            preferred = DEFAULT_AZURE_MODEL_ID if provider_name == "azure" else DEFAULT_MODEL_ID
             metadata = UserConfigMetadata(
                 user_id=user_id,
                 config_version=getattr(config, "config_version", 1) or 1,
                 is_valid=True,
                 provider_name="test_double",
                 aws_region="us-east-1",
-                preferred_model=DEFAULT_MODEL_ID,
-                default_model=DEFAULT_MODEL_ID,
+                azure_endpoint=getattr(config, "azure_endpoint", None),
+                azure_api_version=getattr(config, "azure_api_version", "2024-06-01") or "2024-06-01",
+                azure_deployment_name=getattr(config, "azure_deployment_name", None),
+                preferred_model=preferred,
+                default_model=preferred,
                 temperature=getattr(config, "temperature", 0.7) or 0.7,
                 max_tokens=getattr(config, "max_tokens", 2048) or 2048,
                 cached_at=now,
@@ -184,19 +214,24 @@ class ModelResolver:
 
         if not config or not config.is_valid:
             raise ProviderError(
-                "AWS Bedrock configuration is required for AI features. "
-                "Please configure your AWS credentials in Provider Onboarding (/onboarding/bedrock) or Settings.",
+                "Model Provider configuration is required for AI features. "
+                "Please configure your Azure OpenAI or AWS Bedrock credentials in Provider Onboarding (/onboarding/bedrock) or Settings.",
                 "BEDROCK_CONFIG_REQUIRED"
             )
 
+        provider_name = config.provider_name or "bedrock"
+        default_preferred = DEFAULT_AZURE_MODEL_ID if provider_name == "azure" else DEFAULT_MODEL_ID
         metadata = UserConfigMetadata(
             user_id=user_id,
             config_version=getattr(config, "config_version", 1) or 1,
             is_valid=bool(config.is_valid),
-            provider_name=config.provider_name or "bedrock",
+            provider_name=provider_name,
             aws_region=config.aws_region or "us-east-1",
-            preferred_model=config.preferred_model or DEFAULT_MODEL_ID,
-            default_model=config.default_model or config.preferred_model or DEFAULT_MODEL_ID,
+            azure_endpoint=getattr(config, "azure_endpoint", None),
+            azure_api_version=getattr(config, "azure_api_version", "2024-06-01") or "2024-06-01",
+            azure_deployment_name=getattr(config, "azure_deployment_name", None),
+            preferred_model=config.preferred_model or default_preferred,
+            default_model=config.default_model or config.preferred_model or default_preferred,
             interviewer_model=config.interviewer_model,
             evaluation_model=config.evaluation_model,
             coding_model=config.coding_model,
@@ -230,25 +265,30 @@ class ModelResolver:
         cls,
         db: AsyncSession,
         user_id: str,
-    ) -> Tuple[str, str, Optional[str]]:
+    ) -> ResolvedCredentials:
         """
-        Decrypt AWS BYOC credentials strictly on cache miss.
-        Returns: (access_key_id, secret_access_key, session_token).
+        Decrypt BYOC credentials strictly on cache miss.
         Secrets are NEVER logged.
         """
         result = await db.execute(select(ProviderConfig).where(ProviderConfig.user_id == user_id))
         config = result.scalar_one_or_none()
 
         if not config or not config.aws_secret_key_enc:
+            provider_label = "Azure OpenAI" if config and config.provider_name == "azure" else "AWS Bedrock"
             raise ProviderError(
-                "Stored AWS credentials could not be decrypted or are incomplete. "
-                "Please re-enter your credentials in Settings → Model Provider.",
+                f"Stored {provider_label} credentials could not be decrypted or are incomplete. "
+                "Please configure your credentials in Settings → Model Provider.",
                 "MISSING_CREDENTIALS"
             )
 
+        provider_name = config.provider_name or "bedrock"
         access_key = None
         secret_key = None
         session_token = None
+        azure_key = None
+        azure_endpoint = getattr(config, "azure_endpoint", None)
+        azure_version = getattr(config, "azure_api_version", "2024-06-01") or "2024-06-01"
+        azure_deployment = getattr(config, "azure_deployment_name", None)
 
         try:
             decrypted = decrypt_secret(config.aws_secret_key_enc, user_id=user_id)
@@ -256,9 +296,15 @@ class ModelResolver:
                 try:
                     bundle = json.loads(decrypted)
                     if isinstance(bundle, dict):
-                        access_key = bundle.get("access_key_id")
-                        secret_key = bundle.get("secret_access_key")
-                        session_token = bundle.get("session_token")
+                        if provider_name == "azure":
+                            azure_key = bundle.get("azure_api_key") or bundle.get("api_key")
+                            azure_endpoint = bundle.get("azure_endpoint") or bundle.get("endpoint") or azure_endpoint
+                            azure_version = bundle.get("azure_api_version") or azure_version
+                            azure_deployment = bundle.get("azure_deployment_name") or azure_deployment
+                        else:
+                            access_key = bundle.get("access_key_id")
+                            secret_key = bundle.get("secret_access_key")
+                            session_token = bundle.get("session_token")
                 except Exception:
                     secret_key = decrypted
                     masked = config.aws_access_key_masked or ""
@@ -266,14 +312,33 @@ class ModelResolver:
         except Exception as e:
             logger.warning(f"Failed to decrypt credentials for user {user_id}: {e}")
 
-        if not access_key or not secret_key:
-            raise ProviderError(
-                "Stored AWS credentials could not be decrypted or are incomplete. "
-                "Please re-enter your credentials in Settings → Model Provider.",
-                "MISSING_CREDENTIALS"
+        if provider_name == "azure":
+            if not azure_key or not azure_endpoint:
+                raise ProviderError(
+                    "Stored Azure OpenAI credentials could not be decrypted or are incomplete. "
+                    "Please re-enter your credentials in Settings → Model Provider.",
+                    "MISSING_CREDENTIALS"
+                )
+            return ResolvedCredentials(
+                provider_name="azure",
+                azure_api_key=azure_key,
+                azure_endpoint=azure_endpoint,
+                azure_api_version=azure_version,
+                azure_deployment_name=azure_deployment,
             )
-
-        return access_key, secret_key, session_token
+        else:
+            if not access_key or not secret_key:
+                raise ProviderError(
+                    "Stored AWS credentials could not be decrypted or are incomplete. "
+                    "Please re-enter your credentials in Settings → Model Provider.",
+                    "MISSING_CREDENTIALS"
+                )
+            return ResolvedCredentials(
+                provider_name="bedrock",
+                aws_access_key=access_key,
+                aws_secret_key=secret_key,
+                aws_session_token=session_token,
+            )
 
     @classmethod
     async def resolve(

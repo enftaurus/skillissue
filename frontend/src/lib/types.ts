@@ -18,8 +18,11 @@ export interface User {
 export interface ProviderConfig {
   id: string;
   provider_name: string;
-  aws_region: string;
+  aws_region?: string;
   aws_access_key_masked: string;
+  azure_endpoint?: string;
+  azure_api_version?: string;
+  azure_deployment_name?: string;
   preferred_model: string;
   default_model?: string;
   interviewer_model?: string;

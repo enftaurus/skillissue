@@ -23,6 +23,7 @@ This directory contains records of all architectural, infrastructural, and secur
 | [0015](0015-reliability-audit-turn-idempotency-and-grounded-evaluations.md) | Reliability Audit, Turn Idempotency, Memory Rolling, and Grounded Evaluations | 2026-10-20 | Accepted | Client turn idempotency, fail-closed checkpointer in prod, topic lifecycle memory rolling, unified model resolver, grounded evaluations, and frontend draft persistence. |
 | [0016](0016-persistent-executor-learning-backlog-and-dsa-coaching.md) | Persistent Sandboxed Executor, User-Controlled Learning Backlog, Bedrock BYOC Onboarding, and Socratic DSA Coaching | 2026-10-20 | Accepted | Persistent Bubblewrap sandbox executor, BYOC least-privilege IAM policy generation, decoupled learning backlog from Planly schedules, and 4-tier on-demand DSA coaching. |
 | [0017](0017-consolidated-bedrock-client-lifecycle-and-bounded-cache.md) | Consolidated Bedrock Client Lifecycle, Bounded LRU Cache, and Zero-Decryption Cache Hits | 2026-10-20 | Accepted | Consolidated ModelClientFactory/Resolver pipeline, zero DB/decryption on cache hit, bounded LRU/idle cache, config versioning, and atomic usage accounting. |
+| [0018](0018-azure-openai-byoc-provider.md) | Azure OpenAI BYOC Provider for Student Accessibility | 2026-10-28 | Accepted | Extends BYOC architecture to Azure OpenAI Service (GPT-4o, GPT-4o-mini, Phi-3.5) with student friction reduction, dual-cloud onboarding, and billing warnings. |
 
 ---
 

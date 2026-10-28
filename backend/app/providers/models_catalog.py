@@ -150,12 +150,64 @@ SUPPORTED_MODELS: Dict[str, ModelMetadata] = {
         recommended_for="Quick hint generation and screening.",
         inference_profile_id="us.amazon.nova-micro-v1:0",
         supports_vision=False
-    )
+    ),
+
+    # 9. Azure OpenAI: GPT-4o Mini (Default for Azure Students)
+    "azure.gpt-4o-mini": ModelMetadata(
+        model_id="azure.gpt-4o-mini",
+        provider="azure",
+        display_name="GPT-4o Mini (Azure OpenAI)",
+        role="Fast conversational interviewer & coding coach",
+        description="High-speed, cost-efficient multimodal model on Azure. Outstanding constraint adherence, rapid response, and ideal for students.",
+        supported_regions=["eastus", "eastus2", "westus", "westus3", "swedencentral", "japaneast"],
+        input_price_per_1m=0.15,
+        output_price_per_1m=0.60,
+        context_window=128000,
+        max_output_tokens=16384,
+        recommended_for="Primary live technical interviews, DSA hint coaching, and rapid back-and-forth turns.",
+        supports_vision=True,
+    ),
+
+    # 10. Azure OpenAI: GPT-4o (Deep Evaluator for Azure Students)
+    "azure.gpt-4o": ModelMetadata(
+        model_id="azure.gpt-4o",
+        provider="azure",
+        display_name="GPT-4o (Azure OpenAI)",
+        role="Flagship evaluator & rubric grader",
+        description="Flagship multimodal model by OpenAI on Azure. Deep reasoning, precise rubric grading, evidence citation, and zero hallucinated scores.",
+        supported_regions=["eastus", "eastus2", "westus", "westus3", "swedencentral", "japaneast"],
+        input_price_per_1m=2.50,
+        output_price_per_1m=10.00,
+        context_window=128000,
+        max_output_tokens=4096,
+        recommended_for="Comprehensive interview evaluation, weakness detection, and senior-level rubric calibration.",
+        supports_vision=True,
+    ),
+
+    # 11. Azure AI: Microsoft Phi-3.5 Mini (Lightweight Helper)
+    "azure.phi-3.5-mini": ModelMetadata(
+        model_id="azure.phi-3.5-mini",
+        provider="azure",
+        display_name="Microsoft Phi-3.5 Mini (Azure AI)",
+        role="Lightweight coding helper",
+        description="Small 3.8B language model by Microsoft on Azure AI. Ultra-low latency and token consumption for student subscriptions.",
+        supported_regions=["eastus", "westus2", "swedencentral"],
+        input_price_per_1m=0.05,
+        output_price_per_1m=0.15,
+        context_window=128000,
+        max_output_tokens=4096,
+        recommended_for="Lightweight DSA coaching and token-restricted student subscriptions.",
+        supports_vision=False,
+    ),
 }
 
 DEFAULT_MODEL_ID = "qwen.qwen3-32b-v1:0"
 DEFAULT_CODING_MODEL_ID = "qwen.qwen3-coder-30b-a3b-v1:0"
 DEFAULT_EVALUATION_MODEL_ID = "us.deepseek.r1-v1:0"
+
+DEFAULT_AZURE_MODEL_ID = "azure.gpt-4o-mini"
+DEFAULT_AZURE_CODING_MODEL_ID = "azure.gpt-4o-mini"
+DEFAULT_AZURE_EVALUATION_MODEL_ID = "azure.gpt-4o"
 
 def get_model_metadata(model_id: str) -> Optional[ModelMetadata]:
     return SUPPORTED_MODELS.get(model_id)

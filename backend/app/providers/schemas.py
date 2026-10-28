@@ -6,13 +6,17 @@ from backend.app.providers.models_catalog import ModelMetadata, DEFAULT_MODEL_ID
 ALLOWED_AWS_REGIONS = {"us-east-1", "us-west-2", "ap-south-1", "ap-southeast-2", "eu-central-1"}
 
 class ProviderConfigSave(BaseModel):
-    provider_name: str = Field(default="bedrock", pattern="^bedrock$")
-    aws_region: str = "us-east-1"
+    provider_name: str = Field(default="bedrock", pattern="^(bedrock|azure)$")
+    aws_region: Optional[str] = "us-east-1"
     aws_access_key_id: Optional[str] = None
     aws_secret_access_key: Optional[str] = None
     aws_session_token: Optional[str] = None
-    preferred_model: str = DEFAULT_MODEL_ID
-    default_model: Optional[str] = DEFAULT_MODEL_ID
+    azure_endpoint: Optional[str] = None
+    azure_api_key: Optional[str] = None
+    azure_api_version: Optional[str] = "2024-06-01"
+    azure_deployment_name: Optional[str] = None
+    preferred_model: Optional[str] = None
+    default_model: Optional[str] = None
     interviewer_model: Optional[str] = None
     evaluation_model: Optional[str] = None
     coding_model: Optional[str] = None
@@ -24,8 +28,8 @@ class ProviderConfigSave(BaseModel):
     monthly_cost_cents_budget: Optional[int] = Field(default=1000, ge=100, le=50000)  # $1 to $500
 
     @field_validator("aws_region")
-    def validate_region(cls, v: str) -> str:
-        if v not in ALLOWED_AWS_REGIONS:
+    def validate_region(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in ALLOWED_AWS_REGIONS:
             raise ValueError(f"Invalid AWS region '{v}'. Allowed regions: {sorted(list(ALLOWED_AWS_REGIONS))}")
         return v
 
@@ -33,8 +37,11 @@ class ProviderConfigResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     provider_name: str
-    aws_region: str
+    aws_region: Optional[str] = "us-east-1"
     aws_access_key_masked: str
+    azure_endpoint: Optional[str] = None
+    azure_api_version: Optional[str] = "2024-06-01"
+    azure_deployment_name: Optional[str] = None
     preferred_model: str
     default_model: Optional[str] = None
     interviewer_model: Optional[str] = None
@@ -56,15 +63,19 @@ class ProviderConfigResponse(BaseModel):
 
 class TestCredentialsRequest(BaseModel):
     provider_name: str = "bedrock"
-    aws_region: str = "us-east-1"
-    aws_access_key_id: str
-    aws_secret_access_key: str
+    aws_region: Optional[str] = "us-east-1"
+    aws_access_key_id: Optional[str] = None
+    aws_secret_access_key: Optional[str] = None
     aws_session_token: Optional[str] = None
-    preferred_model: str = DEFAULT_MODEL_ID
+    azure_endpoint: Optional[str] = None
+    azure_api_key: Optional[str] = None
+    azure_api_version: Optional[str] = "2024-06-01"
+    azure_deployment_name: Optional[str] = None
+    preferred_model: Optional[str] = None
 
     @field_validator("aws_region")
-    def validate_region(cls, v: str) -> str:
-        if v not in ALLOWED_AWS_REGIONS:
+    def validate_region(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in ALLOWED_AWS_REGIONS:
             raise ValueError(f"Invalid AWS region '{v}'. Allowed regions: {sorted(list(ALLOWED_AWS_REGIONS))}")
         return v
 
