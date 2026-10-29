@@ -39,10 +39,10 @@ export const ProviderSettingsPage: React.FC = () => {
   const [azureDeploymentName, setAzureDeploymentName] = useState('gpt-4o-mini');
 
   // Model Routing & Inference State
-  const [preferredModel, setPreferredModel] = useState('azure.gpt-4o-mini');
-  const [interviewerModel, setInterviewerModel] = useState('azure.gpt-4o-mini');
-  const [evaluationModel, setEvaluationModel] = useState('azure.gpt-4o');
-  const [codingModel, setCodingModel] = useState('azure.gpt-4o-mini');
+  const [preferredModel, setPreferredModel] = useState('azure.gpt-4.1-mini');
+  const [interviewerModel, setInterviewerModel] = useState('azure.gpt-4.1-mini');
+  const [evaluationModel, setEvaluationModel] = useState('azure.gpt-4.1');
+  const [codingModel, setCodingModel] = useState('azure.gpt-4.1-mini');
   const [fallbackEnabled, setFallbackEnabled] = useState(false);
   const [fallbackProvider, setFallbackProvider] = useState('mock');
   const [fallbackModel, setFallbackModel] = useState('mock-qwen3-32b');
@@ -72,14 +72,14 @@ export const ProviderSettingsPage: React.FC = () => {
         // Azure fields
         setAzureEndpoint(cfg.azure_endpoint || '');
         setAzureApiVersion(cfg.azure_api_version || '2024-06-01');
-        setAzureDeploymentName(cfg.azure_deployment_name || 'gpt-4o-mini');
+        setAzureDeploymentName(cfg.azure_deployment_name || 'gpt-4.1-mini');
 
         // Models
         if (currentProvider === 'azure') {
-          setPreferredModel(cfg.preferred_model || 'azure.gpt-4o-mini');
-          setInterviewerModel(cfg.interviewer_model || cfg.preferred_model || 'azure.gpt-4o-mini');
-          setEvaluationModel(cfg.evaluation_model || 'azure.gpt-4o');
-          setCodingModel(cfg.coding_model || 'azure.gpt-4o-mini');
+          setPreferredModel(cfg.preferred_model || 'azure.gpt-4.1-mini');
+          setInterviewerModel(cfg.interviewer_model || cfg.preferred_model || 'azure.gpt-4.1-mini');
+          setEvaluationModel(cfg.evaluation_model || 'azure.gpt-4.1');
+          setCodingModel(cfg.coding_model || 'azure.gpt-4.1-mini');
         } else {
           setPreferredModel(cfg.preferred_model || 'qwen.qwen3-32b-v1:0');
           setInterviewerModel(cfg.interviewer_model || cfg.preferred_model || 'qwen.qwen3-32b-v1:0');
@@ -105,10 +105,10 @@ export const ProviderSettingsPage: React.FC = () => {
     setNotification(null);
 
     if (newProvider === 'azure') {
-      setPreferredModel('azure.gpt-4o-mini');
-      setInterviewerModel('azure.gpt-4o-mini');
-      setEvaluationModel('azure.gpt-4o');
-      setCodingModel('azure.gpt-4o-mini');
+      setPreferredModel('azure.gpt-4.1-mini');
+      setInterviewerModel('azure.gpt-4.1-mini');
+      setEvaluationModel('azure.gpt-4.1');
+      setCodingModel('azure.gpt-4.1-mini');
       setFallbackModel('mock-gpt-4o-mini');
     } else {
       setPreferredModel('qwen.qwen3-32b-v1:0');
@@ -456,7 +456,7 @@ export const ProviderSettingsPage: React.FC = () => {
                       type="text"
                       value={azureDeploymentName}
                       onChange={(e) => setAzureDeploymentName(e.target.value)}
-                      placeholder="gpt-4o-mini"
+                      placeholder="gpt-4.1-mini"
                     />
                     <span className="text-[11px] text-ink-subtle mt-1 block">
                       Name of your deployment in Azure OpenAI Studio.

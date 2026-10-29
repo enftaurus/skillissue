@@ -199,15 +199,47 @@ SUPPORTED_MODELS: Dict[str, ModelMetadata] = {
         recommended_for="Lightweight DSA coaching and token-restricted student subscriptions.",
         supports_vision=False,
     ),
+
+    # 12. Azure OpenAI: GPT-4.1 (Next-Gen Flagship Coding & Reasoning)
+    "azure.gpt-4.1": ModelMetadata(
+        model_id="azure.gpt-4.1",
+        provider="azure",
+        display_name="GPT-4.1 (Azure OpenAI)",
+        role="Next-gen coding & reasoning flagship",
+        description="Next-generation flagship model on Azure OpenAI with advanced multi-step coding, 1M token context, and state-of-the-art instruction adherence.",
+        supported_regions=["eastus", "eastus2", "westus", "westus3", "swedencentral"],
+        input_price_per_1m=2.00,
+        output_price_per_1m=8.00,
+        context_window=1000000,
+        max_output_tokens=16384,
+        recommended_for="Deep architectural problem solving, complex repository tasks, and rubric evaluations.",
+        supports_vision=True,
+    ),
+
+    # 13. Azure OpenAI: GPT-4.1 Mini (High-Throughput Fast Tier)
+    "azure.gpt-4.1-mini": ModelMetadata(
+        model_id="azure.gpt-4.1-mini",
+        provider="azure",
+        display_name="GPT-4.1 Mini (Azure OpenAI)",
+        role="Fast conversational interviewer & coding coach",
+        description="Fast, low-latency GPT-4.1 tier on Azure OpenAI. Excellent for dynamic technical interview turns and real-time DSA hints.",
+        supported_regions=["eastus", "eastus2", "westus", "westus3", "swedencentral"],
+        input_price_per_1m=0.20,
+        output_price_per_1m=0.80,
+        context_window=1000000,
+        max_output_tokens=16384,
+        recommended_for="Live dynamic technical interview turns and high-speed coding hints.",
+        supports_vision=True,
+    ),
 }
 
 DEFAULT_MODEL_ID = "qwen.qwen3-32b-v1:0"
 DEFAULT_CODING_MODEL_ID = "qwen.qwen3-coder-30b-a3b-v1:0"
 DEFAULT_EVALUATION_MODEL_ID = "us.deepseek.r1-v1:0"
 
-DEFAULT_AZURE_MODEL_ID = "azure.gpt-4o-mini"
-DEFAULT_AZURE_CODING_MODEL_ID = "azure.gpt-4o-mini"
-DEFAULT_AZURE_EVALUATION_MODEL_ID = "azure.gpt-4o"
+DEFAULT_AZURE_MODEL_ID = "azure.gpt-4.1-mini"
+DEFAULT_AZURE_CODING_MODEL_ID = "azure.gpt-4.1-mini"
+DEFAULT_AZURE_EVALUATION_MODEL_ID = "azure.gpt-4.1"
 
 def get_model_metadata(model_id: str) -> Optional[ModelMetadata]:
     return SUPPORTED_MODELS.get(model_id)

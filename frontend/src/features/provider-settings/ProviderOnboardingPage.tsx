@@ -44,8 +44,8 @@ export const ProviderOnboardingPage: React.FC = () => {
   const [azureEndpoint, setAzureEndpoint] = useState('');
   const [azureApiKey, setAzureApiKey] = useState('');
   const [azureApiVersion, setAzureApiVersion] = useState('2024-06-01');
-  const [azureDeploymentName, setAzureDeploymentName] = useState('gpt-4o-mini');
-  const [azureSelectedModel, setAzureSelectedModel] = useState('azure.gpt-4o-mini');
+  const [azureDeploymentName, setAzureDeploymentName] = useState('gpt-4.1-mini');
+  const [azureSelectedModel, setAzureSelectedModel] = useState('azure.gpt-4.1-mini');
 
   // AWS Bedrock State
   const [bedrockModel, setBedrockModel] = useState('qwen.qwen3-32b-v1:0');
@@ -184,10 +184,10 @@ export const ProviderOnboardingPage: React.FC = () => {
               azure_deployment_name: azureDeploymentName.trim() || undefined,
               preferred_model: azureSelectedModel,
               default_model: azureSelectedModel,
-              interviewer_model: 'azure.gpt-4o-mini',
-              evaluation_model: 'azure.gpt-4o',
-              coding_model: 'azure.gpt-4o-mini',
-              planning_model: 'azure.gpt-4o-mini',
+              interviewer_model: 'azure.gpt-4.1-mini',
+              evaluation_model: 'azure.gpt-4.1',
+              coding_model: 'azure.gpt-4.1-mini',
+              planning_model: 'azure.gpt-4.1-mini',
               fallback_enabled: false,
             }
           : {
@@ -258,11 +258,11 @@ export const ProviderOnboardingPage: React.FC = () => {
             </div>
             <h3 className="text-lg font-bold text-ink">Microsoft Azure (OpenAI)</h3>
             <p className="text-xs text-ink-muted mt-1 leading-relaxed">
-              Ideal for students. Use your free <strong>$100 student credits</strong> (no credit card required via GitHub Student Pack). Access GPT-4o Mini & GPT-4o instantly.
+              Ideal for students. Use your free <strong>$100 student credits</strong> (no credit card required via GitHub Student Pack). Access GPT-4.1 Mini & GPT-4.1 instantly.
             </p>
           </div>
           <div className="mt-4 pt-3 border-t border-surface-border flex items-center justify-between text-xs font-medium text-ink">
-            <span>GPT-4o Mini & GPT-4o</span>
+            <span>GPT-4.1 Mini & GPT-4.1</span>
             <span className={providerType === 'azure' ? 'text-lime-700 font-bold' : 'text-ink-muted'}>
               {providerType === 'azure' ? '✓ Selected' : 'Select'}
             </span>
@@ -322,7 +322,7 @@ export const ProviderOnboardingPage: React.FC = () => {
                 Search for <strong>Azure OpenAI</strong> and create or select an existing resource.
               </li>
               <li>
-                In <strong>Azure OpenAI Studio</strong>, deploy <strong><code>gpt-4o-mini</code></strong> and <strong><code>gpt-4o</code></strong> under Deployments.
+                In <strong>Azure OpenAI Studio</strong>, deploy <strong><code>gpt-4.1-mini</code></strong> and <strong><code>gpt-4.1</code></strong> under Deployments.
               </li>
               <li>
                 Go to <strong>Resource Management → Keys and Endpoint</strong> in your Azure OpenAI resource and copy your Endpoint URL and Key.
@@ -379,7 +379,7 @@ export const ProviderOnboardingPage: React.FC = () => {
                   </label>
                   <Input
                     type="text"
-                    placeholder="gpt-4o-mini"
+                    placeholder="gpt-4.1-mini"
                     value={azureDeploymentName}
                     onChange={(e) => setAzureDeploymentName(e.target.value)}
                   />
@@ -416,7 +416,9 @@ export const ProviderOnboardingPage: React.FC = () => {
                     ))
                   ) : (
                     <>
-                      <option value="azure.gpt-4o-mini">GPT-4o Mini (Interviewer & Hints - Fast & Cheap)</option>
+                      <option value="azure.gpt-4.1">GPT-4.1 (Next-Gen Flagship Coding & Reasoning)</option>
+                      <option value="azure.gpt-4.1-mini">GPT-4.1 Mini (Fast & Cheap)</option>
+                      <option value="azure.gpt-4o-mini">GPT-4o Mini (Fast Conversational)</option>
                       <option value="azure.gpt-4o">GPT-4o (Deep Evaluation & Rubric Grading)</option>
                       <option value="azure.phi-3.5-mini">Microsoft Phi-3.5 Mini (Lightweight)</option>
                     </>
