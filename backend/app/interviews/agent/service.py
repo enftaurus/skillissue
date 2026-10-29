@@ -53,26 +53,39 @@ class InterviewAgentService:
             resume_projects=resume.projects_context if resume else None,
         )
 
-        first_q_prompt = (
-            f"The candidate is ready for a {interview.difficulty}-level {interview.category} interview "
-            f"for the role of {interview.target_role}. Start the interview directly with your first question. "
-            "Ask exactly ONE short, direct question about their engineering background or a concrete technical decision. "
-            "Under 3 sentences. No praise."
-        )
-
-        prompt_messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=first_q_prompt),
-        ]
-
-        response = await model.ainvoke(prompt_messages)
-        raw_content = response.content
-        if isinstance(raw_content, list):
-            initial_question = "".join(
-                b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text"
-            ).strip() or str(raw_content)
+        if interview.category == "dsa":
+            prob_title = "our coding challenge"
+            if interview.coding_problem_id:
+                from backend.app.coding.problems import get_problem
+                prob = get_problem(interview.coding_problem_id)
+                if prob:
+                    prob_title = prob.title
+            initial_question = (
+                f"Welcome! Today we'll be tackling a coding challenge: {prob_title}. "
+                "Take a moment to inspect the problem description and constraints in your workspace. "
+                "Before writing code, please walk me through your initial thoughts and the algorithmic approach you plan to take."
+            )
         else:
-            initial_question = str(raw_content).strip()
+            first_q_prompt = (
+                f"The candidate is ready for a {interview.difficulty}-level {interview.category} interview "
+                f"for the role of {interview.target_role}. Start the interview like an authentic senior engineering hiring manager: "
+                "Welcome them and ask them to briefly introduce themselves, their primary tech stack, and an interesting project or architectural challenge they handled recently. "
+                "Ask exactly ONE concise question under 3 sentences. No artificial flattery."
+            )
+
+            prompt_messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=first_q_prompt),
+            ]
+
+            response = await model.ainvoke(prompt_messages)
+            raw_content = response.content
+            if isinstance(raw_content, list):
+                initial_question = "".join(
+                    b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text"
+                ).strip() or str(raw_content)
+            else:
+                initial_question = str(raw_content).strip()
 
         resume_context = None
         if resume:

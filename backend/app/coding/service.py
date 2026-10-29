@@ -28,10 +28,15 @@ class CodingService:
         if not problem:
             raise EntityNotFoundError("CodingProblem", data.problem_id)
 
-        test_cases = [
-            TestCase(stdin=tc["stdin"], expected_stdout=tc["expected_stdout"], is_hidden=False)
-            for tc in problem.sample_test_cases
-        ]
+        if data.custom_stdin is not None:
+            test_cases = [
+                TestCase(stdin=data.custom_stdin, expected_stdout="", is_hidden=False)
+            ]
+        else:
+            test_cases = [
+                TestCase(stdin=tc["stdin"], expected_stdout=tc["expected_stdout"], is_hidden=False)
+                for tc in problem.sample_test_cases
+            ]
 
         result = await SandboxRunner.execute_async(
             language=data.language,

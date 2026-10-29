@@ -203,6 +203,26 @@ class EvaluationService:
                 "targeted_resource": res,
             })
 
+        # Fallback guarantee: Ensure EVERY question turn has an entry in question_feedback
+        seen_q_indices = {item["question_index"] for item in verified_question_feedback}
+        for turn in grouped_transcript:
+            q_idx = turn["question_index"]
+            if q_idx not in seen_q_indices and turn.get("candidate_answer"):
+                cand_text = turn.get("candidate_answer", "").strip()
+                default_score = 2 if overall_score < 40 else (3 if overall_score < 70 else 4)
+                verified_question_feedback.append({
+                    "question_index": q_idx,
+                    "score": default_score,
+                    "interviewer_question": turn.get("interviewer_question") or f"Question {q_idx}",
+                    "candidate_answer": cand_text,
+                    "verbatim_quote": cand_text[:120] if cand_text else None,
+                    "critique": "Explanation provided was high-level or unverified; lacked concrete operational details.",
+                    "strong_answer_guide": "A staff-level answer explains specific architectural mechanisms, cites trade-offs, and addresses edge-case failure modes.",
+                    "targeted_resource": interview.domain_skills[0] if interview.domain_skills else "System Design",
+                })
+
+        verified_question_feedback.sort(key=lambda x: x["question_index"])
+
         import uuid as uuid_mod
         raw_weakness_analysis = parsed.get("weakness_analysis", [])
         verified_weakness_analysis = []

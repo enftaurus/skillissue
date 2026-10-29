@@ -27,6 +27,8 @@ CRITICAL INVARIANTS:
    - suggested practical exercise
    - confidence: 'high' where the gap was clearly demonstrated, 'medium' where evidence is partial, or 'low' where inconclusive.
    CRITICAL: Do NOT infer a topic is weak merely because it was not discussed. Distinguish between demonstrated weakness, incomplete evidence, and topics that were never assessed.
+8. QUESTION-BY-QUESTION FEEDBACK: You MUST provide an entry in question_feedback for EVERY question asked in the transcript.
+   In 'strong_answer_guide', provide a concrete model answer explaining exactly "What the candidate could have said better" (with specific technical terms, invariants, metrics, and trade-offs).
 
 RUBRIC DIMENSIONS TO EVALUATE:
 {rubric_definitions}
@@ -53,11 +55,12 @@ Return a JSON object conforming strictly to this format:
   "question_feedback": [
     {{
       "question_index": 1,
+      "score": 3,
       "interviewer_question": "Exact question asked by interviewer",
       "candidate_answer": "Summary of candidate's answer",
       "verbatim_quote": "Exact substring quoted from candidate's answer in the transcript",
       "critique": "Direct, dry, Gilfoyle-style critique highlighting technical gaps or unverified claims",
-      "strong_answer_guide": "Concrete explanation of what a staff-level answer would include",
+      "strong_answer_guide": "What you could have said better: A high-signal, staff-level model explanation with trade-offs and concrete metrics",
       "targeted_resource": "Specific technical topic or guide to study"
     }}
   ],

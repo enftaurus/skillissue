@@ -6,6 +6,7 @@ class CodeRunRequest(BaseModel):
     problem_id: str
     language: str = Field(pattern="^(python|java|cpp)$")
     code: str = Field(min_length=1)
+    custom_stdin: Optional[str] = None
 
 class TestCaseResultResponse(BaseModel):
     test_index: int

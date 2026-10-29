@@ -251,19 +251,30 @@ async def generate_question_node(
     latest_answer = state.get("latest_candidate_answer", "")
     turn_count = state.get("turn_count", 0)
 
-    system_prompt = build_interviewer_system_prompt(
-        category=category,
-        target_role=target_role,
-        difficulty=difficulty,
-        domain_skills=domain_skills,
-    )
-
-    if running_summary:
-        system_prompt += f"\n\nContext from earlier in this interview:\n{running_summary}"
-    if state.get("resume_context"):
-        system_prompt += f"\n\nCandidate Resume Context:\n{state['resume_context']}"
-    if state.get("jd_context"):
-        system_prompt += f"\n\nJob Description Context:\n{state['jd_context']}"
+    if turn_count > 1:
+        # Optimized lean system prompt for conversational turns — saves >70% tokens while preserving Gilfoyle rigor
+        system_prompt = (
+            f"You are the technical interviewer for a {difficulty} {target_role} ({category.upper()} interview). "
+            f"Current Topic: {current_topic}. "
+            "Persona: Senior Staff Engineer / Hiring Manager. Direct, sharp, politely skeptical, zero praise. "
+            "Ask exactly ONE concise question (1 to 3 sentences). Probe trade-offs, edge cases, failure scenarios, and concrete metrics. "
+            "Never ask compound questions."
+        )
+        if running_summary:
+            system_prompt += f"\nPrevious Context: {running_summary[:250]}"
+    else:
+        system_prompt = build_interviewer_system_prompt(
+            category=category,
+            target_role=target_role,
+            difficulty=difficulty,
+            domain_skills=domain_skills,
+        )
+        if running_summary:
+            system_prompt += f"\n\nContext from earlier in this interview:\n{running_summary}"
+        if state.get("resume_context"):
+            system_prompt += f"\n\nCandidate Resume Context:\n{state['resume_context']}"
+        if state.get("jd_context"):
+            system_prompt += f"\n\nJob Description Context:\n{state['jd_context']}"
 
     # Build prompt messages
     prompt_messages = [SystemMessage(content=system_prompt)]

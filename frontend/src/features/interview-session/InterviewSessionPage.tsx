@@ -2,16 +2,26 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { api } from '../../lib/api';
-import { Interview, InterviewMessage, RubricDimension, CodeExecutionResult, CodingProblem, HintResponse } from '../../lib/types';
+import {
+  Interview,
+  InterviewMessage,
+  RubricDimension,
+  CodeExecutionResult,
+  CodingProblem,
+  HintResponse,
+} from '../../lib/types';
 import { SpeechHandler } from '../../lib/speech';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
-import { AudioWaveform } from '../../components/ui/AudioWaveform';
+import { Modal } from '../../components/ui/Modal';
 import { SelfEvaluationModal } from './SelfEvaluationModal';
+import { InterviewerAvatar } from './InterviewerAvatar';
 import {
+  AlertTriangle,
   Code2,
   Lightbulb,
+  LogOut,
   Mic,
   MicOff,
   Play,
@@ -56,6 +66,7 @@ export const InterviewSessionPage: React.FC = () => {
 
   // Modal State
   const [showSelfEvalModal, setShowSelfEvalModal] = useState(false);
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
   const [hintError, setHintError] = useState('');
   const [codeExecutionError, setCodeExecutionError] = useState('');
   const [sessionState, setSessionState] = useState<{
@@ -141,6 +152,18 @@ export const InterviewSessionPage: React.FC = () => {
     return () => clearInterval(timer);
   }, [interview?.status]);
 
+  // Prevent accidental tab close during live interview
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (interview?.status === 'in_progress') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [interview?.status]);
+
   // Auto-scroll transcript
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -159,16 +182,19 @@ export const InterviewSessionPage: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isListening, isSpeechSupported]);
 
-  const speakWithMicSuppression = useCallback((text: string) => {
-    if (!speechHandlerRef.current) return;
-    if (isListening) {
-      speechHandlerRef.current.stop();
-    }
-    setIsSpeaking(true);
-    SpeechHandler.speak(text, () => {
-      setIsSpeaking(false);
-    });
-  }, [isListening]);
+  const speakWithMicSuppression = useCallback(
+    (text: string) => {
+      if (!speechHandlerRef.current) return;
+      if (isListening) {
+        speechHandlerRef.current.stop();
+      }
+      setIsSpeaking(true);
+      SpeechHandler.speak(text, () => {
+        setIsSpeaking(false);
+      });
+    },
+    [isListening]
+  );
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -206,8 +232,11 @@ export const InterviewSessionPage: React.FC = () => {
         client_turn_id: clientTurnId,
       });
 
-      setMessages((prev) => [...prev.filter((m) => m.id !== optimisticMsg.id), optimisticMsg, assistantMsg]);
-      // Confirm success: clear input and pending turn ID
+      setMessages((prev) => [
+        ...prev.filter((m) => m.id !== optimisticMsg.id),
+        optimisticMsg,
+        assistantMsg,
+      ]);
       setInputText('');
       baseInputTextRef.current = '';
       pendingTurnIdRef.current = null;
@@ -219,12 +248,12 @@ export const InterviewSessionPage: React.FC = () => {
         speakWithMicSuppression(assistantMsg.content);
       }
     } catch (err: any) {
-      // Roll back optimistic message to avoid phantom messages in chat
       setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
-      // Preserve candidate text in input
       setInputText(content);
       baseInputTextRef.current = content;
-      setError(err.message || 'Failed to send message. Your draft has been preserved. Please retry.');
+      setError(
+        err.message || 'Failed to send message. Your draft has been preserved. Please retry.'
+      );
     } finally {
       setIsSending(false);
     }
@@ -245,56 +274,71 @@ export const InterviewSessionPage: React.FC = () => {
 
       setHintLevelUsed(res.total_hint_level_used);
 
-      // Refresh interview messages to reflect candidate request and assistant hint
       const updated = await api.get<Interview>(`/interviews/${id}`);
       setMessages(updated.messages || []);
 
-      if (autoSpeak) {
-        speakWithMicSuppression(res.hint);
+      const assistantHints = (updated.messages || []).filter(
+        (m) =>
+          m.role === 'assistant' &&
+          (m.content.startsWith('[Level') || m.content.startsWith('Mentor Hint:'))
+      );
+      const latestHint = assistantHints[assistantHints.length - 1];
+
+      if (autoSpeak && latestHint) {
+        speakWithMicSuppression(latestHint.content);
       }
     } catch (err: any) {
-      setHintError(err.message || 'Failed to request Socratic hint.');
+      setHintError(err.message || 'Failed to retrieve calibrated hint.');
     } finally {
       setIsRequestingHint(false);
     }
   };
 
   const toggleSpeechRecognition = () => {
-    if (!speechHandlerRef.current) return;
+    if (!speechHandlerRef.current || !isSpeechSupported) return;
+
     if (isListening) {
       speechHandlerRef.current.stop();
     } else {
-      SpeechHandler.stopSpeaking();
+      if (isSpeaking) {
+        SpeechHandler.stopSpeaking();
+        setIsSpeaking(false);
+      }
       baseInputTextRef.current = inputText;
       speechHandlerRef.current.start();
     }
   };
 
+  const handleLanguageChange = (lang: 'python' | 'java' | 'cpp') => {
+    if (codingProblem) {
+      codeDraftsRef.current[codeLanguage] = code;
+      const starter = codingProblem.starter_code[lang] || '';
+      const draft = codeDraftsRef.current[lang] || starter;
+      setCode(draft);
+    }
+    setCodeLanguage(lang);
+  };
+
   const handleRunCode = async () => {
-    if (!codingProblem) return;
+    if (!codingProblem || isExecutingCode || !id) return;
     setIsExecutingCode(true);
-    setExecutionResult(null);
     setCodeExecutionError('');
 
     try {
-      const result = await api.post<CodeExecutionResult>('/coding/run', {
+      const res = await api.post<CodeExecutionResult>(`/interviews/${id}/code`, {
         problem_id: codingProblem.id,
         language: codeLanguage,
         code,
+        run_mode: 'run',
       });
-      setExecutionResult(result);
+      setExecutionResult(res);
+      const updated = await api.get<Interview>(`/interviews/${id}`);
+      setMessages(updated.messages || []);
     } catch (err: any) {
-      setCodeExecutionError(err.message || 'Code execution failed. Please check your syntax or limits.');
+      setCodeExecutionError(err.message || 'Execution failed. Review syntax or memory constraints.');
     } finally {
       setIsExecutingCode(false);
     }
-  };
-
-  const handleLanguageChange = (lang: 'python' | 'java' | 'cpp') => {
-    codeDraftsRef.current[codeLanguage] = code;
-    setCodeLanguage(lang);
-    const draft = codeDraftsRef.current[lang];
-    setCode(draft !== undefined ? draft : (codingProblem?.starter_code[lang] || ''));
   };
 
   const formatTime = (totalSeconds: number) => {
@@ -307,7 +351,7 @@ export const InterviewSessionPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-20 text-center">
+      <div className="max-w-7xl mx-auto px-4 py-24 text-center">
         <div className="w-8 h-8 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
         <p className="text-xs text-ink-muted">Connecting to interview room...</p>
       </div>
@@ -315,37 +359,41 @@ export const InterviewSessionPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
-      {/* Top Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-surface-border gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-lg font-bold tracking-tight text-ink">{interview?.title}</h1>
-            <Badge variant="lime" size="sm" className="font-mono text-[10px] uppercase">
-              {interview?.category}
-            </Badge>
-            <span className="text-xs text-ink-subtle">
-              Question <strong>{Math.min(8, assistantCount)}</strong> of ~8
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
+      {/* FOCUS MODE HEADER BAR */}
+      <div className="bg-white border border-surface-border rounded-xl px-4 py-3 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Left: Live status & title */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2.5 w-2.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+            </span>
+            <span className="text-xs font-bold uppercase tracking-wider text-rose-700">
+              Live Interview
             </span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-ink-muted mt-0.5">
-            <span>Role: {interview?.target_role}</span>
-            <span>•</span>
-            <span className="capitalize">Level: {interview?.difficulty}</span>
+
+          <span className="text-ink-subtle">•</span>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-bold text-ink">{interview?.title}</h1>
+              <Badge variant="lime" size="sm" className="font-mono text-[10px] uppercase">
+                {interview?.category}
+              </Badge>
+            </div>
+            <div className="text-[11px] text-ink-muted">
+              Turn {Math.min(8, assistantCount)} of ~8 · {interview?.target_role} ({interview?.difficulty})
+            </div>
           </div>
         </div>
 
-        {/* Status Indicators & Controls */}
+        {/* Right: Controls & Actions */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Audio Waveform Presence */}
-          <AudioWaveform
-            isActive={isSpeaking || isListening}
-            label={isSpeaking ? 'Interviewer Speaking' : isListening ? 'Listening (Mic Active)' : 'Interviewer Ready'}
-          />
-
           {/* Elapsed Timer */}
-          <div className="font-mono text-xs font-semibold bg-surface-subtle px-3 py-1.5 rounded-lg border border-surface-border text-ink">
-            {formatTime(secondsElapsed)} / {interview?.target_duration_minutes || 20}:00
+          <div className="font-mono text-xs font-semibold bg-surface-subtle px-2.5 py-1 rounded-md border border-surface-border text-ink">
+            ⏱ {formatTime(secondsElapsed)} / {interview?.target_duration_minutes || 20}:00
           </div>
 
           {/* AI Voice Toggle */}
@@ -356,7 +404,11 @@ export const InterviewSessionPage: React.FC = () => {
             title={autoSpeak ? 'Mute AI Voice' : 'Enable AI Voice readout'}
             className="text-xs gap-1"
           >
-            {autoSpeak ? <Volume2 className="w-4 h-4 text-lime-700" /> : <VolumeX className="w-4 h-4 text-ink-subtle" />}
+            {autoSpeak ? (
+              <Volume2 className="w-4 h-4 text-lime-700" />
+            ) : (
+              <VolumeX className="w-4 h-4 text-ink-subtle" />
+            )}
             <span className="hidden md:inline">{autoSpeak ? 'Voice On' : 'Voice Off'}</span>
           </Button>
 
@@ -368,7 +420,7 @@ export const InterviewSessionPage: React.FC = () => {
             className="text-xs gap-1.5"
           >
             <Code2 className="w-4 h-4 text-lime-700" />
-            {showCodeEditor ? 'Hide Code' : 'Dock Code'}
+            <span>{showCodeEditor ? 'Hide Code' : 'Dock Code'}</span>
           </Button>
 
           {/* Socratic Hint Ladder Menu */}
@@ -397,7 +449,9 @@ export const InterviewSessionPage: React.FC = () => {
                 >
                   <div className="font-semibold text-ink flex items-center justify-between">
                     <span>Tier 1: Clarifying Nudge</span>
-                    <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-mono">-5%</span>
+                    <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-mono">
+                      -5%
+                    </span>
                   </div>
                   <div className="text-[11px] text-ink-muted">Subtle directional prompt without spoilers.</div>
                 </button>
@@ -408,7 +462,9 @@ export const InterviewSessionPage: React.FC = () => {
                 >
                   <div className="font-semibold text-ink flex items-center justify-between">
                     <span>Tier 2: Pattern Identification</span>
-                    <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-mono">-15%</span>
+                    <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-mono">
+                      -15%
+                    </span>
                   </div>
                   <div className="text-[11px] text-ink-muted">Reveals algorithmic pattern or data structure.</div>
                 </button>
@@ -419,7 +475,9 @@ export const InterviewSessionPage: React.FC = () => {
                 >
                   <div className="font-semibold text-ink flex items-center justify-between">
                     <span>Tier 3: Pseudocode & Logic</span>
-                    <span className="text-[10px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded font-mono">-30%</span>
+                    <span className="text-[10px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded font-mono">
+                      -30%
+                    </span>
                   </div>
                   <div className="text-[11px] text-ink-muted">Step-by-step structural logic walkthrough.</div>
                 </button>
@@ -429,39 +487,56 @@ export const InterviewSessionPage: React.FC = () => {
 
           {/* End & Self-Evaluate Button */}
           <Button
-            variant="danger"
+            variant="primary"
             size="sm"
             onClick={() => setShowSelfEvalModal(true)}
             className="text-xs font-semibold"
           >
             End & Self-Evaluate
           </Button>
+
+          {/* Exit Interview Button (Focus Mode exit confirmation) */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowExitConfirmModal(true)}
+            className="text-xs text-ink-muted hover:text-rose-700 gap-1"
+            title="Exit interview and return to dashboard"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Exit</span>
+          </Button>
         </div>
       </div>
 
-      {/* Session State / Memory Inspector Banner */}
+      {/* Session State / Competency Inspector Banner */}
       {sessionState && (
         <div className="flex items-center justify-between px-3.5 py-2 bg-surface-warm/80 border border-surface-border rounded-lg text-xs">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-ink">Active Competency:</span>
             <span className="font-mono text-lime-800 bg-lime-50 px-2 py-0.5 rounded border border-lime-200">
-              {sessionState.current_topic || 'General Engineering'}
+              {sessionState.current_topic || 'General Engineering Architecture'}
             </span>
             {sessionState.topic_statuses && sessionState.current_topic && (
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                sessionState.topic_statuses[sessionState.current_topic] === 'assessed'
-                  ? 'bg-zinc-100 text-zinc-700'
-                  : sessionState.topic_statuses[sessionState.current_topic] === 'needs_follow_up'
-                  ? 'bg-amber-100 text-amber-800'
-                  : 'bg-lime-100 text-lime-800'
-              }`}>
+              <span
+                className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                  sessionState.topic_statuses[sessionState.current_topic] === 'assessed'
+                    ? 'bg-zinc-100 text-zinc-700'
+                    : sessionState.topic_statuses[sessionState.current_topic] === 'needs_follow_up'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-lime-100 text-lime-800'
+                }`}
+              >
                 {sessionState.topic_statuses[sessionState.current_topic] || 'In Progress'}
               </span>
             )}
           </div>
           {sessionState.running_summary && (
-            <span className="text-[11px] text-ink-subtle hidden md:inline truncate max-w-md" title={sessionState.running_summary}>
-              Memory: {sessionState.running_summary}
+            <span
+              className="text-[11px] text-ink-subtle hidden md:inline truncate max-w-md"
+              title={sessionState.running_summary}
+            >
+              Interviewer Memory: {sessionState.running_summary}
             </span>
           )}
         </div>
@@ -485,25 +560,96 @@ export const InterviewSessionPage: React.FC = () => {
       {hintError && (
         <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-center justify-between">
           <span>{hintError}</span>
-          <button onClick={() => setHintError('')} className="text-amber-700 hover:text-amber-900 text-xs">Dismiss</button>
+          <button
+            onClick={() => setHintError('')}
+            className="text-amber-700 hover:text-amber-900 text-xs"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
       {codeExecutionError && (
         <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg flex items-center justify-between">
           <span>{codeExecutionError}</span>
-          <button onClick={() => setCodeExecutionError('')} className="text-rose-700 hover:text-rose-900 text-xs">Dismiss</button>
+          <button
+            onClick={() => setCodeExecutionError('')}
+            className="text-rose-700 hover:text-rose-900 text-xs"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
       {/* Main Split Layout: Dialogue & Code Sandbox */}
-      <div className={`grid gap-5 ${showCodeEditor ? 'grid-cols-1 lg:grid-cols-12' : 'grid-cols-1 max-w-4xl mx-auto'}`}>
-        {/* Left Column: Conversational Dialogue */}
-        <div className={showCodeEditor ? 'lg:col-span-6 space-y-3' : 'space-y-3'}>
-          <div className="bg-white border border-surface-border rounded-xl p-4 sm:p-5 shadow-card min-h-[480px] max-h-[580px] overflow-y-auto space-y-4">
+      <div
+        className={`grid gap-5 ${
+          showCodeEditor
+            ? 'grid-cols-1 lg:grid-cols-12'
+            : 'grid-cols-1 lg:grid-cols-12'
+        }`}
+      >
+        {/* Left Column (or Avatar Sidebar in non-docked mode) */}
+        {!showCodeEditor && (
+          <div className="lg:col-span-4 space-y-4">
+            <InterviewerAvatar
+              isSpeaking={isSpeaking}
+              isListening={isListening}
+              isThinking={isSending}
+              autoSpeak={autoSpeak}
+              onToggleAutoSpeak={() => setAutoSpeak(!autoSpeak)}
+              interviewerTitle={`Senior Staff Interviewer (${interview?.target_role || 'Engineering'})`}
+              category={interview?.category}
+            />
+
+            <Card className="p-4 bg-white border border-surface-border text-xs space-y-2.5">
+              <h4 className="font-semibold text-ink uppercase tracking-wider text-[11px]">
+                Interview Guidelines
+              </h4>
+              <ul className="space-y-1.5 text-ink-muted text-[11px]">
+                <li className="flex items-start gap-1.5">
+                  <span className="text-lime-600 font-bold">•</span>
+                  <span>Speak or type directly. Focus on concrete trade-offs and metrics.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-lime-600 font-bold">•</span>
+                  <span>Use microphone or push Spacebar for hands-free speech input.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-lime-600 font-bold">•</span>
+                  <span>Dock code anytime if asked to sketch algorithms or architectures.</span>
+                </li>
+              </ul>
+            </Card>
+          </div>
+        )}
+
+        {/* Dialogue Feed Column */}
+        <div
+          className={`${
+            showCodeEditor ? 'lg:col-span-6' : 'lg:col-span-8'
+          } space-y-3 flex flex-col`}
+        >
+          {showCodeEditor && (
+            <div className="mb-1">
+              <InterviewerAvatar
+                isSpeaking={isSpeaking}
+                isListening={isListening}
+                isThinking={isSending}
+                autoSpeak={autoSpeak}
+                onToggleAutoSpeak={() => setAutoSpeak(!autoSpeak)}
+                interviewerTitle="Senior Staff Interviewer"
+                category={interview?.category}
+              />
+            </div>
+          )}
+
+          {/* Dialogue Message Thread */}
+          <div className="bg-white border border-surface-border rounded-xl p-4 sm:p-5 shadow-xs min-h-[440px] max-h-[540px] overflow-y-auto space-y-4">
             {messages.map((m, idx) => {
               const isAssistant = m.role === 'assistant';
-              const isHintMsg = m.content.startsWith('[Level') || m.content.startsWith('[Requested Level');
+              const isHintMsg =
+                m.content.startsWith('[Level') || m.content.startsWith('[Requested Level');
 
               return (
                 <div
@@ -522,7 +668,7 @@ export const InterviewSessionPage: React.FC = () => {
                   </div>
 
                   <div
-                    className={`max-w-[88%] rounded-2xl p-4 text-sm leading-relaxed shadow-sm ${
+                    className={`max-w-[90%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-xs ${
                       isAssistant
                         ? isHintMsg
                           ? 'bg-amber-50/80 border border-amber-200 text-amber-950'
@@ -538,7 +684,7 @@ export const InterviewSessionPage: React.FC = () => {
                         title="Listen to question"
                       >
                         <Volume2 className="w-3.5 h-3.5" />
-                        Listen
+                        <span>Listen</span>
                       </button>
                     )}
                   </div>
@@ -560,9 +706,30 @@ export const InterviewSessionPage: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input Box */}
+          {/* Active Voice Input Wave Banner */}
+          {isListening && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center justify-between animate-fade-in shadow-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
+                <span className="font-semibold">
+                  Listening to your answer... Speak naturally into your microphone.
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={toggleSpeechRecognition}
+                className="text-xs py-1 px-2.5"
+              >
+                Done Speaking
+              </Button>
+            </div>
+          )}
+
+          {/* Input Box & Speech Controls */}
           <form onSubmit={handleSendMessage} className="space-y-2">
-            <div className="relative rounded-xl border border-surface-border bg-white shadow-card focus-within:ring-2 focus-within:ring-lime-500 overflow-hidden">
+            <div className="relative rounded-xl border border-surface-border bg-white shadow-xs focus-within:ring-2 focus-within:ring-lime-500 overflow-hidden">
               <textarea
                 rows={3}
                 value={inputText}
@@ -570,8 +737,8 @@ export const InterviewSessionPage: React.FC = () => {
                   setInputText(e.target.value);
                   baseInputTextRef.current = e.target.value;
                 }}
-                placeholder="State your technical answer directly. Cite numbers or trade-offs (Press Enter to submit, Space to speak)..."
-                className="w-full p-3.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none resize-none font-sans"
+                placeholder="State your technical answer directly. Cite metrics or trade-offs (Press Enter to submit, or use mic below)..."
+                className="w-full p-3.5 text-xs sm:text-sm text-ink placeholder:text-ink-faint focus:outline-none resize-none font-sans"
                 disabled={isSending}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -589,18 +756,18 @@ export const InterviewSessionPage: React.FC = () => {
                       variant={isListening ? 'danger' : 'secondary'}
                       size="sm"
                       onClick={toggleSpeechRecognition}
-                      title={isListening ? 'Stop listening' : 'Push to talk (or hold Space)'}
-                      className="gap-1.5 text-xs"
+                      title={isListening ? 'Stop microphone' : 'Push to speak answer'}
+                      className="gap-1.5 text-xs font-medium"
                     >
                       {isListening ? (
                         <>
                           <MicOff className="w-3.5 h-3.5 animate-pulse" />
-                          <span>Stop Mic</span>
+                          <span>Stop Listening</span>
                         </>
                       ) : (
                         <>
                           <Mic className="w-3.5 h-3.5 text-lime-700" />
-                          <span>Voice Input</span>
+                          <span>Speak Answer</span>
                         </>
                       )}
                     </Button>
@@ -616,10 +783,10 @@ export const InterviewSessionPage: React.FC = () => {
                   size="sm"
                   isLoading={isSending}
                   disabled={!inputText.trim()}
-                  className="gap-1.5 text-xs font-semibold"
+                  className="gap-1.5 text-xs font-semibold px-4"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  Respond
+                  <span>Send Answer</span>
                 </Button>
               </div>
             </div>
@@ -670,7 +837,7 @@ export const InterviewSessionPage: React.FC = () => {
                     className="gap-1.5 text-xs font-medium"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
-                    Test Code
+                    <span>Run Code</span>
                   </Button>
                 </div>
               </div>
@@ -679,7 +846,13 @@ export const InterviewSessionPage: React.FC = () => {
               <div className="h-80 border border-surface-border rounded-lg overflow-hidden">
                 <Editor
                   height="100%"
-                  language={codeLanguage === 'cpp' ? 'cpp' : codeLanguage === 'java' ? 'java' : 'python'}
+                  language={
+                    codeLanguage === 'cpp'
+                      ? 'cpp'
+                      : codeLanguage === 'java'
+                      ? 'java'
+                      : 'python'
+                  }
                   theme="vs"
                   value={code}
                   onChange={(val) => setCode(val || '')}
@@ -714,7 +887,9 @@ export const InterviewSessionPage: React.FC = () => {
                     Passed {executionResult.total_passed} / {executionResult.total_tests} test cases
                   </div>
                   {executionResult.stderr && (
-                    <div className="text-rose-600 whitespace-pre-wrap">{executionResult.stderr}</div>
+                    <div className="text-rose-600 whitespace-pre-wrap">
+                      {executionResult.stderr}
+                    </div>
                   )}
                 </div>
               )}
@@ -722,6 +897,41 @@ export const InterviewSessionPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Exit Confirmation Modal */}
+      <Modal
+        isOpen={showExitConfirmModal}
+        onClose={() => setShowExitConfirmModal(false)}
+        title="Exit Active Interview Session?"
+      >
+        <div className="space-y-4 text-xs">
+          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              Are you sure you want to leave? Your conversation history and code drafts are preserved, but leaving the focus room interrupts the live interview flow.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-surface-border">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowExitConfirmModal(false)}
+            >
+              Cancel (Stay in Interview)
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={() => navigate('/')}
+            >
+              Exit to Dashboard
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Self Evaluation Modal */}
       {interview && (

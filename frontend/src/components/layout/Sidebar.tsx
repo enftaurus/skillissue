@@ -21,20 +21,36 @@ import {
 
 interface SidebarProps {
   onOpenCommandPalette: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ onOpenCommandPalette }) => {
-  const [isCollapsed, setIsCollapsed] = useState(() => {
+export const Sidebar: React.FC<SidebarProps> = ({
+  onOpenCommandPalette,
+  isCollapsed: controlledCollapsed,
+  onToggleCollapse,
+}) => {
+  const [internalCollapsed, setInternalCollapsed] = useState(() => {
     return localStorage.getItem('skillissue_sidebar_collapsed') === 'true';
   });
+
+  const isCollapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
   const [providerConfig, setProviderConfig] = useState<ProviderConfig | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
-  useEffect(() => {
-    localStorage.setItem('skillissue_sidebar_collapsed', String(isCollapsed));
-  }, [isCollapsed]);
+  const handleToggle = () => {
+    if (onToggleCollapse) {
+      onToggleCollapse();
+    } else {
+      setInternalCollapsed((prev) => {
+        const next = !prev;
+        localStorage.setItem('skillissue_sidebar_collapsed', String(next));
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -106,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenCommandPalette }) => {
         </Link>
 
         <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={handleToggle}
           className="p-1.5 rounded-md text-ink-muted hover:text-ink hover:bg-surface-subtle transition-colors flex-shrink-0"
           title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           aria-label="Toggle Sidebar"
@@ -177,10 +193,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenCommandPalette }) => {
 
       {/* Bottom Footer Section */}
       <div className="p-2.5 border-t border-surface-border space-y-1.5 bg-surface-warm/30">
-        {/* Model Provider Status Pill */}
+        {/* Model Provider & Usage Status Pill */}
         <Link
           to="/settings/provider"
-          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-surface-subtle text-xs transition-colors ${
+          className={`flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-surface-subtle text-xs transition-colors border border-transparent hover:border-surface-border ${
             isCollapsed ? 'justify-center' : ''
           }`}
           title="Configure AI Provider & Spending Budget"
@@ -191,14 +207,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenCommandPalette }) => {
             }`}
           />
           {!isCollapsed && (
-            <div className="flex flex-col truncate">
-              <span className="text-[11px] font-semibold text-ink truncate">
-                {providerConfig?.is_valid ? 'Bedrock BYOC' : 'Setup Required'}
-              </span>
-              <span className="text-[10px] text-ink-muted truncate">
-                {providerConfig?.is_valid
-                  ? providerConfig.aws_region
-                  : 'Configure IAM Key'}
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-ink">
+                <span className="truncate">
+                  {providerConfig?.is_valid
+                    ? (providerConfig.provider_name === 'azure' ? 'Azure OpenAI' : 'Bedrock BYOC')
+                    : 'Setup Required'}
+                </span>
+                {providerConfig?.estimated_cost_usd !== undefined && (
+                  <span className="font-mono text-[10px] text-lime-700 font-bold ml-1 shrink-0">
+                    ${providerConfig.estimated_cost_usd.toFixed(3)}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] text-ink-muted truncate font-mono">
+                {providerConfig?.total_tokens_used !== undefined
+                  ? `${(providerConfig.total_tokens_used / 1000).toFixed(1)}k tokens used`
+                  : (providerConfig?.aws_region || 'Configure Keys')}
               </span>
             </div>
           )}

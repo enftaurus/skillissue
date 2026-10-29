@@ -35,9 +35,12 @@ export interface ProviderConfig {
   temperature?: number;
   max_tokens?: number;
   is_valid: boolean;
-  last_tested_at?: string;
   total_tokens_used: number;
   estimated_cost_usd: number;
+  monthly_token_budget?: number;
+  monthly_tokens_used?: number;
+  monthly_cost_cents_budget?: number;
+  monthly_cost_cents_used?: number;
 }
 
 export interface ModelMetadata {
@@ -446,5 +449,17 @@ export interface CodingLimits {
   timeout_seconds: number;
   output_limit_bytes: number;
   runtime: string;
+}
+
+export interface CodingSubmission {
+  id: string;
+  problem_title: string;
+  language: string;
+  status: string;
+  execution_time_ms: number;
+  memory_kb?: number;
+  tests_passed: number;
+  tests_total: number;
+  created_at: string;
 }
 

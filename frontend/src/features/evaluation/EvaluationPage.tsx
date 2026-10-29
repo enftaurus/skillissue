@@ -202,15 +202,30 @@ export const EvaluationPage: React.FC = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="md"
-          onClick={handleGeneratePlan}
-          isLoading={isGeneratingPlan}
-        >
-          <Flame className="w-4 h-4 mr-1.5 fill-white" />
-          Generate Planly Roadmap
-        </Button>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-subtle border border-surface-border font-mono text-xs text-ink-muted">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>
+              {evaluation.tokens_used > 0
+                ? `${evaluation.tokens_used.toLocaleString()} tokens`
+                : 'Evaluation Inference'}
+            </span>
+            <span className="text-ink-subtle">•</span>
+            <span className="font-semibold text-ink">
+              ~${((evaluation.tokens_used || 1200) * 0.0000035).toFixed(4)} USD
+            </span>
+          </div>
+
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleGeneratePlan}
+            isLoading={isGeneratingPlan}
+          >
+            <Flame className="w-4 h-4 mr-1.5 fill-white" />
+            Generate Planly Roadmap
+          </Button>
+        </div>
       </div>
 
       {/* Overall Score & Self-Perception Calibration */}
@@ -657,25 +672,40 @@ export const EvaluationPage: React.FC = () => {
                       )}
 
                       {/* Gilfoyle Critique */}
-                      <div className="p-3.5 bg-amber-50/50 rounded-md border border-amber-200/70 space-y-1">
+                      <div className="p-3.5 bg-amber-50/60 rounded-lg border border-amber-200/80 space-y-1.5">
                         <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-900">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
                           <span>Evaluation Critique</span>
                         </div>
-                        <p className="text-ink leading-relaxed pl-5">
+                        <p className="text-ink leading-relaxed pl-5 text-xs">
                           {qf.critique}
                         </p>
                       </div>
 
-                      {/* Staff-Level Response Guide */}
-                      <div className="p-3.5 bg-lime-50/40 rounded-md border border-lime-200/70 space-y-1">
-                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-lime-900">
-                          <Sparkles className="w-3.5 h-3.5 text-lime-700" />
-                          <span>Staff-Level Engineering Model Answer</span>
+                      {/* What You Could Have Said Better */}
+                      <div className="p-4 bg-emerald-50/40 rounded-lg border-2 border-emerald-300/80 space-y-2 shadow-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="p-1 rounded-md bg-emerald-100 text-emerald-800">
+                              <Sparkles className="w-4 h-4 text-emerald-700" />
+                            </span>
+                            <div>
+                              <h5 className="font-bold text-xs text-emerald-950">
+                                What You Could Have Said Better
+                              </h5>
+                              <span className="text-[10px] text-emerald-700 font-mono">
+                                Staff-Level Engineering Response Formulation
+                              </span>
+                            </div>
+                          </div>
+                          <Badge variant="emerald" size="sm" className="font-mono text-[10px]">
+                            Model Phrasing
+                          </Badge>
                         </div>
-                        <p className="text-ink leading-relaxed pl-5">
+
+                        <div className="p-3 bg-white rounded-md border border-emerald-200 text-xs text-ink leading-relaxed whitespace-pre-wrap font-sans">
                           {qf.strong_answer_guide}
-                        </p>
+                        </div>
                       </div>
 
                       {/* Targeted Resource */}

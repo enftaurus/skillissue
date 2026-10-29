@@ -17,6 +17,7 @@ import { AwsBedrockOnboardingPage } from './features/provider-settings/AwsBedroc
 
 import { Sidebar } from './components/layout/Sidebar';
 import { CommandPalette } from './components/layout/CommandPalette';
+import { CreditsUsageBadge } from './components/layout/CreditsUsageBadge';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuth();
@@ -51,10 +52,25 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const location = useLocation();
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('skillissue_sidebar_collapsed') === 'true';
+  });
+
+  const handleToggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('skillissue_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
   const isAuthRoute =
     location.pathname === '/login' ||
     location.pathname === '/register' ||
     location.pathname === '/onboarding/bedrock';
+
+  const isInterviewSession =
+    location.pathname.startsWith('/interviews/') && location.pathname !== '/interviews/new';
 
   if (!user || isAuthRoute) {
     return (
@@ -64,12 +80,29 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
+  // Interview Focus Mode: zero distraction, no sidebar, locked to interview room
+  if (isInterviewSession) {
+    return (
+      <div className="min-h-screen flex flex-col bg-surface-warm font-sans text-ink">
+        <main className="flex-1 flex flex-col">{children}</main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex bg-surface-warm font-sans text-ink">
-      <Sidebar onOpenCommandPalette={() => setIsPaletteOpen(true)} />
-      <div className="flex-1 flex flex-col min-w-0 pl-16 transition-all duration-200">
+      <Sidebar
+        onOpenCommandPalette={() => setIsPaletteOpen(true)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={handleToggleSidebar}
+      />
+      <div
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${
+          isSidebarCollapsed ? 'pl-16' : 'pl-60'
+        }`}
+      >
         <main className="flex-1 pb-16">{children}</main>
-        <footer className="border-t border-surface-border bg-white py-4 px-6">
+        <footer className="border-t border-surface-border bg-white py-3.5 px-6">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-ink-muted">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-ink">Skill Issue</span>
@@ -77,6 +110,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <span className="italic font-mono text-[11px]">&ldquo;Your interview went badly. Good. Now we have data.&rdquo;</span>
             </div>
             <div className="flex items-center gap-3 text-ink-subtle">
+              <CreditsUsageBadge />
+              <span>•</span>
               <button
                 onClick={() => setIsPaletteOpen(true)}
                 className="hover:text-ink font-mono text-[11px] px-2 py-0.5 rounded bg-surface-subtle border border-surface-border"
@@ -85,8 +120,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </button>
               <span>•</span>
               <span>Strict Light Theme</span>
-              <span>•</span>
-              <span>Sandboxed Execution</span>
             </div>
           </div>
         </footer>
