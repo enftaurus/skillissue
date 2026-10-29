@@ -51,11 +51,16 @@ class ModelFactory:
                     "Azure OpenAI credentials (Endpoint URL and API Key) are required.",
                     "MISSING_CREDENTIALS"
                 )
+            target_dep = (model_id or DEFAULT_AZURE_MODEL_ID).replace("azure.", "")
+            if azure_deployment_name and azure_deployment_name not in ("gpt-4.1-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"):
+                dep = azure_deployment_name
+            else:
+                dep = target_dep or azure_deployment_name or "gpt-4.1-mini"
             return AzureOpenAIProvider(
                 azure_endpoint=azure_endpoint,
                 api_key=azure_api_key,
                 api_version=azure_api_version or "2024-06-01",
-                deployment_name=azure_deployment_name,
+                deployment_name=dep,
                 model_id=model_id or DEFAULT_AZURE_MODEL_ID,
             )
 

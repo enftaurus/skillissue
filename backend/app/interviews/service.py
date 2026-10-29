@@ -498,18 +498,17 @@ class InterviewService:
 
         # 1. Execute code via isolated coding service
         from backend.app.coding.service import CodingService
-        from backend.app.coding.schemas import CodeRunRequest, CodeSubmissionRequest
+        from backend.app.coding.schemas import CodeRunRequest
 
         if run_mode == "run":
-            exec_res = await CodingService.run_code(
-                user_id=user_id,
+            exec_res = await CodingService.run_sample_tests(
                 data=CodeRunRequest(problem_id=problem_id, language=language, code=code)
             )
             submission_data = {
                 "status": exec_res.status,
                 "tests_passed": exec_res.total_passed,
                 "tests_total": exec_res.total_tests,
-                "execution_time_ms": int((getattr(exec_res, "execution_time", 0.0) or 0.0) * 1000),
+                "execution_time_ms": exec_res.execution_time_ms,
                 "stdout": exec_res.stdout,
                 "stderr": exec_res.stderr,
                 "submission_id": None,
@@ -518,7 +517,7 @@ class InterviewService:
             sub = await CodingService.submit_solution(
                 db=db,
                 user_id=user_id,
-                data=CodeSubmissionRequest(problem_id=problem_id, language=language, code=code),
+                data=CodeRunRequest(problem_id=problem_id, language=language, code=code),
                 interview_id=interview.id,
             )
             interview.latest_submission_id = sub.id

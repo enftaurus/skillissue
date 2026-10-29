@@ -235,9 +235,14 @@ class ModelClientFactory:
 
         try:
             if metadata.provider_name == "azure":
+                target_deployment = effective_model.replace("azure.", "") if effective_model else ""
+                if creds.azure_deployment_name and creds.azure_deployment_name not in ("gpt-4.1-mini", "gpt-4.1", "gpt-4o", "gpt-4o-mini"):
+                    deployment = creds.azure_deployment_name
+                else:
+                    deployment = target_deployment or creds.azure_deployment_name or metadata.azure_deployment_name or "gpt-4.1-mini"
+
                 if client_type == "langchain":
                     from langchain_openai import AzureChatOpenAI
-                    deployment = creds.azure_deployment_name or metadata.azure_deployment_name or effective_model.replace("azure.", "")
                     client = AzureChatOpenAI(
                         azure_endpoint=creds.azure_endpoint or metadata.azure_endpoint,
                         api_key=creds.azure_api_key,
@@ -253,7 +258,7 @@ class ModelClientFactory:
                         azure_endpoint=creds.azure_endpoint or metadata.azure_endpoint,
                         api_key=creds.azure_api_key,
                         api_version=creds.azure_api_version or metadata.azure_api_version or "2024-06-01",
-                        deployment_name=creds.azure_deployment_name or metadata.azure_deployment_name or effective_model.replace("azure.", ""),
+                        deployment_name=deployment,
                         model_id=effective_model,
                     )
             else:
