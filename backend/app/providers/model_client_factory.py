@@ -245,6 +245,7 @@ class ModelClientFactory:
                         azure_deployment=deployment,
                         temperature=effective_temp,
                         max_tokens=effective_tokens,
+                        request_timeout=float(os.environ.get("AZURE_OPENAI_TIMEOUT_SECONDS", "180.0")),
                     )
                 else:
                     from backend.app.providers.azure import AzureOpenAIProvider

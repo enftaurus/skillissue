@@ -36,6 +36,11 @@ def map_azure_error(e: Exception, model_id: str, endpoint: str) -> ProviderError
             "Access denied by Azure. Verify your Azure resource role assignments and network access rules.",
             "PERMISSION_DENIED"
         )
+    elif isinstance(e, openai.APITimeoutError):
+        return ProviderError(
+            f"Azure OpenAI request timed out after waiting for model '{model_id}'. The model took longer than expected to complete.",
+            "TIMEOUT"
+        )
     elif isinstance(e, openai.APIConnectionError):
         return ProviderError(
             f"Could not connect to Azure OpenAI endpoint '{endpoint}'. Check your endpoint URL and network connectivity.",
@@ -97,7 +102,7 @@ class AzureOpenAIProvider(BaseProvider):
             azure_endpoint=self.azure_endpoint,
             api_key=self.api_key,
             api_version=self.api_version,
-            timeout=30.0,
+            timeout=float(os.environ.get("AZURE_OPENAI_TIMEOUT_SECONDS", "180.0")),
             max_retries=2,
         )
         return self._client
