@@ -64,6 +64,7 @@ export const LoginPage: React.FC = () => {
               label="Password"
               type="password"
               required
+              showPasswordToggle
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"

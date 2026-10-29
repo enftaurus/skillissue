@@ -68,6 +68,7 @@ export const RegisterPage: React.FC = () => {
               type="password"
               required
               minLength={8}
+              showPasswordToggle
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
