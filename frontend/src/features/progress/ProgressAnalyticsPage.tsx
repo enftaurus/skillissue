@@ -65,8 +65,8 @@ export const ProgressAnalyticsPage: React.FC = () => {
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto px-4 py-16 text-center">
-        <div className="w-10 h-10 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm text-ink-muted">Crunching your interview data & progress metrics...</p>
+        <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-sm text-slate-500">Crunching your interview data & progress metrics...</p>
       </div>
     );
   }
@@ -91,7 +91,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-lime-700 bg-lime-50 px-2 py-0.5 rounded border border-lime-200">
+            <span className="text-xs font-mono uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200/80 font-medium">
               Progress Analytics
             </span>
             <span className="text-xs text-ink-subtle">
@@ -137,10 +137,10 @@ export const ProgressAnalyticsPage: React.FC = () => {
             <span className="text-xs font-semibold text-ink-subtle uppercase tracking-wider">
               Avg. Rubric Score
             </span>
-            <Sparkles className="w-4 h-4 text-lime-600" />
+            <Sparkles className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-bold font-mono text-lime-700">
+            <span className="text-3xl font-bold font-mono text-indigo-600">
               {data.average_overall_score}
             </span>
             <span className="text-xs text-ink-muted font-mono">/ 100</span>
@@ -186,7 +186,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold tracking-tight text-ink flex items-center gap-2">
-              <Layers className="w-5 h-5 text-lime-600" />
+              <Layers className="w-5 h-5 text-indigo-600" />
               Persistent Skill Map
             </h2>
             <p className="text-xs text-ink-subtle">
@@ -209,9 +209,9 @@ export const ProgressAnalyticsPage: React.FC = () => {
               const confPercent = Math.round(skill.confidence * 100);
               const scoreColor =
                 skill.score >= 75
-                  ? 'bg-lime-600'
+                  ? 'bg-emerald-500'
                   : skill.score >= 50
-                  ? 'bg-amber-500'
+                  ? 'bg-indigo-500'
                   : 'bg-rose-500';
 
               return (
@@ -223,10 +223,10 @@ export const ProgressAnalyticsPage: React.FC = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-1.5">
-                          <Badge variant="lime" size="sm" className="font-mono text-[10px]">
+                          <Badge variant="brand" size="sm" className="font-mono text-xs">
                             Last updated {new Date(skill.last_seen).toLocaleDateString()}
                           </Badge>
-                          <span className="text-[10px] text-ink-subtle font-mono">
+                          <span className="text-xs text-ink-subtle font-mono">
                             {skill.evidence_refs?.length || 1} signal{(skill.evidence_refs?.length || 1) !== 1 ? 's' : ''}
                           </span>
                         </div>
@@ -254,7 +254,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
                     {/* Confidence Indicator */}
                     <div className="flex items-center justify-between text-[11px] text-ink-subtle mt-2">
                       <span className="flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5 text-lime-700" />
+                        <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
                         <span>Confidence: {confPercent}%</span>
                       </span>
                       <span>
@@ -275,7 +275,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
                         className="w-full flex items-center justify-between text-xs text-ink-muted hover:text-ink font-medium"
                       >
                         <span className="flex items-center gap-1.5">
-                          <Quote className="w-3 h-3 text-lime-700" />
+                          <Quote className="w-3 h-3 text-indigo-600" />
                           <span>Evaluation Evidence History ({skill.evidence_refs.length})</span>
                         </span>
                         {isEvidenceOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -286,10 +286,10 @@ export const ProgressAnalyticsPage: React.FC = () => {
                           {skill.evidence_refs.map((ref: any, qIdx: number) => (
                             <div
                               key={qIdx}
-                              className="p-2 rounded bg-surface-warm border border-surface-border text-[11px] text-ink flex items-center justify-between"
+                              className="p-2 rounded bg-surface-warm border border-surface-border text-xs text-ink flex items-center justify-between"
                             >
                               <span className="capitalize text-ink-muted font-mono">{ref.type || 'evaluation'} signal</span>
-                              <span className="font-mono font-bold text-lime-800">
+                              <span className="font-mono font-bold text-indigo-700">
                                 {ref.score !== undefined ? `${Math.round(ref.score)}/100` : 'Recorded'}
                               </span>
                             </div>
@@ -309,7 +309,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold tracking-tight text-ink flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-lime-600" />
+            <TrendingUp className="w-5 h-5 text-indigo-600" />
             Verified Reassessment Cycles
           </h2>
           <span className="text-xs text-ink-subtle">
@@ -342,11 +342,11 @@ export const ProgressAnalyticsPage: React.FC = () => {
                       {/* Baseline */}
                       <div className="p-3.5 rounded-lg bg-surface-subtle border border-surface-border space-y-1">
                         <span className="text-[10px] font-mono uppercase text-ink-subtle tracking-wider block">
-                          Baseline Interview
+                           Baseline Interview
                         </span>
                         <Link
                           to={`/evaluations/${r.baseline_interview_id}`}
-                          className="font-semibold text-sm text-ink hover:text-lime-700 hover:underline block truncate"
+                          className="font-semibold text-sm text-ink hover:text-indigo-600 hover:underline block truncate"
                         >
                           {r.baseline_title}
                         </Link>
@@ -357,19 +357,19 @@ export const ProgressAnalyticsPage: React.FC = () => {
                       </div>
 
                       {/* Reassessment */}
-                      <div className="p-3.5 rounded-lg bg-lime-50/50 border border-lime-200/80 space-y-1">
-                        <span className="text-[10px] font-mono uppercase text-lime-800 tracking-wider block">
+                      <div className="p-3.5 rounded-lg bg-indigo-50/40 border border-indigo-200/80 space-y-1">
+                        <span className="text-[10px] font-mono uppercase text-indigo-800 tracking-wider block">
                           Reassessment Interview
                         </span>
                         <Link
                           to={`/evaluations/${r.reassessment_interview_id}`}
-                          className="font-semibold text-sm text-ink hover:text-lime-700 hover:underline block truncate"
+                          className="font-semibold text-sm text-ink hover:text-indigo-600 hover:underline block truncate"
                         >
                           {r.reassessment_title}
                         </Link>
                         <div className="flex items-center justify-between text-xs text-ink-muted pt-1">
                           <span>{new Date(r.reassessment_date).toLocaleDateString()}</span>
-                          <span className="font-mono font-bold text-lime-800">{r.reassessment_score}/100</span>
+                          <span className="font-mono font-bold text-indigo-800">{r.reassessment_score}/100</span>
                         </div>
                       </div>
                     </div>
@@ -436,7 +436,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
         {/* Dimension Trends (2 cols) */}
         <div className="lg:col-span-2 space-y-4">
           <h2 className="text-lg font-bold tracking-tight text-ink flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-lime-600" />
+            <BarChart3 className="w-5 h-5 text-indigo-600" />
             Rubric Dimension Averages
           </h2>
 
@@ -461,7 +461,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
                     </div>
                     <div className="w-full h-2.5 bg-surface-subtle rounded-full overflow-hidden border border-surface-border">
                       <div
-                        className="h-full bg-lime-600 rounded-full transition-all duration-500"
+                        className="h-full bg-indigo-600 rounded-full transition-all duration-500"
                         style={{ width: `${percent}%` }}
                       />
                     </div>
@@ -486,7 +486,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
                     <div>
                       <Link
                         to={`/evaluations/${s.interview_id}`}
-                        className="font-semibold text-ink hover:text-lime-700"
+                        className="font-semibold text-ink hover:text-indigo-600"
                       >
                         {s.title}
                       </Link>
@@ -494,7 +494,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
                         {s.category} • {new Date(s.completed_at).toLocaleDateString()}
                       </div>
                     </div>
-                    <span className="font-mono font-bold text-sm text-lime-800 bg-lime-50 px-2.5 py-1 rounded border border-lime-200">
+                    <span className="font-mono font-bold text-sm text-indigo-800 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200/80">
                       {s.overall_score}/100
                     </span>
                   </div>

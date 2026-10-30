@@ -211,8 +211,8 @@ export const ProviderSettingsPage: React.FC = () => {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto py-12 px-4 text-center">
-        <div className="inline-block animate-spin w-8 h-8 border-2 border-lime-600 border-t-transparent rounded-full" />
-        <p className="mt-3 text-sm text-ink-muted">Loading provider settings...</p>
+        <div className="inline-block animate-spin w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full" />
+        <p className="mt-3 text-sm text-slate-500">Loading provider settings...</p>
       </div>
     );
   }
@@ -231,7 +231,7 @@ export const ProviderSettingsPage: React.FC = () => {
       <div>
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold tracking-tight text-ink flex items-center gap-2.5">
-            <Cpu className="w-6 h-6 text-lime-700" />
+            <Cpu className="w-6 h-6 text-indigo-600" />
             AI Provider Settings (BYOC)
           </h1>
           <Link to="/onboarding/bedrock">
@@ -250,12 +250,12 @@ export const ProviderSettingsPage: React.FC = () => {
         <div
           className={`p-4 rounded-lg flex items-start gap-3 border ${
             notification.type === 'success'
-              ? 'bg-lime-50 border-lime-200 text-lime-900'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
           }`}
         >
           {notification.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-lime-600 shrink-0 mt-0.5" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
           ) : (
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
           )}
@@ -264,10 +264,10 @@ export const ProviderSettingsPage: React.FC = () => {
       )}
 
       {/* Usage & Budget Tracking Card */}
-      <Card className="bg-surface-warm border-lime-200">
+      <Card className="bg-gradient-to-r from-indigo-50/50 via-white to-slate-50 border-indigo-200/80">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider text-lime-800">
+            <span className="text-xs font-semibold uppercase tracking-wider text-indigo-900">
               Estimated Spend & Logged Tokens
             </span>
             <div className="mt-1 flex items-baseline gap-3">
@@ -285,7 +285,7 @@ export const ProviderSettingsPage: React.FC = () => {
             </p>
           </div>
           <div className="shrink-0 flex items-center gap-2">
-            <Badge variant={config?.provider_name === providerName ? 'lime' : 'zinc'}>
+            <Badge variant={config?.provider_name === providerName ? 'brand' : 'zinc'}>
               Active: {config?.provider_name.toUpperCase()}
             </Badge>
           </div>
@@ -299,7 +299,7 @@ export const ProviderSettingsPage: React.FC = () => {
           onClick={() => handleProviderSwitch('azure')}
           className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex flex-col justify-between ${
             providerName === 'azure'
-              ? 'border-lime-600 bg-white shadow-sm ring-2 ring-lime-500/20'
+              ? 'border-indigo-600 bg-white shadow-sm ring-2 ring-indigo-500/20'
               : 'border-surface-border bg-surface-card hover:border-ink-subtle/40'
           }`}
         >
@@ -308,7 +308,7 @@ export const ProviderSettingsPage: React.FC = () => {
               <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
                 <Cloud className="w-4 h-4" />
               </div>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-lime-100 text-lime-800">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
                 <GraduationCap className="w-3 h-3" />
                 Recommended for Students
               </span>
@@ -320,7 +320,7 @@ export const ProviderSettingsPage: React.FC = () => {
           </div>
           <div className="mt-3 pt-2 border-t border-surface-border flex items-center justify-between text-xs font-medium">
             <span className="text-ink">GPT-4o Mini & GPT-4o</span>
-            <span className={providerName === 'azure' ? 'text-lime-700 font-bold' : 'text-ink-muted'}>
+            <span className={providerName === 'azure' ? 'text-indigo-600 font-bold' : 'text-ink-muted'}>
               {providerName === 'azure' ? '✓ Selected' : 'Switch to Azure'}
             </span>
           </div>
@@ -331,7 +331,7 @@ export const ProviderSettingsPage: React.FC = () => {
           onClick={() => handleProviderSwitch('bedrock')}
           className={`cursor-pointer rounded-xl p-4 border-2 transition-all flex flex-col justify-between ${
             providerName === 'bedrock'
-              ? 'border-lime-600 bg-white shadow-sm ring-2 ring-lime-500/20'
+              ? 'border-indigo-600 bg-white shadow-sm ring-2 ring-indigo-500/20'
               : 'border-surface-border bg-surface-card hover:border-ink-subtle/40'
           }`}
         >
@@ -351,7 +351,7 @@ export const ProviderSettingsPage: React.FC = () => {
           </div>
           <div className="mt-3 pt-2 border-t border-surface-border flex items-center justify-between text-xs font-medium">
             <span className="text-ink">Qwen 32B & DeepSeek-R1</span>
-            <span className={providerName === 'bedrock' ? 'text-lime-700 font-bold' : 'text-ink-muted'}>
+            <span className={providerName === 'bedrock' ? 'text-indigo-600 font-bold' : 'text-ink-muted'}>
               {providerName === 'bedrock' ? '✓ Selected' : 'Switch to AWS'}
             </span>
           </div>
@@ -391,7 +391,7 @@ export const ProviderSettingsPage: React.FC = () => {
                 {providerName === 'azure' ? 'Azure OpenAI Credentials & Endpoint' : 'AWS IAM Credentials & Region'}
               </span>
               <span className="text-xs text-ink-subtle flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-lime-700" />
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                 Encrypted at rest with AES-256
               </span>
             </div>
@@ -485,7 +485,7 @@ export const ProviderSettingsPage: React.FC = () => {
                     <select
                       value={awsRegion}
                       onChange={(e) => setAwsRegion(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500"
+                      className="w-full px-3 py-2 text-sm bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
                       <option value="us-east-1">us-east-1 (N. Virginia)</option>
                       <option value="us-west-2">us-west-2 (Oregon)</option>
@@ -521,7 +521,7 @@ export const ProviderSettingsPage: React.FC = () => {
               <div
                 className={`p-3 rounded-md text-xs flex items-center justify-between border ${
                   testResult.success
-                    ? 'bg-lime-50 border-lime-200 text-lime-900'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                     : 'bg-red-50 border-red-200 text-red-900'
                 }`}
               >
@@ -546,7 +546,7 @@ export const ProviderSettingsPage: React.FC = () => {
                     key={m.model_id}
                     className={`block p-3.5 rounded-lg border cursor-pointer transition-all ${
                       isSelected
-                        ? 'border-lime-600 bg-lime-50/40 ring-1 ring-lime-600'
+                        ? 'border-indigo-600 bg-indigo-50/40 ring-1 ring-indigo-600'
                         : 'border-surface-border hover:bg-surface-subtle'
                     }`}
                   >
@@ -557,12 +557,12 @@ export const ProviderSettingsPage: React.FC = () => {
                           name="model"
                           checked={isSelected}
                           onChange={() => setPreferredModel(m.model_id)}
-                          className="accent-lime-600 mt-0.5"
+                          className="accent-indigo-600 mt-0.5"
                         />
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-sm text-ink">{m.display_name}</span>
-                            <Badge variant={m.is_default ? 'lime' : 'zinc'} size="sm">
+                            <Badge variant={m.is_default ? 'brand' : 'zinc'} size="sm">
                               {m.role}
                             </Badge>
                           </div>
@@ -575,10 +575,10 @@ export const ProviderSettingsPage: React.FC = () => {
                             <span className="text-ink font-semibold">
                               ${m.input_price_per_1m} / ${m.output_price_per_1m}
                             </span>
-                            <span className="block text-[10px] text-ink-faint">per 1M tokens</span>
+                            <span className="block text-xs text-ink-muted">per 1M tokens</span>
                           </>
                         ) : (
-                          <span className="text-lime-700 font-semibold">Free (Offline)</span>
+                          <span className="text-emerald-700 font-semibold">Free (Offline)</span>
                         )}
                       </div>
                     </div>
@@ -607,7 +607,7 @@ export const ProviderSettingsPage: React.FC = () => {
                 <select
                   value={interviewerModel}
                   onChange={(e) => setInterviewerModel(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
+                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 >
                   {activeProviderModels.map((m) => (
                     <option key={m.model_id} value={m.model_id}>
@@ -615,7 +615,7 @@ export const ProviderSettingsPage: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                <span className="text-[10px] text-ink-faint mt-1 block">Dynamic dialogue & follow-ups</span>
+                <span className="text-xs text-ink-muted mt-1 block">Dynamic dialogue & follow-ups</span>
               </div>
 
               <div>
@@ -625,7 +625,7 @@ export const ProviderSettingsPage: React.FC = () => {
                 <select
                   value={evaluationModel}
                   onChange={(e) => setEvaluationModel(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
+                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 >
                   {activeProviderModels.map((m) => (
                     <option key={m.model_id} value={m.model_id}>
@@ -633,7 +633,7 @@ export const ProviderSettingsPage: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                <span className="text-[10px] text-ink-faint mt-1 block">Deterministic scoring & rubric critique</span>
+                <span className="text-xs text-ink-muted mt-1 block">Deterministic scoring & rubric critique</span>
               </div>
 
               <div>
@@ -643,7 +643,7 @@ export const ProviderSettingsPage: React.FC = () => {
                 <select
                   value={codingModel}
                   onChange={(e) => setCodingModel(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-lime-500 font-mono"
+                  className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 >
                   {activeProviderModels.map((m) => (
                     <option key={m.model_id} value={m.model_id}>
@@ -651,7 +651,7 @@ export const ProviderSettingsPage: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                <span className="text-[10px] text-ink-faint mt-1 block">Syntax, hints & algorithmic analysis</span>
+                <span className="text-xs text-ink-muted mt-1 block">Syntax, hints & algorithmic analysis</span>
               </div>
             </div>
           </div>
@@ -673,7 +673,7 @@ export const ProviderSettingsPage: React.FC = () => {
                 type="checkbox"
                 checked={fallbackEnabled}
                 onChange={(e) => setFallbackEnabled(e.target.checked)}
-                className="w-4 h-4 accent-lime-600 rounded"
+                className="w-4 h-4 accent-indigo-600 rounded"
               />
             </div>
 
@@ -681,7 +681,7 @@ export const ProviderSettingsPage: React.FC = () => {
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label className="text-xs font-medium text-ink">Sampling Temperature</label>
-                  <span className="text-xs font-mono font-semibold text-lime-700">{temperature}</span>
+                  <span className="text-xs font-mono font-semibold text-indigo-600">{temperature}</span>
                 </div>
                 <input
                   type="range"
@@ -690,9 +690,9 @@ export const ProviderSettingsPage: React.FC = () => {
                   step="0.05"
                   value={temperature}
                   onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                  className="w-full accent-lime-600"
+                  className="w-full accent-indigo-600"
                 />
-                <span className="text-[10px] text-ink-faint block mt-1">Lower = more deterministic, higher = more creative</span>
+                <span className="text-xs text-ink-muted block mt-1">Lower = more deterministic, higher = more creative</span>
               </div>
 
               <div>
@@ -706,7 +706,7 @@ export const ProviderSettingsPage: React.FC = () => {
                   onChange={(e) => setMaxTokens(parseInt(e.target.value) || 1024)}
                   className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink font-mono"
                 />
-                <span className="text-[10px] text-ink-faint block mt-1">Bounded between 256 and 4096 tokens</span>
+                <span className="text-xs text-ink-muted block mt-1">Bounded between 256 and 4096 tokens</span>
               </div>
             </div>
           </div>

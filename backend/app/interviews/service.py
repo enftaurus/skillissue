@@ -46,6 +46,20 @@ class InterviewService:
                 raise EntityNotFoundError("Resume", data.resume_id)
 
         title = f"{data.category.capitalize()} Interview: {', '.join(data.domain_skills[:3])}"
+        coding_prob_id = data.coding_problem_id
+        if data.category == "dsa" and not coding_prob_id:
+            try:
+                from backend.app.coding.codeforces import CodeforcesClient
+                cf_recs = await CodeforcesClient.get_recommended_for_interview(
+                    difficulty=data.difficulty or "intermediate",
+                    domain_skills=data.domain_skills,
+                    limit=1,
+                )
+                if cf_recs:
+                    coding_prob_id = cf_recs[0]["id"]
+            except Exception as e:
+                logger.warning(f"Could not auto-fetch Codeforces problem for domain interview: {e}")
+
         interview = Interview(
             user_id=user_id,
             mode="domain",
@@ -56,7 +70,7 @@ class InterviewService:
             status="in_progress",
             domain_skills=data.domain_skills,
             resume_id=data.resume_id,
-            coding_problem_id=data.coding_problem_id,
+            coding_problem_id=coding_prob_id,
             target_duration_minutes=data.target_duration_minutes or 20,
         )
         db.add(interview)
@@ -128,6 +142,20 @@ class InterviewService:
         if jd.company:
             title += f" @ {jd.company}"
 
+        coding_prob_id = data.coding_problem_id
+        if data.category == "dsa" and not coding_prob_id:
+            try:
+                from backend.app.coding.codeforces import CodeforcesClient
+                cf_recs = await CodeforcesClient.get_recommended_for_interview(
+                    difficulty=data.difficulty or "intermediate",
+                    domain_skills=jd.extracted_skills,
+                    limit=1,
+                )
+                if cf_recs:
+                    coding_prob_id = cf_recs[0]["id"]
+            except Exception as e:
+                logger.warning(f"Could not auto-fetch Codeforces problem for JD interview: {e}")
+
         interview = Interview(
             user_id=user_id,
             mode="jd",
@@ -139,7 +167,7 @@ class InterviewService:
             domain_skills=jd.extracted_skills,
             jd_id=jd.id,
             resume_id=data.resume_id,
-            coding_problem_id=data.coding_problem_id,
+            coding_problem_id=coding_prob_id,
             target_duration_minutes=data.target_duration_minutes or 20,
         )
         db.add(interview)

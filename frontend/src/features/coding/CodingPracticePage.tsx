@@ -76,16 +76,35 @@ export const CodingPracticePage: React.FC = () => {
   const [isCoachLoading, setIsCoachLoading] = useState<boolean>(false);
   const [coachError, setCoachError] = useState<string>('');
 
+  // Problem catalog source: 'curated' (LeetCode classics) vs 'codeforces' (Live Codeforces arena)
+  const [problemSource, setProblemSource] = useState<'curated' | 'codeforces'>('curated');
+  const [cfProblems, setCfProblems] = useState<CodingProblem[]>([]);
+  const [cfRatingRange, setCfRatingRange] = useState<string>('all');
+  const [cfTag, setCfTag] = useState<string>('all');
+  const [isLoadingCf, setIsLoadingCf] = useState<boolean>(false);
+
   // Persistent code drafts cache per problem and language
   const draftsRef = useRef<Record<string, string>>({});
+
+  const activeProblemList = problemSource === 'curated' ? problems : cfProblems;
 
   const getDraftKey = (problemId: string, lang: string) =>
     `skillissue_code_draft_${problemId}_${lang}`;
 
   const loadDraft = (problemId: string, lang: string, defaultCode: string): string => {
     try {
-      const saved = localStorage.getItem(getDraftKey(problemId, lang));
-      return saved !== null ? saved : defaultCode;
+      const key = getDraftKey(problemId, lang);
+      const saved = localStorage.getItem(key);
+      if (saved !== null) {
+        // If default starter code has a TODO placeholder, but the saved draft does not have TODO
+        // (e.g. from previous version where starter_code contained full solutions), purge it.
+        if (defaultCode.includes('TODO') && !saved.includes('TODO')) {
+          localStorage.removeItem(key);
+          return defaultCode;
+        }
+        return saved;
+      }
+      return defaultCode;
     } catch {
       return defaultCode;
     }
@@ -95,6 +114,52 @@ export const CodingPracticePage: React.FC = () => {
     try {
       localStorage.setItem(getDraftKey(problemId, lang), val);
     } catch {}
+  };
+
+  const fetchCodeforcesProblems = async (ratingRange = cfRatingRange, tag = cfTag) => {
+    setIsLoadingCf(true);
+    try {
+      const params = new URLSearchParams();
+      if (ratingRange === 'easy') {
+        params.append('rating_min', '800');
+        params.append('rating_max', '1200');
+      } else if (ratingRange === 'medium') {
+        params.append('rating_min', '1200');
+        params.append('rating_max', '1700');
+      } else if (ratingRange === 'hard') {
+        params.append('rating_min', '1700');
+        params.append('rating_max', '2400');
+      }
+      if (tag && tag !== 'all') {
+        params.append('tags', tag);
+      }
+      params.append('limit', '30');
+
+      const data = await api.get<CodingProblem[]>(`/coding/codeforces/problems?${params.toString()}`);
+      setCfProblems(data || []);
+      if (data && data.length > 0) {
+        selectProblem(data[0], language);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch Codeforces problems', err);
+    } finally {
+      setIsLoadingCf(false);
+    }
+  };
+
+  const handleSourceSwitch = (source: 'curated' | 'codeforces') => {
+    setProblemSource(source);
+    if (source === 'codeforces') {
+      if (cfProblems.length === 0) {
+        fetchCodeforcesProblems();
+      } else {
+        selectProblem(cfProblems[0], language);
+      }
+    } else {
+      if (problems.length > 0) {
+        selectProblem(problems[0], language);
+      }
+    }
   };
 
   useEffect(() => {
@@ -163,17 +228,17 @@ export const CodingPracticePage: React.FC = () => {
   };
 
   const handleNextProblem = () => {
-    if (!selectedProblem || problems.length === 0) return;
-    const currentIndex = problems.findIndex((p) => p.id === selectedProblem.id);
-    const nextIndex = (currentIndex + 1) % problems.length;
-    selectProblem(problems[nextIndex], language);
+    if (!selectedProblem || activeProblemList.length === 0) return;
+    const currentIndex = activeProblemList.findIndex((p) => p.id === selectedProblem.id);
+    const nextIndex = (currentIndex + 1) % activeProblemList.length;
+    selectProblem(activeProblemList[nextIndex], language);
   };
 
   const handlePrevProblem = () => {
-    if (!selectedProblem || problems.length === 0) return;
-    const currentIndex = problems.findIndex((p) => p.id === selectedProblem.id);
-    const prevIndex = (currentIndex - 1 + problems.length) % problems.length;
-    selectProblem(problems[prevIndex], language);
+    if (!selectedProblem || activeProblemList.length === 0) return;
+    const currentIndex = activeProblemList.findIndex((p) => p.id === selectedProblem.id);
+    const prevIndex = (currentIndex - 1 + activeProblemList.length) % activeProblemList.length;
+    selectProblem(activeProblemList[prevIndex], language);
   };
 
   const handleLanguageChange = (lang: 'python' | 'java' | 'cpp') => {
@@ -192,6 +257,9 @@ export const CodingPracticePage: React.FC = () => {
     if (selectedProblem) {
       const starter = selectedProblem.starter_code[language] || '';
       draftsRef.current[`${selectedProblem.id}_${language}`] = starter;
+      try {
+        localStorage.removeItem(getDraftKey(selectedProblem.id, language));
+      } catch {}
       saveDraft(selectedProblem.id, language, starter);
       setCode(starter);
     }
@@ -330,7 +398,7 @@ export const CodingPracticePage: React.FC = () => {
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-24 text-center">
-        <div className="w-8 h-8 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
         <p className="text-xs text-ink-muted">Booting sandboxed execution environment...</p>
       </div>
     );
@@ -343,8 +411,33 @@ export const CodingPracticePage: React.FC = () => {
   return (
     <div className="h-[calc(100vh-64px)] flex flex-col bg-surface-warm overflow-hidden">
       {/* Top LeetCode Navigation Bar */}
-      <div className="h-12 px-4 bg-white border-b border-surface-border flex items-center justify-between gap-4 flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="min-h-12 py-1.5 px-4 bg-white border-b border-surface-border flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Source Switcher: Curated vs Codeforces */}
+          <div className="inline-flex rounded-lg border border-surface-border bg-surface-subtle p-0.5 text-xs font-semibold">
+            <button
+              onClick={() => handleSourceSwitch('curated')}
+              className={`px-2.5 py-1 rounded-md transition-all ${
+                problemSource === 'curated'
+                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
+                  : 'text-ink-muted hover:text-ink'
+              }`}
+            >
+              Curated (15)
+            </button>
+            <button
+              onClick={() => handleSourceSwitch('codeforces')}
+              className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+                problemSource === 'codeforces'
+                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
+                  : 'text-ink-muted hover:text-ink'
+              }`}
+            >
+              <span>Codeforces Arena</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            </button>
+          </div>
+
           {/* Problem Selector with Prev/Next buttons */}
           <div className="flex items-center gap-1">
             <button
@@ -358,12 +451,13 @@ export const CodingPracticePage: React.FC = () => {
             <select
               value={selectedProblem?.id || ''}
               onChange={(e) => {
-                const p = problems.find((item) => item.id === e.target.value);
+                const p = activeProblemList.find((item) => item.id === e.target.value);
                 if (p) selectProblem(p, language);
               }}
-              className="text-xs font-semibold bg-surface-subtle border border-surface-border rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-lime-500 text-ink cursor-pointer hover:bg-surface-warm transition-colors"
+              disabled={isLoadingCf}
+              className="text-xs font-semibold bg-surface-subtle border border-surface-border rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-ink cursor-pointer hover:bg-surface-warm transition-colors max-w-xs sm:max-w-md truncate"
             >
-              {problems.map((p, idx) => (
+              {activeProblemList.map((p, idx) => (
                 <option key={p.id} value={p.id}>
                   {idx + 1}. {p.title}
                 </option>
@@ -378,6 +472,43 @@ export const CodingPracticePage: React.FC = () => {
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Filters for Codeforces */}
+          {problemSource === 'codeforces' && (
+            <div className="flex items-center gap-1.5">
+              <select
+                value={cfRatingRange}
+                onChange={(e) => {
+                  setCfRatingRange(e.target.value);
+                  fetchCodeforcesProblems(e.target.value, cfTag);
+                }}
+                className="text-[11px] font-medium bg-white border border-surface-border rounded px-2 py-1 text-ink focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="all">All Ratings</option>
+                <option value="easy">800 - 1200 (Easy)</option>
+                <option value="medium">1200 - 1700 (Medium)</option>
+                <option value="hard">1700 - 2400 (Hard)</option>
+              </select>
+
+              <select
+                value={cfTag}
+                onChange={(e) => {
+                  setCfTag(e.target.value);
+                  fetchCodeforcesProblems(cfRatingRange, e.target.value);
+                }}
+                className="text-[11px] font-medium bg-white border border-surface-border rounded px-2 py-1 text-ink focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="all">All Topics</option>
+                <option value="dp">Dynamic Programming</option>
+                <option value="graphs">Graphs & Trees</option>
+                <option value="strings">Strings</option>
+                <option value="greedy">Greedy</option>
+                <option value="binary search">Binary Search</option>
+                <option value="math">Mathematics</option>
+                <option value="data structures">Data Structures</option>
+              </select>
+            </div>
+          )}
 
           {selectedProblem && (
             <Badge
@@ -404,9 +535,15 @@ export const CodingPracticePage: React.FC = () => {
 
         {/* Runtime & Sandbox Status */}
         <div className="flex items-center gap-3 text-xs text-ink-subtle">
+          {isLoadingCf && (
+            <div className="flex items-center gap-1.5 text-indigo-600 text-[11px] font-medium">
+              <span className="w-2 h-2 rounded-full border border-indigo-600 border-t-transparent animate-spin" />
+              <span>Fetching Codeforces...</span>
+            </div>
+          )}
           <div className="hidden md:flex items-center gap-1.5 font-mono text-[11px]">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Sandbox: {limits ? `${limits.memory_limit_mb}MB RAM · ${limits.timeout_seconds}s CPU` : '256MB RAM · 3.0s'}</span>
+            <span>Sandbox: {limits ? `${limits.memory_limit_mb}MB RAM · ${limits.timeout_seconds || (limits as any).time_limit_seconds || 3.0}s CPU` : '256MB RAM · 3.0s CPU'}</span>
           </div>
         </div>
       </div>
@@ -427,7 +564,7 @@ export const CodingPracticePage: React.FC = () => {
                       : 'text-ink-muted hover:text-ink hover:bg-surface-subtle'
                   }`}
                 >
-                  <FileText className="w-3.5 h-3.5 text-lime-700" />
+                  <FileText className="w-3.5 h-3.5 text-indigo-600" />
                   <span>Description</span>
                 </button>
 
@@ -468,15 +605,35 @@ export const CodingPracticePage: React.FC = () => {
             </div>
 
             {/* Left Tab Body */}
-            <div className="flex-1 overflow-y-auto p-5 text-xs text-ink space-y-6">
+            <div className="flex-1 overflow-y-auto p-6 text-sm text-slate-700 space-y-6">
               {/* TAB 1: Problem Description */}
               {leftTab === 'description' && selectedProblem && (
-                <div className="space-y-5">
+                <div className="space-y-6">
+                  {/* Codeforces Live Banner if applicable */}
+                  {(selectedProblem as any).url && (
+                    <div className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                        <span className="text-xs font-semibold text-indigo-950">
+                          Live Codeforces Problem #{selectedProblem.id.toUpperCase()}
+                        </span>
+                      </div>
+                      <a
+                        href={(selectedProblem as any).url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline"
+                      >
+                        Open on Codeforces ↗
+                      </a>
+                    </div>
+                  )}
+
                   <div>
-                    <h2 className="text-lg font-bold text-ink mb-1.5">
+                    <h2 className="text-xl font-bold text-slate-900 mb-2">
                       {selectedProblem.title}
                     </h2>
-                    <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2.5 mb-3.5">
                       <Badge
                         variant={
                           selectedProblem.difficulty === 'easy'
@@ -486,61 +643,68 @@ export const CodingPracticePage: React.FC = () => {
                             : 'rose'
                         }
                         size="sm"
-                        className="capitalize font-mono text-[10px]"
+                        className="capitalize font-mono text-xs font-semibold"
                       >
                         {selectedProblem.difficulty}
                       </Badge>
                       {selectedProblem.category && (
-                        <span className="text-[11px] font-mono text-ink-subtle">
+                        <span className="text-xs font-mono text-slate-400">
                           Topic: {selectedProblem.category}
                         </span>
                       )}
                     </div>
-                    <p className="whitespace-pre-line text-ink leading-relaxed text-xs">
+                    <p className="whitespace-pre-line text-slate-700 leading-relaxed text-sm">
                       {selectedProblem.description}
                     </p>
                   </div>
 
                   {/* LeetCode Example Blocks */}
-                  {selectedProblem.sample_test_cases && selectedProblem.sample_test_cases.length > 0 && (
+                  {selectedProblem.sample_test_cases && selectedProblem.sample_test_cases.length > 0 && selectedProblem.sample_test_cases[0].stdin ? (
                     <div className="space-y-3.5">
-                      <h4 className="font-semibold text-ink-subtle uppercase tracking-wider text-[11px]">
+                      <h4 className="font-semibold text-slate-400 uppercase tracking-wider text-xs">
                         Examples
                       </h4>
                       {selectedProblem.sample_test_cases.map((tc, idx) => (
                         <div
                           key={idx}
-                          className="p-3.5 rounded-lg bg-surface-subtle border border-surface-border space-y-2 text-xs"
+                          className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs sm:text-sm"
                         >
-                          <div className="font-semibold text-ink text-[11px]">
+                          <div className="font-semibold text-slate-800 text-xs">
                             Example {idx + 1}:
                           </div>
-                          <div className="font-mono text-[11px] space-y-1 bg-white p-2.5 rounded border border-surface-border/80">
+                          <div className="font-mono text-xs space-y-1.5 bg-white p-3 rounded-lg border border-slate-200/80">
                             <div>
-                              <span className="font-semibold text-ink-subtle">Input: </span>
-                              <span className="text-ink whitespace-pre-wrap">{tc.stdin.trim()}</span>
+                              <span className="font-semibold text-slate-500">Input: </span>
+                              <span className="text-slate-900 whitespace-pre-wrap">{tc.stdin.trim()}</span>
                             </div>
                             <div>
-                              <span className="font-semibold text-ink-subtle">Output: </span>
-                              <span className="text-ink whitespace-pre-wrap">{tc.expected_stdout.trim()}</span>
+                              <span className="font-semibold text-slate-500">Output: </span>
+                              <span className="text-slate-900 whitespace-pre-wrap">{tc.expected_stdout.trim()}</span>
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
+                      <div className="font-semibold text-slate-800 text-xs">Test Execution & Custom Cases:</div>
+                      <p className="text-slate-600 text-xs leading-relaxed">
+                        This problem uses standard I/O (stdin / stdout). You can run and verify your solution with custom test cases using the <strong>Testcase Console</strong> drawer below.
+                      </p>
+                    </div>
                   )}
 
                   {/* Constraints */}
                   {selectedProblem.constraints && selectedProblem.constraints.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="font-semibold text-ink-subtle uppercase tracking-wider text-[11px]">
+                    <div className="space-y-2.5">
+                      <h4 className="font-semibold text-slate-400 uppercase tracking-wider text-xs">
                         Constraints
                       </h4>
-                      <ul className="space-y-1 text-xs">
+                      <ul className="space-y-1.5 text-xs sm:text-sm">
                         {selectedProblem.constraints.map((c, i) => (
                           <li key={i} className="flex items-start gap-2">
-                            <span className="text-lime-600 font-bold">•</span>
-                            <code className="font-mono text-[11px] bg-surface-subtle px-1.5 py-0.5 rounded text-ink border border-surface-border">
+                            <span className="text-indigo-600 font-bold">•</span>
+                            <code className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded-md text-slate-800 border border-slate-200/80">
                               {c}
                             </code>
                           </li>
@@ -550,21 +714,21 @@ export const CodingPracticePage: React.FC = () => {
                   )}
 
                   {/* Input / Output Formats */}
-                  <div className="space-y-3 pt-2 border-t border-surface-border">
+                  <div className="space-y-3 pt-3 border-t border-slate-100">
                     <div>
-                      <h4 className="font-semibold text-ink-subtle uppercase tracking-wider text-[10px] mb-1">
+                      <h4 className="font-semibold text-slate-400 uppercase tracking-wider text-xs mb-1">
                         Input Format
                       </h4>
-                      <p className="font-mono text-[11px] text-ink-muted bg-surface-warm p-2 rounded border border-surface-border">
+                      <p className="font-mono text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
                         {selectedProblem.input_format}
                       </p>
                     </div>
 
                     <div>
-                      <h4 className="font-semibold text-ink-subtle uppercase tracking-wider text-[10px] mb-1">
+                      <h4 className="font-semibold text-slate-400 uppercase tracking-wider text-xs mb-1">
                         Output Format
                       </h4>
-                      <p className="font-mono text-[11px] text-ink-muted bg-surface-warm p-2 rounded border border-surface-border">
+                      <p className="font-mono text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
                         {selectedProblem.output_format}
                       </p>
                     </div>
@@ -575,17 +739,17 @@ export const CodingPracticePage: React.FC = () => {
               {/* TAB 2: Hints & Socratic Coach */}
               {leftTab === 'hints' && (
                 <div className="space-y-4">
-                  <div className="p-3 bg-surface-warm rounded-lg border border-surface-border space-y-2">
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2.5 shadow-xs">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-ink flex items-center gap-1.5 text-xs">
-                        <Sparkles className="w-4 h-4 text-lime-700" />
+                      <span className="font-semibold text-slate-900 flex items-center gap-2 text-xs sm:text-sm">
+                        <Sparkles className="w-4 h-4 text-indigo-600" />
                         <span>Socratic Hint Ladder</span>
                       </span>
-                      <Badge variant="lime" size="sm" className="font-mono text-[10px]">
+                      <Badge variant="indigo" size="sm" className="font-mono text-xs font-semibold">
                         Level {coachLevel}/4
                       </Badge>
                     </div>
-                    <div className="grid grid-cols-4 gap-1 text-[10px] font-mono">
+                    <div className="grid grid-cols-4 gap-1.5 text-xs font-mono">
                       {[
                         { lvl: 1, label: '1. Nudge' },
                         { lvl: 2, label: '2. Pattern' },
@@ -594,23 +758,23 @@ export const CodingPracticePage: React.FC = () => {
                       ].map((step) => (
                         <div
                           key={step.lvl}
-                          className={`p-1.5 text-center rounded border transition-colors ${
+                          className={`p-2 text-center rounded-lg border transition-colors ${
                             coachLevel >= step.lvl
-                              ? 'bg-lime-100 border-lime-300 text-lime-900 font-semibold'
-                              : 'bg-white border-surface-border text-ink-faint'
+                              ? 'bg-indigo-50 border-indigo-200 text-indigo-900 font-semibold'
+                              : 'bg-white border-slate-200 text-slate-400'
                           }`}
                         >
                           {step.label}
                         </div>
                       ))}
                     </div>
-                    <p className="text-[11px] text-ink-subtle">
+                    <p className="text-xs text-slate-500 leading-relaxed">
                       Inspects your current code and nudges your intuition without spoiling the full solution.
                     </p>
                   </div>
 
                   {coachError && (
-                    <div className="p-3 bg-red-50 border border-red-200 text-red-900 rounded-md text-xs flex items-center gap-2">
+                    <div className="p-3.5 bg-red-50 border border-red-200 text-red-900 rounded-xl text-xs flex items-center gap-2">
                       <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
                       <span>{coachError}</span>
                     </div>
@@ -619,10 +783,10 @@ export const CodingPracticePage: React.FC = () => {
                   {/* Hint conversation history */}
                   <div className="space-y-3">
                     {coachHistory.length === 0 ? (
-                      <div className="p-8 text-center text-ink-muted border border-dashed border-surface-border rounded-lg space-y-2">
-                        <MessageSquare className="w-6 h-6 text-ink-subtle mx-auto" />
-                        <p className="text-xs">No hints requested yet.</p>
-                        <p className="text-[11px] text-ink-faint">
+                      <div className="p-8 text-center text-slate-500 border border-dashed border-slate-200 rounded-2xl space-y-2">
+                        <MessageSquare className="w-6 h-6 text-slate-400 mx-auto" />
+                        <p className="text-sm font-medium">No hints requested yet.</p>
+                        <p className="text-xs text-slate-400">
                           Stuck on Big-O, edge cases, or algorithm structure? Request a Level 1 nudge below.
                         </p>
                       </div>
@@ -630,18 +794,18 @@ export const CodingPracticePage: React.FC = () => {
                       coachHistory.map((msg, idx) => (
                         <div
                           key={idx}
-                          className={`p-3.5 rounded-lg border text-xs ${
+                          className={`p-4 rounded-xl border text-xs sm:text-sm ${
                             msg.role === 'user'
-                              ? 'bg-surface-subtle border-surface-border text-ink'
-                              : 'bg-lime-50/40 border-lime-200 text-ink'
+                              ? 'bg-slate-50 border-slate-200/80 text-slate-900'
+                              : 'bg-indigo-50/40 border-indigo-200/80 text-slate-900'
                           }`}
                         >
-                          <div className="flex items-center justify-between text-[11px] font-semibold mb-1">
-                            <span className={msg.role === 'user' ? 'text-ink-muted' : 'text-lime-800'}>
+                          <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                            <span className={msg.role === 'user' ? 'text-slate-500' : 'text-indigo-800'}>
                               {msg.role === 'user' ? 'Your Question' : `Mentor Hint (Level ${msg.level || idx + 1})`}
                             </span>
                             {msg.focus && (
-                              <Badge variant="zinc" size="sm">
+                              <Badge variant="zinc" size="sm" className="text-xs">
                                 Focus: {msg.focus}
                               </Badge>
                             )}
@@ -650,8 +814,8 @@ export const CodingPracticePage: React.FC = () => {
                           <p className="leading-relaxed whitespace-pre-wrap">{msg.content}</p>
 
                           {msg.guidingQuestion && (
-                            <div className="mt-2 pt-2 border-t border-lime-200/60 text-lime-900 font-medium flex items-start gap-1.5">
-                              <HelpCircle className="w-3.5 h-3.5 text-lime-700 shrink-0 mt-0.5" />
+                            <div className="mt-2.5 pt-2 border-t border-indigo-200/60 text-indigo-900 font-medium flex items-start gap-1.5">
+                              <HelpCircle className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                               <span>{msg.guidingQuestion}</span>
                             </div>
                           )}
@@ -661,17 +825,17 @@ export const CodingPracticePage: React.FC = () => {
                   </div>
 
                   {/* Ask Coach Input */}
-                  <div className="space-y-2.5 pt-2 border-t border-surface-border">
+                  <div className="space-y-3 pt-3 border-t border-slate-100">
                     <textarea
                       rows={2}
                       value={coachUserMessage}
                       onChange={(e) => setCoachUserMessage(e.target.value)}
                       placeholder="Ask the mentor about your current approach or edge case..."
-                      className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-1 focus:ring-lime-500"
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-white border border-slate-200/80 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500"
                     />
 
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-ink-subtle">
+                      <span className="text-xs text-slate-400">
                         {coachLevel > 4 ? 'Max level reached' : `Next hint: Level ${coachLevel}`}
                       </span>
 
@@ -782,21 +946,21 @@ export const CodingPracticePage: React.FC = () => {
           </Panel>
 
           {/* Resizable Divider */}
-          <PanelResizeHandle className="w-1.5 bg-surface-border hover:bg-lime-500 transition-colors cursor-col-resize" />
+          <PanelResizeHandle className="w-1.5 bg-slate-200 hover:bg-indigo-500 transition-colors cursor-col-resize" />
 
           {/* RIGHT PANEL: Monaco Editor + Collapsible LeetCode Console (55% default) */}
           <Panel defaultSize={55} minSize={35} className="bg-white flex flex-col h-full">
             {/* Editor Toolbar Header */}
-            <div className="h-10 px-4 border-b border-surface-border flex items-center justify-between bg-surface-warm/50 flex-shrink-0">
+            <div className="h-11 px-4 border-b border-slate-200/80 flex items-center justify-between bg-slate-50/60 flex-shrink-0">
               <div className="flex items-center gap-1.5">
                 {(['python', 'java', 'cpp'] as const).map((lang) => (
                   <button
                     key={lang}
                     onClick={() => handleLanguageChange(lang)}
-                    className={`px-3 py-1 rounded text-xs font-mono font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-colors ${
                       language === lang
-                        ? 'bg-lime-100 text-lime-900 border border-lime-300 font-semibold'
-                        : 'text-ink-muted hover:text-ink hover:bg-surface-subtle'
+                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                     }`}
                   >
                     {lang === 'python' ? 'Python 3' : lang === 'java' ? 'Java 21' : 'C++ 17'}
@@ -953,7 +1117,7 @@ export const CodingPracticePage: React.FC = () => {
                             value={customStdin}
                             onChange={(e) => setCustomStdin(e.target.value)}
                             placeholder="Enter custom stdin testcase..."
-                            className="w-full p-2.5 font-mono text-xs bg-surface-subtle border border-surface-border rounded-lg text-ink focus:outline-none focus:ring-1 focus:ring-lime-500"
+                            className="w-full p-2.5 font-mono text-xs bg-surface-subtle border border-surface-border rounded-lg text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                         </div>
                       ) : (
@@ -994,7 +1158,7 @@ export const CodingPracticePage: React.FC = () => {
 
                       {isRunning || isSubmitting ? (
                         <div className="py-8 text-center">
-                          <div className="w-6 h-6 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                          <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                           <p className="text-xs text-ink-muted">
                             {isRunning
                               ? 'Executing in Bubblewrap sandbox...'
@@ -1124,9 +1288,9 @@ export const CodingPracticePage: React.FC = () => {
               {/* Left: Console toggle */}
               <button
                 onClick={() => setIsConsoleOpen(!isConsoleOpen)}
-                className="flex items-center gap-1.5 text-xs font-medium text-ink-muted hover:text-ink px-2.5 py-1.5 rounded-md hover:bg-surface-subtle transition-colors"
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
               >
-                <Terminal className="w-4 h-4 text-lime-700" />
+                <Terminal className="w-4 h-4 text-indigo-600" />
                 <span>Console</span>
                 {isConsoleOpen ? (
                   <ChevronDown className="w-3.5 h-3.5" />

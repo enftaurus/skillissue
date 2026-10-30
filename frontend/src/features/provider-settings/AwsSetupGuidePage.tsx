@@ -36,7 +36,7 @@ export const AwsSetupGuidePage: React.FC = () => {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <Badge variant="lime">5-Minute Walkthrough</Badge>
+          <Badge variant="brand">5-Minute Walkthrough</Badge>
           <span className="text-xs text-ink-subtle">Updated for AWS Bedrock Console</span>
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-ink mt-2">
@@ -52,14 +52,14 @@ export const AwsSetupGuidePage: React.FC = () => {
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-base text-ink flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-lime-100 text-lime-800 text-xs font-bold flex items-center justify-center">1</span>
+              <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold flex items-center justify-center">1</span>
               Prepare an AWS Account
             </h3>
             <a
               href="https://console.aws.amazon.com/"
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-lime-700 hover:text-lime-800 font-medium flex items-center gap-1"
+              className="text-xs text-indigo-600 hover:text-indigo-700 font-medium flex items-center gap-1"
             >
               AWS Console <ExternalLink className="w-3 h-3" />
             </a>
@@ -73,7 +73,7 @@ export const AwsSetupGuidePage: React.FC = () => {
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-base text-ink flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-lime-100 text-lime-800 text-xs font-bold flex items-center justify-center">2</span>
+              <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold flex items-center justify-center">2</span>
               Select a Supported AWS Region
             </h3>
           </div>
@@ -96,7 +96,7 @@ export const AwsSetupGuidePage: React.FC = () => {
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-base text-ink flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-lime-100 text-lime-800 text-xs font-bold flex items-center justify-center">3</span>
+              <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold flex items-center justify-center">3</span>
               Enable Model Access in Bedrock Console
             </h3>
           </div>
@@ -113,11 +113,11 @@ export const AwsSetupGuidePage: React.FC = () => {
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-base text-ink flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-lime-100 text-lime-800 text-xs font-bold flex items-center justify-center">4</span>
+              <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold flex items-center justify-center">4</span>
               Create Least-Privilege IAM Credentials
             </h3>
             <Button variant="outline" size="sm" onClick={handleCopyPolicy}>
-              {copied ? <Check className="w-3.5 h-3.5 text-lime-600" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
               {copied ? 'Copied Policy!' : 'Copy IAM Policy'}
             </Button>
           </div>
@@ -136,7 +136,7 @@ export const AwsSetupGuidePage: React.FC = () => {
         <Card className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-base text-ink flex items-center gap-2">
-              <span className="w-6 h-6 rounded-full bg-lime-100 text-lime-800 text-xs font-bold flex items-center justify-center">5</span>
+              <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold flex items-center justify-center">5</span>
               Configure Skill Issue
             </h3>
             <Link to="/settings/provider">

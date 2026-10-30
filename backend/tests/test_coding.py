@@ -48,10 +48,30 @@ async def test_coding_sandbox_api(client: httpx.AsyncClient):
     assert "python" in two_sum["starter_code"]
     assert "cpp" in two_sum["starter_code"]
     assert "java" in two_sum["starter_code"]
+    assert "# TODO: Implement your solution here" in two_sum["starter_code"]["python"]
     assert "test_cases" not in two_sum
 
     # 6. Test Python solution execution
-    py_code = two_sum["starter_code"]["python"]
+    py_code = """import sys
+
+def two_sum(nums, target):
+    seen = {}
+    for i, num in enumerate(nums):
+        diff = target - num
+        if diff in seen:
+            return seen[diff], i
+        seen[num] = i
+    return 0, 0
+
+if __name__ == '__main__':
+    lines = sys.stdin.read().split()
+    if lines:
+        n = int(lines[0])
+        nums = [int(x) for x in lines[1:n+1]]
+        target = int(lines[n+1])
+        i, j = two_sum(nums, target)
+        print(f"{min(i, j)} {max(i, j)}")
+"""
     run_py = await client.post(
         "/api/v1/coding/run",
         headers=headers,
@@ -63,7 +83,33 @@ async def test_coding_sandbox_api(client: httpx.AsyncClient):
     assert py_res["total_passed"] == py_res["total_tests"]
 
     # 7. Test C++ solution execution
-    cpp_code = two_sum["starter_code"]["cpp"]
+    cpp_code = """#include <iostream>
+#include <vector>
+#include <unordered_map>
+#include <algorithm>
+
+using namespace std;
+
+int main() {
+    int n;
+    if (!(cin >> n)) return 0;
+    vector<int> nums(n);
+    for (int i = 0; i < n; ++i) cin >> nums[i];
+    int target;
+    cin >> target;
+
+    unordered_map<int, int> seen;
+    for (int i = 0; i < n; ++i) {
+        int comp = target - nums[i];
+        if (seen.find(comp) != seen.end()) {
+            cout << min(seen[comp], i) << " " << max(seen[comp], i) << endl;
+            return 0;
+        }
+        seen[nums[i]] = i;
+    }
+    return 0;
+}
+"""
     run_cpp = await client.post(
         "/api/v1/coding/run",
         headers=headers,
@@ -74,7 +120,29 @@ async def test_coding_sandbox_api(client: httpx.AsyncClient):
     assert cpp_res["status"] == "passed"
 
     # 8. Test Java solution execution
-    java_code = two_sum["starter_code"]["java"]
+    java_code = """import java.util.*;
+
+public class Solution {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        if (!sc.hasNextInt()) return;
+        int n = sc.nextInt();
+        int[] nums = new int[n];
+        for (int i = 0; i < n; i++) nums[i] = sc.nextInt();
+        int target = sc.nextInt();
+
+        Map<Integer, Integer> seen = new HashMap<>();
+        for (int i = 0; i < n; i++) {
+            int comp = target - nums[i];
+            if (seen.containsKey(comp)) {
+                System.out.println(Math.min(seen.get(comp), i) + " " + Math.max(seen.get(comp), i));
+                return;
+            }
+            seen.put(nums[i], i);
+        }
+    }
+}
+"""
     run_java = await client.post(
         "/api/v1/coding/run",
         headers=headers,

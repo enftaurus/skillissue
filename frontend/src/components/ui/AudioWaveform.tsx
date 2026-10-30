@@ -15,7 +15,7 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({ isActive, label, c
             key={idx}
             className={`w-0.5 rounded-full transition-all duration-150 ${
               isActive
-                ? 'bg-lime-600 animate-pulse'
+                ? 'bg-emerald-500 animate-pulse'
                 : 'bg-zinc-300'
             }`}
             style={{
@@ -26,7 +26,7 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({ isActive, label, c
         ))}
       </div>
       {label && (
-        <span className={`text-[11px] font-medium ${isActive ? 'text-lime-800 font-semibold' : 'text-ink-muted'}`}>
+        <span className={`text-xs font-medium ${isActive ? 'text-emerald-700 font-semibold' : 'text-ink-muted'}`}>
           {label}
         </span>
       )}

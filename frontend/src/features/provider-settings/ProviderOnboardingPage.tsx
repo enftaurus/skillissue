@@ -219,7 +219,7 @@ export const ProviderOnboardingPage: React.FC = () => {
     <div className="max-w-4xl mx-auto py-10 px-4 sm:px-6 space-y-8">
       {/* Header */}
       <div className="text-center sm:text-left">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-lime-100 text-lime-800 text-xs font-semibold mb-3">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60 text-xs font-semibold mb-3">
           <Sparkles className="w-3.5 h-3.5" />
           <span>Step 1 of 1: Bring Your Own Cloud (BYOC)</span>
         </div>
@@ -242,7 +242,7 @@ export const ProviderOnboardingPage: React.FC = () => {
           }}
           className={`cursor-pointer rounded-xl p-5 border-2 transition-all flex flex-col justify-between ${
             providerType === 'azure'
-              ? 'border-lime-600 bg-white shadow-sm ring-2 ring-lime-500/20'
+              ? 'border-indigo-600 bg-white shadow-sm ring-2 ring-indigo-500/20'
               : 'border-surface-border bg-surface-card hover:border-ink-subtle/40'
           }`}
         >
@@ -251,7 +251,7 @@ export const ProviderOnboardingPage: React.FC = () => {
               <div className="w-10 h-10 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
                 <Cloud className="w-5 h-5" />
               </div>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-lime-100 text-lime-800">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
                 <GraduationCap className="w-3.5 h-3.5" />
                 Recommended for Students
               </span>
@@ -263,7 +263,7 @@ export const ProviderOnboardingPage: React.FC = () => {
           </div>
           <div className="mt-4 pt-3 border-t border-surface-border flex items-center justify-between text-xs font-medium text-ink">
             <span>GPT-4.1 Mini & GPT-4.1</span>
-            <span className={providerType === 'azure' ? 'text-lime-700 font-bold' : 'text-ink-muted'}>
+            <span className={providerType === 'azure' ? 'text-indigo-600 font-bold' : 'text-ink-muted'}>
               {providerType === 'azure' ? '✓ Selected' : 'Select'}
             </span>
           </div>
@@ -278,7 +278,7 @@ export const ProviderOnboardingPage: React.FC = () => {
           }}
           className={`cursor-pointer rounded-xl p-5 border-2 transition-all flex flex-col justify-between ${
             providerType === 'bedrock'
-              ? 'border-lime-600 bg-white shadow-sm ring-2 ring-lime-500/20'
+              ? 'border-indigo-600 bg-white shadow-sm ring-2 ring-indigo-500/20'
               : 'border-surface-border bg-surface-card hover:border-ink-subtle/40'
           }`}
         >
@@ -298,7 +298,7 @@ export const ProviderOnboardingPage: React.FC = () => {
           </div>
           <div className="mt-4 pt-3 border-t border-surface-border flex items-center justify-between text-xs font-medium text-ink">
             <span>Qwen 32B & DeepSeek-R1</span>
-            <span className={providerType === 'bedrock' ? 'text-lime-700 font-bold' : 'text-ink-muted'}>
+            <span className={providerType === 'bedrock' ? 'text-indigo-600 font-bold' : 'text-ink-muted'}>
               {providerType === 'bedrock' ? '✓ Selected' : 'Select'}
             </span>
           </div>
@@ -406,7 +406,7 @@ export const ProviderOnboardingPage: React.FC = () => {
                 <select
                   value={azureSelectedModel}
                   onChange={(e) => setAzureSelectedModel(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-surface-border bg-white text-ink focus:outline-none focus:ring-2 focus:ring-lime-500"
+                  className="w-full px-3 py-2 text-sm rounded-md border border-surface-border bg-white text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {azureModels.length > 0 ? (
                     azureModels.map((m) => (
@@ -468,7 +468,7 @@ export const ProviderOnboardingPage: React.FC = () => {
                 <p className="text-xs text-ink-muted">Attach this to your IAM User. Strictly allows only bedrock:InvokeModel.</p>
               </div>
               <Button size="sm" variant="outline" onClick={handleCopyPolicy} className="gap-1.5">
-                {policyCopied ? <Check className="w-3.5 h-3.5 text-lime-600" /> : <Copy className="w-3.5 h-3.5" />}
+                {policyCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                 {policyCopied ? 'Copied' : 'Copy JSON'}
               </Button>
             </div>
@@ -486,7 +486,7 @@ export const ProviderOnboardingPage: React.FC = () => {
                 <select
                   value={bedrockRegion}
                   onChange={(e) => setBedrockRegion(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-surface-border bg-white text-ink focus:outline-none focus:ring-2 focus:ring-lime-500"
+                  className="w-full px-3 py-2 text-sm rounded-md border border-surface-border bg-white text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="us-east-1">us-east-1 (N. Virginia)</option>
                   <option value="us-west-2">us-west-2 (Oregon)</option>
@@ -499,7 +499,7 @@ export const ProviderOnboardingPage: React.FC = () => {
                 <select
                   value={bedrockModel}
                   onChange={(e) => setBedrockModel(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-surface-border bg-white text-ink focus:outline-none focus:ring-2 focus:ring-lime-500"
+                  className="w-full px-3 py-2 text-sm rounded-md border border-surface-border bg-white text-ink focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {bedrockModels.length > 0 ? (
                     bedrockModels.map((m) => (
@@ -570,12 +570,12 @@ export const ProviderOnboardingPage: React.FC = () => {
         <div
           className={`p-3.5 rounded-lg text-xs flex items-start gap-2.5 border ${
             testResult.success
-              ? 'bg-lime-50/80 border-lime-200 text-lime-900'
+              ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
               : 'bg-rose-50/80 border-rose-200 text-rose-900'
           }`}
         >
           {testResult.success ? (
-            <CheckCircle2 className="w-4 h-4 text-lime-600 shrink-0 mt-0.5" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
           ) : (
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
           )}
@@ -603,9 +603,10 @@ export const ProviderOnboardingPage: React.FC = () => {
 
         <Button
           type="button"
+          variant="primary"
           onClick={handleCompleteSetup}
           disabled={isSaving}
-          className="w-full sm:w-auto bg-lime-600 hover:bg-lime-700 text-white gap-2"
+          className="w-full sm:w-auto gap-2"
         >
           {isSaving ? 'Encrypting & Saving...' : 'Save & Continue'}
           <ArrowRight className="w-4 h-4" />

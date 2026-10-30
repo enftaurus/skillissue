@@ -34,22 +34,22 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center items-center px-4 py-12 sm:px-6 lg:px-8 bg-surface-warm">
+    <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center items-center px-4 py-12 sm:px-6 lg:px-8 bg-slate-50/50">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center mb-8">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-lime-500/15 border border-lime-500/30 text-lime-700 mb-4">
-          <Sparkles className="w-6 h-6 fill-lime-600/30" />
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-indigo-600 mb-4 shadow-xs">
+          <Sparkles className="w-6 h-6 fill-indigo-600/20" />
         </div>
-        <h2 className="text-2xl font-bold tracking-tight text-ink">Create your learner account</h2>
-        <p className="mt-2 text-sm text-ink-muted">
+        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Create your learner account</h2>
+        <p className="mt-2 text-sm text-slate-500 leading-relaxed">
           Measure real weaknesses. Get evidence-based feedback.
         </p>
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <Card>
+        <Card className="p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-xs">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="p-3 text-xs bg-red-50 border border-red-200 text-red-700 rounded-md">
+              <div className="p-3 text-xs bg-red-50 border border-red-200 text-red-700 rounded-xl">
                 {error}
               </div>
             )}
@@ -79,10 +79,10 @@ export const RegisterPage: React.FC = () => {
             </Button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-surface-border text-center">
-            <p className="text-xs text-ink-muted">
+          <div className="mt-6 pt-5 border-t border-slate-100 text-center">
+            <p className="text-xs sm:text-sm text-slate-500">
               Already have an account?{' '}
-              <Link to="/login" className="font-semibold text-lime-700 hover:text-lime-800">
+              <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-700">
                 Sign In
               </Link>
             </p>

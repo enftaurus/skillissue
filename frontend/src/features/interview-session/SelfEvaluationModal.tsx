@@ -150,32 +150,32 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
     >
       <div className="space-y-5">
         {/* Banner */}
-        <div className="p-3 bg-lime-50/60 border border-lime-200/80 rounded-xl text-xs text-ink space-y-1">
-          <div className="flex items-center gap-1.5 font-semibold text-lime-900">
-            <Sparkles className="w-4 h-4 text-lime-700" />
+        <div className="p-4 bg-indigo-50/50 border border-indigo-200/80 rounded-2xl text-xs sm:text-sm text-slate-800 space-y-1.5 shadow-xs">
+          <div className="flex items-center gap-2 font-semibold text-indigo-900">
+            <Sparkles className="w-4 h-4 text-indigo-600" />
             <span>Rate your performance question-by-question</span>
           </div>
-          <p className="text-ink-muted leading-relaxed">
+          <p className="text-slate-600 leading-relaxed text-xs sm:text-sm">
             Engineers improve by calibrating their self-assessment against objective rubric criteria. Rate how well you answered each question before the AI analysis is unveiled.
           </p>
         </div>
 
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg">
+          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl">
             {error}
           </div>
         )}
 
         {/* Tab Switcher */}
-        <div className="flex items-center justify-between border-b border-surface-border pb-2 text-xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 text-xs sm:text-sm">
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setActiveTab('questions')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+              className={`px-3.5 py-1.5 rounded-xl font-medium transition-colors ${
                 activeTab === 'questions'
-                  ? 'bg-ink text-white font-semibold'
-                  : 'text-ink-muted hover:text-ink hover:bg-surface-subtle'
+                  ? 'bg-slate-900 text-white font-semibold'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               1. Question-by-Question Review ({turns.length} turns)
@@ -183,10 +183,10 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('summary')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+              className={`px-3.5 py-1.5 rounded-xl font-medium transition-colors ${
                 activeTab === 'summary'
-                  ? 'bg-ink text-white font-semibold'
-                  : 'text-ink-muted hover:text-ink hover:bg-surface-subtle'
+                  ? 'bg-slate-900 text-white font-semibold'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               2. Final Reflection & Submit
@@ -197,15 +197,15 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
         {activeTab === 'questions' && turns.length > 0 && currentTurn ? (
           <div className="space-y-4">
             {/* Question Counter / Navigation Header */}
-            <div className="flex items-center justify-between text-xs font-medium text-ink-muted">
+            <div className="flex items-center justify-between text-xs sm:text-sm font-medium text-slate-500">
               <span>Question {currentQIndex + 1} of {turns.length}</span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <Button
                   size="sm"
                   variant="secondary"
                   disabled={currentQIndex === 0}
                   onClick={() => setCurrentQIndex((prev) => Math.max(0, prev - 1))}
-                  className="px-2 py-1 text-xs"
+                  className="px-2.5 py-1 text-xs"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </Button>
@@ -214,7 +214,7 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
                   variant="secondary"
                   disabled={currentQIndex === turns.length - 1}
                   onClick={() => setCurrentQIndex((prev) => Math.min(turns.length - 1, prev + 1))}
-                  className="px-2 py-1 text-xs"
+                  className="px-2.5 py-1 text-xs"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
                 </Button>
@@ -222,38 +222,38 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
             </div>
 
             {/* Question Turn Card */}
-            <div className="p-4 rounded-xl border border-surface-border bg-surface-subtle space-y-3 text-xs">
+            <div className="p-5 rounded-2xl border border-slate-200/80 bg-slate-50/60 space-y-3.5 text-xs sm:text-sm shadow-xs">
               <div>
-                <span className="font-semibold text-ink-muted uppercase tracking-wider text-[10px] block mb-1">
+                <span className="font-semibold text-slate-400 uppercase tracking-wider text-xs block mb-1">
                   Interviewer Asked:
                 </span>
-                <p className="font-semibold text-ink text-sm leading-snug">
+                <p className="font-semibold text-slate-900 text-sm sm:text-base leading-snug">
                   {currentTurn.interviewer_question}
                 </p>
               </div>
 
-              <div className="pt-2 border-t border-surface-border">
-                <span className="font-semibold text-ink-muted uppercase tracking-wider text-[10px] block mb-1">
+              <div className="pt-2.5 border-t border-slate-200/60">
+                <span className="font-semibold text-slate-400 uppercase tracking-wider text-xs block mb-1">
                   Your Answer:
                 </span>
-                <p className="italic text-ink-muted bg-white p-3 rounded-lg border border-surface-border font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+                <p className="italic text-slate-600 bg-white p-3.5 rounded-xl border border-slate-200/80 font-mono text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">
                   &ldquo;{currentTurn.candidate_answer}&rdquo;
                 </p>
               </div>
             </div>
 
             {/* Self-Rating for this Question */}
-            <div className="p-4 rounded-xl border border-surface-border bg-white space-y-3 text-xs">
+            <div className="p-5 rounded-2xl border border-slate-200/80 bg-white space-y-3.5 text-xs sm:text-sm shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-ink">
+                <span className="font-semibold text-slate-900 text-sm">
                   How would you rate your answer to this question?
                 </span>
-                <span className="font-mono font-bold text-lime-700 text-sm">
+                <span className="font-mono font-bold text-indigo-600 text-base">
                   {questionEvals[currentTurn.question_index]?.score || 3}/5
                 </span>
               </div>
 
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-5 gap-2.5">
                 {[1, 2, 3, 4, 5].map((score) => {
                   const isSelected = (questionEvals[currentTurn.question_index]?.score || 3) === score;
                   const labels = ['1 (Weak)', '2 (Fair)', '3 (Decent)', '4 (Strong)', '5 (Flawless)'];
@@ -262,25 +262,25 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
                       key={score}
                       type="button"
                       onClick={() => handleQuestionScore(currentTurn.question_index, score)}
-                      className={`py-2 px-2 rounded-lg text-xs font-medium border text-center transition-all ${
+                      className={`py-2.5 px-2 rounded-xl text-xs font-medium border text-center transition-all ${
                         isSelected
-                          ? 'bg-lime-600 text-white border-lime-600 shadow-sm font-bold'
-                          : 'bg-surface-warm text-ink-muted border-surface-border hover:bg-surface-subtle'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-bold'
+                          : 'bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="flex justify-center mb-0.5">
-                        <Star className={`w-3.5 h-3.5 ${isSelected ? 'fill-white' : ''}`} />
+                      <div className="flex justify-center mb-1">
+                        <Star className={`w-4 h-4 ${isSelected ? 'fill-white' : ''}`} />
                       </div>
-                      <span className="text-[10px]">{labels[score - 1]}</span>
+                      <span className="text-xs">{labels[score - 1]}</span>
                     </button>
                   );
                 })}
               </div>
 
               {/* Notes */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
                 <div>
-                  <label className="text-[11px] font-semibold text-ink-muted block mb-1">
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
                     What went well in your answer? (Optional)
                   </label>
                   <input
@@ -288,11 +288,11 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
                     value={questionEvals[currentTurn.question_index]?.strengths || ''}
                     onChange={(e) => handleQuestionNote(currentTurn.question_index, 'strengths', e.target.value)}
                     placeholder="e.g. Explained indexing trade-offs clearly..."
-                    className="w-full px-3 py-1.5 text-xs bg-surface-warm border border-surface-border rounded-lg text-ink focus:outline-none focus:ring-1 focus:ring-lime-500"
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200/80 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-ink-muted block mb-1">
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">
                     What did you miss or get stuck on? (Optional)
                   </label>
                   <input
@@ -300,7 +300,7 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
                     value={questionEvals[currentTurn.question_index]?.missed_points || ''}
                     onChange={(e) => handleQuestionNote(currentTurn.question_index, 'missed_points', e.target.value)}
                     placeholder="e.g. Forgot to mention partition locks..."
-                    className="w-full px-3 py-1.5 text-xs bg-surface-warm border border-surface-border rounded-lg text-ink focus:outline-none focus:ring-1 focus:ring-lime-500"
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200/80 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500"
                   />
                 </div>
               </div>
@@ -337,10 +337,10 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
           </div>
         ) : (
           /* Summary Tab */
-          <div className="space-y-4 text-xs">
-            <div className="p-4 rounded-xl border border-surface-border bg-white space-y-3">
-              <h4 className="font-semibold text-ink text-sm">Overall Self-Reflection</h4>
-              <p className="text-ink-muted text-xs">
+          <div className="space-y-4 text-xs sm:text-sm">
+            <div className="p-5 rounded-2xl border border-slate-200/80 bg-white space-y-3 shadow-xs">
+              <h4 className="font-semibold text-slate-900 text-sm sm:text-base">Overall Self-Reflection</h4>
+              <p className="text-slate-500 text-xs sm:text-sm leading-relaxed">
                 Summarize what you learned from this interview and what technical areas you want to prioritize in your personalized improvement plan:
               </p>
               <textarea
@@ -348,22 +348,22 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
                 value={reflection}
                 onChange={(e) => setReflection(e.target.value)}
                 placeholder="e.g. I felt comfortable with basic API endpoints, but struggled with distributed failure modes, database lock contention, and cache invalidation. Need to focus more on systems internals..."
-                className="w-full p-3 text-xs bg-surface-warm border border-surface-border rounded-lg text-ink focus:outline-none focus:ring-1 focus:ring-lime-500"
+                className="w-full p-3.5 text-xs sm:text-sm bg-slate-50 border border-slate-200/80 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500"
               />
             </div>
 
             {/* Review Question Ratings */}
-            <div className="p-4 rounded-xl border border-surface-border bg-surface-subtle space-y-2">
-              <span className="font-semibold text-ink-muted uppercase tracking-wider text-[10px] block">
+            <div className="p-5 rounded-2xl border border-slate-200/80 bg-slate-50 space-y-2.5 shadow-xs">
+              <span className="font-semibold text-slate-400 uppercase tracking-wider text-xs block">
                 Question Ratings Summary:
               </span>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {turns.map((t, i) => (
-                  <div key={t.question_index} className="flex items-center justify-between p-2 bg-white rounded-lg border border-surface-border text-xs">
-                    <span className="truncate max-w-[400px]">
+                  <div key={t.question_index} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200/80 text-xs sm:text-sm">
+                    <span className="truncate max-w-[400px] text-slate-800">
                       Q{i + 1}: {t.interviewer_question}
                     </span>
-                    <span className="font-mono font-bold text-lime-700 ml-2">
+                    <span className="font-mono font-bold text-indigo-600 ml-2">
                       {questionEvals[t.question_index]?.score || 3}/5
                     </span>
                   </div>
@@ -372,7 +372,7 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
             </div>
 
             {/* Submit Action */}
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-surface-border">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
               <Button
                 variant="secondary"
                 size="md"
@@ -385,7 +385,7 @@ export const SelfEvaluationModal: React.FC<SelfEvaluationModalProps> = ({
                 size="md"
                 isLoading={isSubmitting}
                 onClick={handleSubmit}
-                className="bg-lime-600 hover:bg-lime-700 text-white font-semibold shadow-sm"
+                className="shadow-sm"
               >
                 <Sparkles className="w-4 h-4 mr-1.5" />
                 Submit & Unveil AI Analysis

@@ -60,10 +60,10 @@ export const CreditsUsageBadge: React.FC = () => {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-surface-border hover:border-lime-400 text-xs text-ink transition-all shadow-xs group"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-surface-border hover:border-indigo-400 text-xs text-ink transition-all shadow-xs group"
         title="View Token & Cost Usage"
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-lime-500 animate-pulse" />
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
         <span className="font-mono font-medium text-[11px] text-ink">
           ${costSpentUsd.toFixed(3)}
         </span>
@@ -78,7 +78,7 @@ export const CreditsUsageBadge: React.FC = () => {
         <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-surface-border rounded-xl shadow-lg p-4 z-50 text-xs text-ink space-y-3.5 animate-in fade-in zoom-in-95 duration-100">
           <div className="flex items-center justify-between pb-2 border-b border-surface-border">
             <div className="flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-lime-600" />
+              <Zap className="w-4 h-4 text-indigo-600" />
               <h4 className="font-semibold text-xs text-ink">Inference & Budget Usage</h4>
             </div>
             <button
@@ -93,7 +93,7 @@ export const CreditsUsageBadge: React.FC = () => {
           <div className="flex items-center justify-between bg-surface-subtle p-2 rounded-lg border border-surface-border text-[11px]">
             <span className="text-ink-muted">Active BYOC Provider:</span>
             <span className="font-semibold text-ink flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-lime-500" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               {providerLabel}
             </span>
           </div>
@@ -109,7 +109,7 @@ export const CreditsUsageBadge: React.FC = () => {
             <div className="w-full bg-surface-warm rounded-full h-1.5 overflow-hidden border border-surface-border">
               <div
                 className={`h-full transition-all duration-300 ${
-                  costPercent > 80 ? 'bg-amber-500' : 'bg-lime-500'
+                  costPercent > 80 ? 'bg-amber-500' : 'bg-emerald-500'
                 }`}
                 style={{ width: `${Math.max(3, costPercent)}%` }}
               />
@@ -126,7 +126,7 @@ export const CreditsUsageBadge: React.FC = () => {
             </div>
             <div className="w-full bg-surface-warm rounded-full h-1.5 overflow-hidden border border-surface-border">
               <div
-                className="h-full bg-lime-600 transition-all duration-300"
+                className="h-full bg-indigo-600 transition-all duration-300"
                 style={{ width: `${Math.max(3, tokenPercent)}%` }}
               />
             </div>

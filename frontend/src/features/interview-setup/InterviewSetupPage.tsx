@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
-import { Interview, JobDescription, Resume } from '../../lib/types';
+import { Interview, JobDescription, Resume, CodeforcesProblem } from '../../lib/types';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -36,6 +36,19 @@ const COMMON_SKILLS = [
   'Microservices',
 ];
 
+const DSA_TOPICS = [
+  'Dynamic Programming',
+  'Binary Search',
+  'Trees & Graphs',
+  'Greedy Algorithms',
+  'Two Pointers',
+  'Data Structures',
+  'Math & Number Theory',
+  'Strings',
+  'Arrays',
+  'Bit Manipulation',
+];
+
 export const InterviewSetupPage: React.FC = () => {
   const navigate = useNavigate();
 
@@ -51,6 +64,11 @@ export const InterviewSetupPage: React.FC = () => {
   const [customSkill, setCustomSkill] = useState('');
   const [uploadedResume, setUploadedResume] = useState<Resume | null>(null);
   const [isUploadingResume, setIsUploadingResume] = useState(false);
+
+  // Codeforces Adaptive Recommendation State
+  const [selectedCfProblemId, setSelectedCfProblemId] = useState<string>('');
+  const [cfRecommendations, setCfRecommendations] = useState<CodeforcesProblem[]>([]);
+  const [isLoadingCfRecs, setIsLoadingCfRecs] = useState<boolean>(false);
 
   // JD Mode State
   const [jdTitle, setJdTitle] = useState('Backend Software Engineer');
@@ -123,6 +141,26 @@ export const InterviewSetupPage: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (category === 'dsa') {
+      const fetchCfRecs = async () => {
+        setIsLoadingCfRecs(true);
+        try {
+          const skillsParam = selectedSkills.join(',');
+          const data = await api.get<CodeforcesProblem[]>(
+            `/coding/codeforces/recommended?difficulty=${difficulty}&skills=${encodeURIComponent(skillsParam)}&limit=5`
+          );
+          setCfRecommendations(data || []);
+        } catch (e) {
+          console.warn('Failed to fetch Codeforces recommendations', e);
+        } finally {
+          setIsLoadingCfRecs(false);
+        }
+      };
+      fetchCfRecs();
+    }
+  }, [category, difficulty, selectedSkills]);
+
   const handleStartInterview = async () => {
     setError('');
     setIsLoading(true);
@@ -143,6 +181,7 @@ export const InterviewSetupPage: React.FC = () => {
           target_role: targetRole,
           difficulty,
           resume_id: uploadedResume?.id,
+          coding_problem_id: category === 'dsa' && selectedCfProblemId ? selectedCfProblemId : undefined,
           target_duration_minutes: duration,
         });
       } else {
@@ -158,6 +197,7 @@ export const InterviewSetupPage: React.FC = () => {
           jd_id: extractedJd.id,
           difficulty,
           resume_id: uploadedResume?.id,
+          coding_problem_id: category === 'dsa' && selectedCfProblemId ? selectedCfProblemId : undefined,
           target_duration_minutes: duration,
         });
       }
@@ -173,17 +213,17 @@ export const InterviewSetupPage: React.FC = () => {
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-8">
       {/* Title */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink flex items-center gap-2.5">
-          <Compass className="w-6 h-6 text-lime-700" />
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 flex items-center gap-3">
+          <Compass className="w-7 h-7 text-indigo-600" />
           Setup Practice Interview
         </h1>
-        <p className="mt-1 text-sm text-ink-muted">
+        <p className="mt-2 text-sm sm:text-base text-slate-500 leading-relaxed">
           Choose between customized skill-domain practice or targeted Job Description preparation.
         </p>
       </div>
 
       {error && (
-        <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-900 text-sm font-medium">
+        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-900 text-sm font-medium">
           {error}
         </div>
       )}
@@ -192,61 +232,61 @@ export const InterviewSetupPage: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label
           onClick={() => setMode('domain')}
-          className={`p-5 rounded-xl border cursor-pointer transition-all ${
+          className={`p-6 rounded-2xl border cursor-pointer transition-all ${
             mode === 'domain'
-              ? 'border-lime-600 bg-lime-50/50 ring-2 ring-lime-600 shadow-sm'
-              : 'border-surface-border hover:bg-surface-subtle bg-white'
+              ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20 shadow-xs'
+              : 'border-slate-200/80 hover:bg-slate-50 bg-white'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="font-bold text-base text-ink flex items-center gap-2">
-              <Layers className="w-4 h-4 text-lime-700" />
+            <span className="font-bold text-base text-slate-900 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-indigo-600" />
               Domain-Based Practice
             </span>
             <input
               type="radio"
               checked={mode === 'domain'}
               onChange={() => setMode('domain')}
-              className="accent-lime-600"
+              className="accent-indigo-600 w-4 h-4"
             />
           </div>
-          <p className="text-xs text-ink-muted leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
             Practice chosen skills (e.g. Concurrency, SQL, Docker). Upload an optional resume to auto-detect and preselect your stack.
           </p>
         </label>
 
         <label
           onClick={() => setMode('jd')}
-          className={`p-5 rounded-xl border cursor-pointer transition-all ${
+          className={`p-6 rounded-2xl border cursor-pointer transition-all ${
             mode === 'jd'
-              ? 'border-lime-600 bg-lime-50/50 ring-2 ring-lime-600 shadow-sm'
-              : 'border-surface-border hover:bg-surface-subtle bg-white'
+              ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20 shadow-xs'
+              : 'border-slate-200/80 hover:bg-slate-50 bg-white'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="font-bold text-base text-ink flex items-center gap-2">
-              <Briefcase className="w-4 h-4 text-lime-700" />
+            <span className="font-bold text-base text-slate-900 flex items-center gap-2">
+              <Briefcase className="w-5 h-5 text-indigo-600" />
               Job Description (JD) Mode
             </span>
             <input
               type="radio"
               checked={mode === 'jd'}
               onChange={() => setMode('jd')}
-              className="accent-lime-600"
+              className="accent-indigo-600 w-4 h-4"
             />
           </div>
-          <p className="text-xs text-ink-muted leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
             Paste an actual job posting. We extract required skills and interview expectations automatically without manual re-entry.
           </p>
         </label>
       </div>
 
       {/* Category Selection */}
-      <Card className="space-y-4">
-        <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider">
+      <Card className="p-6 sm:p-7 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
           Interview Category
         </label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
           {[
             { id: 'technical', label: 'Technical Depth', desc: 'Architecture, systems, edge cases', icon: Zap },
             { id: 'dsa', label: 'DSA & Coding', desc: 'Algorithms, complexity & sandbox editor', icon: Code2 },
@@ -259,16 +299,21 @@ export const InterviewSetupPage: React.FC = () => {
               <button
                 key={cat.id}
                 type="button"
-                onClick={() => setCategory(cat.id as any)}
-                className={`p-3.5 rounded-lg border text-left transition-all ${
+                onClick={() => {
+                  setCategory(cat.id as any);
+                  if (cat.id === 'dsa' && selectedSkills.includes('FastAPI')) {
+                    setSelectedSkills(['Dynamic Programming', 'Binary Search', 'Trees & Graphs']);
+                  }
+                }}
+                className={`p-4 rounded-xl border text-left transition-all ${
                   isSel
-                    ? 'border-lime-600 bg-lime-50/60 ring-1 ring-lime-600'
-                    : 'border-surface-border hover:bg-surface-subtle'
+                    ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20 shadow-xs'
+                    : 'border-slate-200/80 hover:bg-slate-50'
                 }`}
               >
-                <Icon className={`w-4 h-4 mb-2 ${isSel ? 'text-lime-700' : 'text-ink-subtle'}`} />
-                <div className="font-semibold text-xs text-ink">{cat.label}</div>
-                <div className="text-[11px] text-ink-subtle mt-0.5 line-clamp-2">{cat.desc}</div>
+                <Icon className={`w-5 h-5 mb-2.5 ${isSel ? 'text-indigo-600' : 'text-slate-400'}`} />
+                <div className="font-semibold text-sm text-slate-900">{cat.label}</div>
+                <div className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">{cat.desc}</div>
               </button>
             );
           })}
@@ -277,7 +322,7 @@ export const InterviewSetupPage: React.FC = () => {
 
       {/* Mode-Specific Configuration */}
       {mode === 'domain' ? (
-        <Card className="space-y-6">
+        <Card className="p-6 sm:p-7 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
           {/* Target Role */}
           <Input
             label="Target Engineering Role"
@@ -289,13 +334,13 @@ export const InterviewSetupPage: React.FC = () => {
           {/* Optional Resume Upload */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-ink-muted uppercase tracking-wider flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-lime-700" />
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-indigo-600" />
                 Upload Resume (Optional)
               </label>
               {uploadedResume && (
-                <span className="text-xs text-lime-700 font-medium flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
+                <span className="text-xs text-indigo-600 font-semibold flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
                   {uploadedResume.extracted_skills.length} skills extracted
                 </span>
               )}
@@ -322,20 +367,20 @@ export const InterviewSetupPage: React.FC = () => {
           {/* Skill Selector */}
           <div>
             <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
-              Select Skills to Practice ({selectedSkills.length} selected)
+              Select {category === 'dsa' ? 'Algorithmic Topics' : 'Skills'} to Practice ({selectedSkills.length} selected)
             </label>
             <div className="flex flex-wrap gap-2">
-              {COMMON_SKILLS.map((skill) => {
+              {(category === 'dsa' ? DSA_TOPICS : COMMON_SKILLS).map((skill) => {
                 const isSelected = selectedSkills.includes(skill);
                 return (
                   <button
                     key={skill}
                     type="button"
                     onClick={() => toggleSkill(skill)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                       isSelected
-                        ? 'bg-lime-600 text-white border-lime-600 shadow-sm'
-                        : 'bg-white text-ink border-surface-border hover:bg-surface-subtle'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-semibold'
+                        : 'bg-white text-slate-700 border-slate-200/80 hover:bg-slate-50'
                     }`}
                   >
                     {skill}
@@ -360,7 +405,7 @@ export const InterviewSetupPage: React.FC = () => {
         </Card>
       ) : (
         /* JD Mode Form */
-        <Card className="space-y-6">
+        <Card className="p-6 sm:p-7 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Role Title"
@@ -377,7 +422,7 @@ export const InterviewSetupPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
               Paste Job Description Text
             </label>
             <textarea
@@ -385,7 +430,7 @@ export const InterviewSetupPage: React.FC = () => {
               value={jdText}
               onChange={(e) => setJdText(e.target.value)}
               placeholder="Paste full job description text here..."
-              className="w-full px-3 py-2 text-sm bg-white border border-surface-border rounded-md text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-lime-500 font-sans"
+              className="w-full p-3.5 text-sm bg-white border border-slate-200/80 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 font-sans"
             />
           </div>
 
@@ -396,26 +441,26 @@ export const InterviewSetupPage: React.FC = () => {
               onClick={handleExtractJd}
               isLoading={isExtractingJd}
             >
-              <Sparkles className="w-3.5 h-3.5 mr-1 text-lime-700" />
+              <Sparkles className="w-4 h-4 mr-1.5 text-indigo-600" />
               Extract Role Requirements
             </Button>
           ) : (
-            <div className="p-4 bg-surface-warm rounded-lg border border-lime-200 space-y-3">
+            <div className="p-5 bg-indigo-50/40 rounded-2xl border border-indigo-200/80 space-y-3.5">
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-xs text-lime-900 uppercase tracking-wider">
+                <span className="font-semibold text-xs text-indigo-950 uppercase tracking-wider">
                   Extracted Requirements Summary
                 </span>
-                <Badge variant="lime">Verified from JD</Badge>
+                <Badge variant="indigo">Verified from JD</Badge>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {extractedJd.extracted_skills.map((s) => (
-                  <Badge key={s} variant="zinc" size="sm">
+                  <Badge key={s} variant="zinc" size="sm" className="text-xs">
                     {s}
                   </Badge>
                 ))}
               </div>
               {extractedJd.extracted_requirements.length > 0 && (
-                <ul className="list-disc list-inside text-xs text-ink-muted space-y-1">
+                <ul className="list-disc list-inside text-xs sm:text-sm text-slate-600 space-y-1">
                   {extractedJd.extracted_requirements.slice(0, 3).map((r, i) => (
                     <li key={i}>{r}</li>
                   ))}
@@ -426,10 +471,117 @@ export const InterviewSetupPage: React.FC = () => {
         </Card>
       )}
 
+      {/* Codeforces Adaptive Problem Matcher for DSA Interviews */}
+      {category === 'dsa' && (
+        <Card className="p-6 sm:p-7 rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/40 via-white to-white shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
+              <label className="text-xs font-bold text-indigo-950 uppercase tracking-wider">
+                Codeforces Adaptive Problem Matcher
+              </label>
+            </div>
+            <span className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200/60 font-semibold">
+              Difficulty Rating: {difficulty === 'junior' ? '800 - 1200' : difficulty === 'intermediate' ? '1200 - 1700' : '1700 - 2400'}
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-600 leading-relaxed">
+            The interviewer will present an algorithmic challenge from Codeforces calibrated to your selected difficulty and topic focus.
+          </p>
+
+          <div className="space-y-2 pt-1">
+            {/* Option 0: Dynamic Auto-Match */}
+            <label
+              onClick={() => setSelectedCfProblemId('')}
+              className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                selectedCfProblemId === ''
+                  ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/20 shadow-xs'
+                  : 'border-slate-200 hover:bg-slate-50 bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="cf_problem"
+                  checked={selectedCfProblemId === ''}
+                  onChange={() => setSelectedCfProblemId('')}
+                  className="accent-indigo-600 w-4 h-4"
+                />
+                <div>
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <span>🎯 Dynamic Adaptive Selection</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-bold">
+                      Recommended
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Let the AI interviewer automatically assign the best Codeforces challenge based on your topics and real-time level
+                  </div>
+                </div>
+              </div>
+            </label>
+
+            {/* Recommended Problems */}
+            {isLoadingCfRecs ? (
+              <div className="p-4 text-center text-xs text-indigo-600 flex items-center justify-center gap-2">
+                <span className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                <span>Fetching tailored Codeforces challenges...</span>
+              </div>
+            ) : (
+              cfRecommendations.map((p) => {
+                const isSelected = selectedCfProblemId === p.id;
+                return (
+                  <label
+                    key={p.id}
+                    onClick={() => setSelectedCfProblemId(p.id)}
+                    className={`p-3.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/20 shadow-xs'
+                        : 'border-slate-200 hover:bg-slate-50 bg-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="cf_problem"
+                        checked={isSelected}
+                        onChange={() => setSelectedCfProblemId(p.id)}
+                        className="accent-indigo-600 w-4 h-4"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                          <span>{p.title}</span>
+                          <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                            Rating: {p.rating}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                          <span>Tags: {p.tags?.slice(0, 3).join(', ')}</span>
+                          <a
+                            href={p.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-indigo-600 hover:underline inline-flex items-center gap-0.5"
+                          >
+                            View on CF ↗
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* Parameters: Difficulty & Duration */}
-      <Card className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <Card className="p-6 sm:p-7 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
-          <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
             Target Difficulty Level
           </label>
           <div className="grid grid-cols-3 gap-2">
@@ -442,10 +594,10 @@ export const InterviewSetupPage: React.FC = () => {
                 key={d.id}
                 type="button"
                 onClick={() => setDifficulty(d.id as any)}
-                className={`py-2 px-2 text-xs font-medium rounded-md border text-center transition-colors ${
+                className={`py-2.5 px-2 text-xs font-medium rounded-xl border text-center transition-all ${
                   difficulty === d.id
-                    ? 'bg-lime-600 text-white border-lime-600'
-                    : 'bg-white text-ink border-surface-border hover:bg-surface-subtle'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-semibold'
+                    : 'bg-white text-slate-700 border-slate-200/80 hover:bg-slate-50'
                 }`}
               >
                 {d.label}
@@ -455,7 +607,7 @@ export const InterviewSetupPage: React.FC = () => {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
             Target Duration: {duration} Minutes
           </label>
           <div className="grid grid-cols-3 gap-2">
@@ -464,10 +616,10 @@ export const InterviewSetupPage: React.FC = () => {
                 key={mins}
                 type="button"
                 onClick={() => setDuration(mins)}
-                className={`py-2 px-2 text-xs font-medium rounded-md border text-center transition-colors ${
+                className={`py-2.5 px-2 text-xs font-medium rounded-xl border text-center transition-all ${
                   duration === mins
-                    ? 'bg-lime-600 text-white border-lime-600'
-                    : 'bg-white text-ink border-surface-border hover:bg-surface-subtle'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-semibold'
+                    : 'bg-white text-slate-700 border-slate-200/80 hover:bg-slate-50'
                 }`}
               >
                 {mins} Mins

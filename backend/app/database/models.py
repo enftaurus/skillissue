@@ -33,6 +33,7 @@ class User(Base):
     interviews: Mapped[List["Interview"]] = relationship("Interview", back_populates="user", cascade="all, delete-orphan")
     plans: Mapped[List["Plan"]] = relationship("Plan", back_populates="user", cascade="all, delete-orphan")
     coding_submissions: Mapped[List["CodingSubmission"]] = relationship("CodingSubmission", back_populates="user", cascade="all, delete-orphan")
+    project_submissions: Mapped[List["ProjectSubmission"]] = relationship("ProjectSubmission", back_populates="user", cascade="all, delete-orphan")
     skills: Mapped[List["UserSkill"]] = relationship("UserSkill", back_populates="user", cascade="all, delete-orphan")
     backlog_items: Mapped[List["LearningBacklogItem"]] = relationship("LearningBacklogItem", back_populates="user", cascade="all, delete-orphan")
 
@@ -188,6 +189,7 @@ class Evaluation(Base):
     uncertainty_notes: Mapped[List[str]] = mapped_column(JSON, default=list)
     weakness_analysis: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     raw_llm_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    stored_transcript: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     model_identifier: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -300,3 +302,19 @@ class LearningBacklogItem(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="backlog_items")
     plan: Mapped[Optional["Plan"]] = relationship("Plan")
+
+class ProjectSubmission(Base):
+    __tablename__ = "project_submissions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(30), default="incomplete")
+    files: Mapped[Dict[str, str]] = mapped_column(JSON, default=dict)
+    test_results: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    prompt_analysis: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    prompts_count: Mapped[int] = mapped_column(Integer, default=0)
+    time_spent_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    user: Mapped["User"] = relationship("User", back_populates="project_submissions")

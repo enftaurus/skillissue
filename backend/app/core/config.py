@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     SANDBOX_EXECUTOR_URL: str = "http://127.0.0.1:8001"
     SANDBOX_EXECUTOR_SECRET: str = "skillissue-executor-internal-secret-2026"
 
+    # Codeforces API
+    CF_API_KEY: str = ""
+    CF_API_SECRET: str = ""
+
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):

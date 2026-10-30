@@ -16,25 +16,25 @@ export const Button: React.FC<ButtonProps> = ({
   ...props
 }) => {
   const baseClasses =
-    'inline-flex items-center justify-center font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed select-none';
+    'inline-flex items-center justify-center font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed select-none cursor-pointer';
 
   const variants = {
     primary:
-      'bg-lime-600 text-white hover:bg-lime-700 active:bg-lime-800 focus:ring-lime-500 shadow-sm',
+      'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm hover:shadow-md hover:shadow-indigo-500/20 active:scale-[0.98]',
     secondary:
-      'bg-surface-subtle text-ink hover:bg-surface-muted active:bg-zinc-200 focus:ring-zinc-400 border border-surface-border',
+      'bg-white text-slate-800 hover:bg-slate-50 active:bg-slate-100 border border-slate-200/90 shadow-xs hover:border-slate-300 active:scale-[0.98]',
     outline:
-      'bg-transparent border border-surface-border text-ink hover:bg-surface-subtle active:bg-surface-muted focus:ring-zinc-400',
+      'bg-transparent border border-slate-300 text-slate-700 hover:bg-slate-50 hover:text-slate-900 active:scale-[0.98]',
     danger:
-      'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 focus:ring-red-500 shadow-sm',
+      'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800 shadow-sm hover:shadow-rose-500/20 active:scale-[0.98]',
     ghost:
-      'bg-transparent text-ink-muted hover:text-ink hover:bg-surface-subtle focus:ring-zinc-300',
+      'bg-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100 active:scale-[0.98]',
   };
 
   const sizes = {
-    sm: 'text-xs px-2.5 py-1.5 gap-1.5',
-    md: 'text-sm px-3.5 py-2 gap-2',
-    lg: 'text-base px-5 py-2.5 gap-2.5',
+    sm: 'text-xs px-3 py-1.5 rounded-lg gap-1.5',
+    md: 'text-sm px-4 py-2 rounded-xl gap-2',
+    lg: 'text-base px-5 py-2.5 rounded-xl gap-2.5 font-semibold',
   };
 
   return (

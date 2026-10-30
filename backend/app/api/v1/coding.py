@@ -101,3 +101,38 @@ async def get_dsa_coach_hint(
     Invoked ONLY on explicit user request.
     """
     return await DsaCoachService.get_hint(db, current_user.id, problem_id, data)
+
+@router.get("/codeforces/problems")
+async def get_codeforces_problems(
+    rating_min: Optional[int] = Query(None, ge=800, le=3500),
+    rating_max: Optional[int] = Query(None, ge=800, le=3500),
+    tags: Optional[str] = Query(None, description="Comma or semicolon-separated tags, e.g. dp,graphs"),
+    limit: int = Query(25, ge=1, le=100),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Fetch live DSA problems from Codeforces API filtered by rating and algorithmic tags."""
+    from backend.app.coding.codeforces import CodeforcesClient
+    tag_list = [t.strip() for t in (tags.replace(";", ",").split(",")) if t.strip()] if tags else None
+    return await CodeforcesClient.fetch_problems(
+        rating_min=rating_min,
+        rating_max=rating_max,
+        tags=tag_list,
+        limit=limit,
+    )
+
+@router.get("/codeforces/recommended")
+async def get_recommended_codeforces_problems(
+    difficulty: str = Query("intermediate", description="easy, intermediate, advanced"),
+    skills: Optional[str] = Query(None, description="Comma-separated candidate domain skills"),
+    limit: int = Query(5, ge=1, le=20),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Retrieve tailored Codeforces problems matching candidate difficulty and domain skills."""
+    from backend.app.coding.codeforces import CodeforcesClient
+    skills_list = [s.strip() for s in skills.split(",") if s.strip()] if skills else None
+    return await CodeforcesClient.get_recommended_for_interview(
+        difficulty=difficulty,
+        domain_skills=skills_list,
+        limit=limit,
+    )
+

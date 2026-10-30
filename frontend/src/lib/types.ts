@@ -201,6 +201,8 @@ export interface EvaluationComparison {
   weaknesses: string[];
   missing_concepts: string[];
   weakness_analysis?: WeaknessAnalysisItem[];
+  stored_transcript?: string;
+  transcript_turns?: QuestionTurn[];
 }
 
 export interface QuestionFeedback {
@@ -234,7 +236,26 @@ export interface Evaluation {
   tokens_used: number;
   model_identifier: string;
   created_at: string;
+  stored_transcript?: string;
+  transcript_turns?: QuestionTurn[];
 }
+
+export interface CodeforcesProblem {
+  id: string;
+  contest_id: number;
+  index: string;
+  title: string;
+  name: string;
+  rating: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  category: string;
+  tags: string[];
+  url: string;
+  description: string;
+  starter_code: Record<string, string>;
+  source?: string;
+}
+
 
 
 export interface PlanTask {

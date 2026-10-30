@@ -74,6 +74,8 @@ class EvaluationResponse(BaseModel):
     tokens_used: int
     model_identifier: str
     created_at: datetime
+    stored_transcript: Optional[str] = None
+    transcript_turns: Optional[List[Dict[str, Any]]] = None
 
 class DimensionComparison(BaseModel):
     dimension_id: str
@@ -109,4 +111,6 @@ class EvaluationComparisonResponse(BaseModel):
     weaknesses: List[str]
     missing_concepts: List[str]
     weakness_analysis: List[WeaknessAnalysisItem] = []
+    stored_transcript: Optional[str] = None
+    transcript_turns: Optional[List[Dict[str, Any]]] = None
 

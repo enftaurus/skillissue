@@ -271,6 +271,7 @@ class EvaluationService:
             evaluation.suggested_corrections = suggested_corrections
             evaluation.uncertainty_notes = uncertainty_notes
             evaluation.raw_llm_response = response.text
+            evaluation.stored_transcript = transcript_text
             evaluation.tokens_used = response.input_tokens + response.output_tokens
             evaluation.model_identifier = response.model_id
         else:
@@ -288,6 +289,7 @@ class EvaluationService:
                 suggested_corrections=suggested_corrections,
                 uncertainty_notes=uncertainty_notes,
                 raw_llm_response=response.text,
+                stored_transcript=transcript_text,
                 tokens_used=response.input_tokens + response.output_tokens,
                 model_identifier=response.model_id,
             )
@@ -361,6 +363,20 @@ class EvaluationService:
         evaluation = result.scalar_one_or_none()
         if not evaluation:
             raise EntityNotFoundError("Evaluation for interview", interview_id)
+
+        # Load interview transcript messages
+        int_res = await db.execute(
+            select(Interview)
+            .options(selectinload(Interview.messages))
+            .where(Interview.id == interview_id)
+        )
+        interview = int_res.scalar_one_or_none()
+        if interview and interview.messages:
+            from backend.app.interviews.service import InterviewService
+            evaluation.transcript_turns = InterviewService.compute_grouped_transcript(interview.messages)
+            if not evaluation.stored_transcript:
+                lines = [f"{'Interviewer' if m.role == 'assistant' else 'Candidate'}: {m.content}" for m in interview.messages]
+                evaluation.stored_transcript = "\n\n".join(lines)
         return evaluation
 
     @classmethod
@@ -394,7 +410,7 @@ class EvaluationService:
         for dim_id, dim_data in evaluation.rubric_dimension_scores.items():
             ai_score = dim_data.get("score", 3)
             self_score = self_scores.get(dim_id)
-            delta = (ai_score - self_score) if self_score is not None else None
+            delta = (self_score - ai_score) if self_score is not None else None
             name = rubric_dims.get(dim_id, dim_id.replace("_", " ").title())
 
             comparisons.append(
@@ -429,7 +445,7 @@ class EvaluationService:
             ca = q_ai.get("candidate_answer") or q_turn.get("candidate_answer") or ""
             q_self_score = q_self.get("score")
             q_ai_score = q_ai.get("score")
-            score_gap = (q_ai_score - q_self_score) if (q_ai_score is not None and q_self_score is not None) else None
+            score_gap = (q_self_score - q_ai_score) if (q_ai_score is not None and q_self_score is not None) else None
 
             question_comparisons.append(
                 QuestionComparison(
@@ -459,4 +475,6 @@ class EvaluationService:
             weaknesses=evaluation.weaknesses,
             missing_concepts=evaluation.missing_concepts,
             weakness_analysis=evaluation.weakness_analysis or [],
+            stored_transcript=evaluation.stored_transcript,
+            transcript_turns=grouped_transcript,
         )

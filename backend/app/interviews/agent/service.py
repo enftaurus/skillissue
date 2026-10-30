@@ -54,15 +54,25 @@ class InterviewAgentService:
         )
 
         if interview.category == "dsa":
-            prob_title = "our coding challenge"
+            prob_title = "our competitive coding challenge"
+            prob_details = ""
             if interview.coding_problem_id:
                 from backend.app.coding.problems import get_problem
                 prob = get_problem(interview.coding_problem_id)
                 if prob:
                     prob_title = prob.title
+                    rating_parts = [c for c in getattr(prob, 'constraints', []) if 'Rating' in c]
+                    tag_parts = [c for c in getattr(prob, 'constraints', []) if 'Tag' in c or 'Topic' in c]
+                    extra = []
+                    if rating_parts:
+                        extra.append(rating_parts[0])
+                    if tag_parts:
+                        extra.append(tag_parts[0])
+                    if extra:
+                        prob_details = f" ({' | '.join(extra)})"
             initial_question = (
-                f"Welcome! Today we'll be tackling a coding challenge: {prob_title}. "
-                "Take a moment to inspect the problem description and constraints in your workspace. "
+                f"Welcome! Today we'll be tackling an algorithmic coding challenge: {prob_title}{prob_details}. "
+                "Take a moment to inspect the problem description, constraints, and standard I/O format in your workspace. "
                 "Before writing code, please walk me through your initial thoughts and the algorithmic approach you plan to take."
             )
         else:

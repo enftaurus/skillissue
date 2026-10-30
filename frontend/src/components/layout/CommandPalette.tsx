@@ -187,17 +187,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                     key={item.id}
                     onClick={() => executeItem(item)}
                     onMouseEnter={() => setSelectedIndex(idx)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-colors ${
+                    className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-left transition-all ${
                       isSelected
-                        ? 'bg-lime-50 text-ink border border-lime-300'
-                        : 'text-ink-muted hover:bg-surface-subtle'
+                        ? 'bg-indigo-50 text-ink border border-indigo-200/80 shadow-xs'
+                        : 'text-slate-600 hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
-                        className={`w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 ${
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                           isSelected
-                            ? 'bg-lime-200 text-lime-900'
+                            ? 'bg-indigo-100 text-indigo-700'
                             : 'bg-surface-subtle text-ink-muted'
                         }`}
                       >
@@ -222,7 +222,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                       )}
                       <ArrowRight
                         className={`w-4 h-4 transition-transform ${
-                          isSelected ? 'text-lime-700 translate-x-0.5' : 'text-transparent'
+                          isSelected ? 'text-indigo-600 translate-x-0.5' : 'text-transparent'
                         }`}
                       />
                     </div>

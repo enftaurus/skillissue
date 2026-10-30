@@ -11,6 +11,8 @@ import { EvaluationPage } from './features/evaluation/EvaluationPage';
 import { PlanlyPage } from './features/improvement-plan/PlanlyPage';
 import { ProgressAnalyticsPage } from './features/progress/ProgressAnalyticsPage';
 import { CodingPracticePage } from './features/coding/CodingPracticePage';
+import { ProjectCatalogPage } from './features/projects/ProjectCatalogPage';
+import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage';
 import { ProviderSettingsPage } from './features/provider-settings/ProviderSettingsPage';
 import { AwsSetupGuidePage } from './features/provider-settings/AwsSetupGuidePage';
 import { AwsBedrockOnboardingPage } from './features/provider-settings/AwsBedrockOnboardingPage';
@@ -26,8 +28,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   if (isLoading) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center">
-        <div className="w-8 h-8 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mb-3" />
-        <span className="text-xs text-ink-muted">Authenticating...</span>
+        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3" />
+        <span className="text-xs text-slate-500">Authenticating...</span>
       </div>
     );
   }
@@ -71,6 +73,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const isInterviewSession =
     location.pathname.startsWith('/interviews/') && location.pathname !== '/interviews/new';
+  const isProjectWorkspace =
+    location.pathname.startsWith('/projects/') && location.pathname !== '/projects';
 
   if (!user || isAuthRoute) {
     return (
@@ -80,8 +84,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
-  // Interview Focus Mode: zero distraction, no sidebar, locked to interview room
-  if (isInterviewSession) {
+  // Focus Mode: zero distraction for interview session & project workspace
+  if (isInterviewSession || isProjectWorkspace) {
     return (
       <div className="min-h-screen flex flex-col bg-surface-warm font-sans text-ink">
         <main className="flex-1 flex flex-col">{children}</main>
@@ -194,6 +198,22 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <CodingPracticePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects"
+              element={
+                <ProtectedRoute>
+                  <ProjectCatalogPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:id"
+              element={
+                <ProtectedRoute>
+                  <ProjectWorkspacePage />
                 </ProtectedRoute>
               }
             />

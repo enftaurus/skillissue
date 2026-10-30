@@ -352,7 +352,7 @@ export const InterviewSessionPage: React.FC = () => {
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-24 text-center">
-        <div className="w-8 h-8 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
         <p className="text-xs text-ink-muted">Connecting to interview room...</p>
       </div>
     );
@@ -379,7 +379,7 @@ export const InterviewSessionPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-sm font-bold text-ink">{interview?.title}</h1>
-              <Badge variant="lime" size="sm" className="font-mono text-[10px] uppercase">
+              <Badge variant="brand" size="sm" className="font-mono text-xs uppercase">
                 {interview?.category}
               </Badge>
             </div>
@@ -405,7 +405,7 @@ export const InterviewSessionPage: React.FC = () => {
             className="text-xs gap-1"
           >
             {autoSpeak ? (
-              <Volume2 className="w-4 h-4 text-lime-700" />
+              <Volume2 className="w-4 h-4 text-indigo-600" />
             ) : (
               <VolumeX className="w-4 h-4 text-ink-subtle" />
             )}
@@ -419,7 +419,7 @@ export const InterviewSessionPage: React.FC = () => {
             onClick={() => setShowCodeEditor(!showCodeEditor)}
             className="text-xs gap-1.5"
           >
-            <Code2 className="w-4 h-4 text-lime-700" />
+            <Code2 className="w-4 h-4 text-indigo-600" />
             <span>{showCodeEditor ? 'Hide Code' : 'Dock Code'}</span>
           </Button>
 
@@ -430,7 +430,7 @@ export const InterviewSessionPage: React.FC = () => {
               size="sm"
               onClick={() => setShowHintMenu(!showHintMenu)}
               isLoading={isRequestingHint}
-              className="text-xs gap-1.5 border-lime-300"
+              className="text-xs gap-1.5 border-slate-200 hover:border-slate-300"
               title="Request a calibrated Socratic hint from the interviewer"
             >
               <Lightbulb className="w-4 h-4 text-amber-500 fill-amber-400/30" />
@@ -511,20 +511,20 @@ export const InterviewSessionPage: React.FC = () => {
 
       {/* Session State / Competency Inspector Banner */}
       {sessionState && (
-        <div className="flex items-center justify-between px-3.5 py-2 bg-surface-warm/80 border border-surface-border rounded-lg text-xs">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs sm:text-sm">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-ink">Active Competency:</span>
-            <span className="font-mono text-lime-800 bg-lime-50 px-2 py-0.5 rounded border border-lime-200">
+            <span className="font-semibold text-slate-700">Active Competency:</span>
+            <span className="font-mono text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-md border border-indigo-200/70 font-medium">
               {sessionState.current_topic || 'General Engineering Architecture'}
             </span>
             {sessionState.topic_statuses && sessionState.current_topic && (
               <span
-                className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
                   sessionState.topic_statuses[sessionState.current_topic] === 'assessed'
-                    ? 'bg-zinc-100 text-zinc-700'
+                    ? 'bg-slate-100 text-slate-700'
                     : sessionState.topic_statuses[sessionState.current_topic] === 'needs_follow_up'
                     ? 'bg-amber-100 text-amber-800'
-                    : 'bg-lime-100 text-lime-800'
+                    : 'bg-indigo-100 text-indigo-800'
                 }`}
               >
                 {sessionState.topic_statuses[sessionState.current_topic] || 'In Progress'}
@@ -533,7 +533,7 @@ export const InterviewSessionPage: React.FC = () => {
           </div>
           {sessionState.running_summary && (
             <span
-              className="text-[11px] text-ink-subtle hidden md:inline truncate max-w-md"
+              className="text-xs text-slate-500 hidden md:inline truncate max-w-md"
               title={sessionState.running_summary}
             >
               Interviewer Memory: {sessionState.running_summary}
@@ -602,21 +602,21 @@ export const InterviewSessionPage: React.FC = () => {
               category={interview?.category}
             />
 
-            <Card className="p-4 bg-white border border-surface-border text-xs space-y-2.5">
-              <h4 className="font-semibold text-ink uppercase tracking-wider text-[11px]">
+            <Card className="p-5 bg-white border border-slate-200/80 rounded-2xl shadow-xs text-xs space-y-3">
+              <h4 className="font-semibold text-slate-900 uppercase tracking-wider text-xs">
                 Interview Guidelines
               </h4>
-              <ul className="space-y-1.5 text-ink-muted text-[11px]">
-                <li className="flex items-start gap-1.5">
-                  <span className="text-lime-600 font-bold">•</span>
+              <ul className="space-y-2 text-slate-600 text-xs sm:text-sm">
+                <li className="flex items-start gap-2">
+                  <span className="text-indigo-600 font-bold">•</span>
                   <span>Speak or type directly. Focus on concrete trade-offs and metrics.</span>
                 </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-lime-600 font-bold">•</span>
+                <li className="flex items-start gap-2">
+                  <span className="text-indigo-600 font-bold">•</span>
                   <span>Use microphone or push Spacebar for hands-free speech input.</span>
                 </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-lime-600 font-bold">•</span>
+                <li className="flex items-start gap-2">
+                  <span className="text-indigo-600 font-bold">•</span>
                   <span>Dock code anytime if asked to sketch algorithms or architectures.</span>
                 </li>
               </ul>
@@ -645,7 +645,7 @@ export const InterviewSessionPage: React.FC = () => {
           )}
 
           {/* Dialogue Message Thread */}
-          <div className="bg-white border border-surface-border rounded-xl p-4 sm:p-5 shadow-xs min-h-[440px] max-h-[540px] overflow-y-auto space-y-4">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs min-h-[460px] max-h-[560px] overflow-y-auto space-y-4">
             {messages.map((m, idx) => {
               const isAssistant = m.role === 'assistant';
               const isHintMsg =
@@ -656,34 +656,34 @@ export const InterviewSessionPage: React.FC = () => {
                   key={m.id || idx}
                   className={`flex flex-col ${isAssistant ? 'items-start' : 'items-end'}`}
                 >
-                  <div className="flex items-center gap-1.5 mb-1 px-1">
-                    <span className="text-[10px] font-semibold text-ink-subtle uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5 mb-1.5 px-1">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                       {isAssistant ? 'Interviewer' : 'You'}
                     </span>
                     {isHintMsg && (
-                      <span className="text-[9px] font-mono px-1 rounded bg-amber-100 text-amber-800 font-medium">
+                      <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-medium">
                         SOCRATIC HINT
                       </span>
                     )}
                   </div>
 
                   <div
-                    className={`max-w-[90%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-xs ${
+                    className={`max-w-[85%] rounded-2xl p-4 sm:p-5 text-sm sm:text-base leading-relaxed shadow-xs ${
                       isAssistant
                         ? isHintMsg
                           ? 'bg-amber-50/80 border border-amber-200 text-amber-950'
-                          : 'bg-surface-warm border border-surface-border text-ink'
-                        : 'bg-lime-600 text-white'
+                          : 'bg-slate-50 border border-slate-200/80 text-slate-900'
+                        : 'bg-indigo-600 text-white shadow-sm'
                     }`}
                   >
                     <p className="whitespace-pre-wrap">{m.content}</p>
                     {isAssistant && (
                       <button
                         onClick={() => speakWithMicSuppression(m.content)}
-                        className="mt-2 text-xs text-ink-muted hover:text-ink flex items-center gap-1 opacity-70 hover:opacity-100 transition-opacity"
+                        className="mt-2.5 text-xs text-slate-500 hover:text-indigo-600 flex items-center gap-1 transition-colors"
                         title="Listen to question"
                       >
-                        <Volume2 className="w-3.5 h-3.5" />
+                        <Volume2 className="w-4 h-4" />
                         <span>Listen</span>
                       </button>
                     )}
@@ -694,11 +694,11 @@ export const InterviewSessionPage: React.FC = () => {
 
             {isSending && (
               <div className="flex flex-col items-start">
-                <span className="text-[10px] font-semibold text-ink-subtle uppercase tracking-wider mb-1 px-1">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 px-1">
                   Interviewer
                 </span>
-                <div className="bg-surface-warm border border-surface-border rounded-2xl p-3.5 text-xs text-ink-muted flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full bg-lime-600 animate-pulse" />
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-sm text-slate-600 flex items-center gap-2.5 shadow-xs">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
                   Analyzing response against rubric dimensions...
                 </div>
               </div>
@@ -708,8 +708,8 @@ export const InterviewSessionPage: React.FC = () => {
 
           {/* Active Voice Input Wave Banner */}
           {isListening && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center justify-between animate-fade-in shadow-xs">
-              <div className="flex items-center gap-2">
+            <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs sm:text-sm flex items-center justify-between animate-fade-in shadow-xs">
+              <div className="flex items-center gap-2.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
                 <span className="font-semibold">
                   Listening to your answer... Speak naturally into your microphone.
@@ -720,7 +720,7 @@ export const InterviewSessionPage: React.FC = () => {
                 variant="danger"
                 size="sm"
                 onClick={toggleSpeechRecognition}
-                className="text-xs py-1 px-2.5"
+                className="text-xs py-1 px-3"
               >
                 Done Speaking
               </Button>
@@ -729,7 +729,7 @@ export const InterviewSessionPage: React.FC = () => {
 
           {/* Input Box & Speech Controls */}
           <form onSubmit={handleSendMessage} className="space-y-2">
-            <div className="relative rounded-xl border border-surface-border bg-white shadow-xs focus-within:ring-2 focus-within:ring-lime-500 overflow-hidden">
+            <div className="relative rounded-2xl border border-slate-200/80 bg-white shadow-xs focus-within:ring-2 focus-within:ring-indigo-500/25 focus-within:border-indigo-500 overflow-hidden transition-all">
               <textarea
                 rows={3}
                 value={inputText}
@@ -738,7 +738,7 @@ export const InterviewSessionPage: React.FC = () => {
                   baseInputTextRef.current = e.target.value;
                 }}
                 placeholder="State your technical answer directly. Cite metrics or trade-offs (Press Enter to submit, or use mic below)..."
-                className="w-full p-3.5 text-xs sm:text-sm text-ink placeholder:text-ink-faint focus:outline-none resize-none font-sans"
+                className="w-full p-4 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none resize-none font-sans"
                 disabled={isSending}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -748,8 +748,8 @@ export const InterviewSessionPage: React.FC = () => {
                 }}
               />
 
-              <div className="flex items-center justify-between px-3 py-2 bg-surface-warm border-t border-surface-border">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-100">
+                <div className="flex items-center gap-2.5">
                   {isSpeechSupported && (
                     <Button
                       type="button"
@@ -766,13 +766,13 @@ export const InterviewSessionPage: React.FC = () => {
                         </>
                       ) : (
                         <>
-                          <Mic className="w-3.5 h-3.5 text-lime-700" />
+                          <Mic className="w-3.5 h-3.5 text-indigo-600" />
                           <span>Speak Answer</span>
                         </>
                       )}
                     </Button>
                   )}
-                  <span className="text-[11px] text-ink-subtle hidden sm:inline">
+                  <span className="text-xs text-slate-400 hidden sm:inline">
                     Enter to send · Shift+Enter for newline
                   </span>
                 </div>
@@ -796,17 +796,17 @@ export const InterviewSessionPage: React.FC = () => {
         {/* Right Column: Docked Coding Panel (Monaco Editor) */}
         {showCodeEditor && (
           <div className="lg:col-span-6 space-y-3 flex flex-col">
-            <Card className="p-3.5 bg-white border border-surface-border space-y-3 flex-1 flex flex-col">
-              <div className="flex items-center justify-between pb-2.5 border-b border-surface-border">
+            <Card className="p-4 bg-white border border-slate-200/80 rounded-2xl shadow-xs space-y-3 flex-1 flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-1.5">
                   {(['python', 'java', 'cpp'] as const).map((lang) => (
                     <button
                       key={lang}
                       onClick={() => handleLanguageChange(lang)}
-                      className={`px-2.5 py-1 rounded text-xs font-mono font-medium transition-colors ${
+                      className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-colors ${
                         codeLanguage === lang
-                          ? 'bg-lime-100 text-lime-900 border border-lime-300 font-semibold'
-                          : 'text-ink-muted hover:text-ink hover:bg-surface-subtle'
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                       }`}
                     >
                       {lang === 'python' ? 'Python' : lang === 'java' ? 'Java' : 'C++'}
@@ -843,7 +843,7 @@ export const InterviewSessionPage: React.FC = () => {
               </div>
 
               {/* Monaco Code Editor */}
-              <div className="h-80 border border-surface-border rounded-lg overflow-hidden">
+              <div className="h-80 border border-slate-200/80 rounded-xl overflow-hidden">
                 <Editor
                   height="100%"
                   language={
@@ -870,24 +870,24 @@ export const InterviewSessionPage: React.FC = () => {
 
               {/* Execution Output */}
               {executionResult && (
-                <div className="p-3 rounded-lg bg-surface-subtle border border-surface-border font-mono text-[11px] space-y-1.5 max-h-36 overflow-y-auto">
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 font-mono text-xs space-y-1.5 max-h-36 overflow-y-auto">
                   <div className="flex items-center justify-between font-sans">
-                    <span className="font-semibold text-xs flex items-center gap-1.5">
-                      <Terminal className="w-3.5 h-3.5 text-lime-600" />
+                    <span className="font-semibold text-xs flex items-center gap-1.5 text-slate-800">
+                      <Terminal className="w-3.5 h-3.5 text-indigo-600" />
                       Sandbox Results
                     </span>
                     <Badge
                       variant={executionResult.status === 'passed' ? 'emerald' : 'rose'}
-                      className="text-[9px] uppercase font-mono"
+                      className="text-xs uppercase font-mono"
                     >
                       {executionResult.status} ({executionResult.execution_time_ms}ms)
                     </Badge>
                   </div>
-                  <div className="text-ink-muted">
+                  <div className="text-slate-600 text-xs">
                     Passed {executionResult.total_passed} / {executionResult.total_tests} test cases
                   </div>
                   {executionResult.stderr && (
-                    <div className="text-rose-600 whitespace-pre-wrap">
+                    <div className="text-rose-600 whitespace-pre-wrap text-xs">
                       {executionResult.stderr}
                     </div>
                   )}

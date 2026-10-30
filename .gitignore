@@ -31,6 +31,7 @@ wheels/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+artifacts_e2e/
 
 # Node / Frontend
 frontend/node_modules/
