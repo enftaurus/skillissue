@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database.session import get_db
 from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
-from backend.app.analytics.schemas import AnalyticsDashboardResponse, UserSkillResponse
+from backend.app.analytics.schemas import AnalyticsDashboardResponse, UserSkillResponse, FunnelTelemetryResponse
 from backend.app.analytics.service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["Analytics & Progress"])
@@ -23,3 +23,13 @@ async def get_user_skills(
 ):
     skills = await AnalyticsService.get_skills(db, current_user.id)
     return [UserSkillResponse.model_validate(s) for s in skills]
+
+@router.get("/funnel", response_model=FunnelTelemetryResponse)
+async def get_funnel_telemetry(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns platform-wide activation funnel metrics, drop-off rates, and provider reliability signals.
+    """
+    return await AnalyticsService.get_funnel_telemetry(db)

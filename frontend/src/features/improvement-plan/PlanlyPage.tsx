@@ -30,6 +30,9 @@ import {
   Check,
   Trash2,
   Sparkles,
+  Download,
+  LayoutGrid,
+  ListFilter,
 } from 'lucide-react';
 
 export const PlanlyPage: React.FC = () => {
@@ -39,6 +42,7 @@ export const PlanlyPage: React.FC = () => {
   const topicParam = searchParams.get('topic');
 
   const [activeTab, setActiveTab] = useState<'sprint' | 'backlog'>('sprint');
+  const [planView, setPlanView] = useState<'timeline' | 'calendar'>('timeline');
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +51,10 @@ export const PlanlyPage: React.FC = () => {
 
   // Sprints / Schedule
   const [selectedDay, setSelectedDay] = useState<number>(1);
+  const [prepDays, setPrepDays] = useState<number>(7);
+  const [prepMinutes, setPrepMinutes] = useState<number>(45);
+  const [prepTargetDate, setPrepTargetDate] = useState<string>('');
+  const [isEvalConfigOpen, setIsEvalConfigOpen] = useState<boolean>(false);
 
   // Adapt Schedule Modal
   const [isAdaptModalOpen, setIsAdaptModalOpen] = useState<boolean>(false);
@@ -89,20 +97,14 @@ export const PlanlyPage: React.FC = () => {
     }
   }, [actionParam, topicParam]);
 
+  const [isGeneratingFromEval, setIsGeneratingFromEval] = useState<boolean>(false);
+
   const loadPlan = async () => {
     setLoading(true);
     setError(null);
     try {
       if (evaluationIdParam) {
-        try {
-          const generated = await api.post<Plan>(`/plans/generate/${evaluationIdParam}`);
-          setPlan(generated);
-          setSelectedDay(generated.current_day || 1);
-          setLoading(false);
-          return;
-        } catch {
-          // Fall back to active plan
-        }
+        setIsEvalConfigOpen(true);
       }
       const active = await api.get<Plan | null>('/plans/active');
       setPlan(active);
@@ -118,6 +120,85 @@ export const PlanlyPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGenerateFromEvaluation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!evaluationIdParam) return;
+    setIsGeneratingFromEval(true);
+    setActionError('');
+    try {
+      const generated = await api.post<Plan>(`/plans/generate/${evaluationIdParam}`, {
+        total_days: prepDays,
+        daily_study_minutes: prepMinutes,
+        target_date: prepTargetDate ? new Date(prepTargetDate).toISOString() : undefined,
+      });
+      setPlan(generated);
+      setSelectedDay(generated.current_day || 1);
+      setIsEvalConfigOpen(false);
+      setActiveTab('sprint');
+      loadBacklog();
+      if (generated.id) {
+        loadSuggestedBacklog(generated.id);
+      }
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to generate tailored sprint from evaluation.');
+    } finally {
+      setIsGeneratingFromEval(false);
+    }
+  };
+
+  const handleExportIcs = () => {
+    if (!plan) return;
+    const startDate = plan.start_date ? new Date(plan.start_date) : new Date(plan.created_at || Date.now());
+    
+    const icsLines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//SkillIssue//Planly Sprint//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      `X-WR-CALNAME:Planly: ${plan.title.replace(/[,;]/g, '')}`,
+    ];
+
+    plan.tasks.forEach((task) => {
+      const taskDate = new Date(startDate.getTime() + (task.day_number - 1) * 86400000);
+      const year = taskDate.getUTCFullYear();
+      const month = String(taskDate.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(taskDate.getUTCDate()).padStart(2, '0');
+      const dtStart = `${year}${month}${day}T090000Z`;
+      const endDate = new Date(taskDate.getTime() + (task.estimated_minutes || 45) * 60000);
+      const endYear = endDate.getUTCFullYear();
+      const endMonth = String(endDate.getUTCMonth() + 1).padStart(2, '0');
+      const endDay = String(endDate.getUTCDate()).padStart(2, '0');
+      const endHour = String(endDate.getUTCHours()).padStart(2, '0');
+      const endMin = String(endDate.getUTCMinutes()).padStart(2, '0');
+      const dtEnd = `${endYear}${endMonth}${endDay}T${endHour}${endMin}00Z`;
+
+      icsLines.push(
+        'BEGIN:VEVENT',
+        `UID:planly-${task.id}@skillissue.ai`,
+        `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+        `DTSTART:${dtStart}`,
+        `DTEND:${dtEnd}`,
+        `SUMMARY:Day ${task.day_number}: ${task.title.replace(/[,;]/g, '')}`,
+        `DESCRIPTION:${(task.description || '').replace(/\n/g, '\\n').replace(/[,;]/g, '')}`,
+        'STATUS:CONFIRMED',
+        'END:VEVENT'
+      );
+    });
+
+    icsLines.push('END:VCALENDAR');
+    const icsContent = icsLines.join('\r\n');
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${plan.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}-schedule.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const loadBacklog = async () => {
@@ -596,185 +677,393 @@ export const PlanlyPage: React.FC = () => {
                 </Card>
               )}
 
-              {/* Roadmap Timeline & Selected Day Tasks */}
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
-                {/* Timeline Selector */}
-                <div className="lg:col-span-1 space-y-2">
-                  <div className="flex items-center justify-between px-1 mb-2">
-                    <h3 className="text-xs font-semibold text-ink-subtle uppercase tracking-wider">
-                      Sprint Timeline
-                    </h3>
-                    <span className="text-xs text-ink-muted font-mono">Day {selectedDay} of {plan.total_days}</span>
+              {/* Target Interview Date Countdown Banner */}
+              {plan.target_date && (
+                <div className="p-4 bg-lime-50/70 border border-lime-200/90 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-lime-100 text-lime-800 flex items-center justify-center font-bold text-lg">
+                      🎯
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-lime-950">Target Interview Countdown</h4>
+                        <Badge variant="emerald" size="sm" className="font-mono text-[10px]">
+                          PACED BACKWARD
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-lime-800 mt-0.5">
+                        Target Date: {new Date(plan.target_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} • Pacing curriculum backward from your interview date.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="text-xs font-mono text-lime-800 font-semibold">
+                      {Math.max(0, Math.ceil((new Date(plan.target_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))} days remaining
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* View Switcher Bar & .ics Export */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <div className="flex items-center gap-1.5 p-1 bg-surface-subtle rounded-xl border border-surface-border">
+                  <button
+                    type="button"
+                    onClick={() => setPlanView('timeline')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                      planView === 'timeline'
+                        ? 'bg-white text-ink shadow-xs border border-surface-border'
+                        : 'text-ink-muted hover:text-ink'
+                    }`}
+                  >
+                    <ListFilter className="w-3.5 h-3.5" />
+                    <span>Sprint Timeline</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlanView('calendar')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                      planView === 'calendar'
+                        ? 'bg-white text-ink shadow-xs border border-surface-border'
+                        : 'text-ink-muted hover:text-ink'
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Calendar Grid</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportIcs}
+                    className="gap-1.5 text-xs text-ink-muted hover:text-ink"
+                    title="Export study schedule as .ics file for Google Calendar or Apple Calendar"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export Calendar (.ics)</span>
+                  </Button>
+                </div>
+              </div>
+
+              {/* RENDER VIEW: TIMELINE VS CALENDAR */}
+              {planView === 'timeline' ? (
+                /* Roadmap Timeline & Selected Day Tasks */
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
+                  {/* Timeline Selector */}
+                  <div className="lg:col-span-1 space-y-2">
+                    <div className="flex items-center justify-between px-1 mb-2">
+                      <h3 className="text-xs font-semibold text-ink-subtle uppercase tracking-wider">
+                        Sprint Timeline
+                      </h3>
+                      <span className="text-xs text-ink-muted font-mono">Day {selectedDay} of {plan.total_days}</span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {days.map((day) => {
+                        const dayTasks = plan.tasks.filter((t) => t.day_number === day);
+                        const dayCompleted = dayTasks.length > 0 && dayTasks.every((t) => t.is_completed);
+                        const isSelected = selectedDay === day;
+                        const isCurrent = plan.current_day === day;
+
+                        return (
+                          <button
+                            key={day}
+                            onClick={() => setSelectedDay(day)}
+                            className={`w-full text-left px-3.5 py-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-indigo-50/80 border-indigo-400 text-indigo-950 font-semibold shadow-xs'
+                                : 'bg-white border-surface-border text-ink-muted hover:border-zinc-300 hover:text-ink'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-mono ${
+                                  dayCompleted
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : isSelected
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-surface-subtle text-ink-muted'
+                                }`}
+                              >
+                                {day}
+                              </div>
+                              <span>Day {day}</span>
+                              {isCurrent && (
+                                <span className="text-[10px] bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded-full font-mono font-semibold">
+                                  TODAY
+                                </span>
+                              )}
+                            </div>
+
+                            {dayCompleted ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            ) : (
+                              <span className="text-xs font-mono text-ink-subtle">
+                                {dayTasks.filter((t) => t.is_completed).length}/{dayTasks.length}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5">
+                  {/* Day Tasks */}
+                  <div className="lg:col-span-3 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-semibold text-ink flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-indigo-600" />
+                        Day {selectedDay} Schedule
+                      </h3>
+                      <span className="text-xs text-ink-muted font-mono">
+                        {tasksForSelectedDay.reduce((acc, t) => acc + t.estimated_minutes, 0)} mins total
+                      </span>
+                    </div>
+
+                    {tasksForSelectedDay.length === 0 ? (
+                      <Card className="p-8 text-center bg-white border border-surface-border">
+                        <p className="text-sm text-ink-muted">No tasks scheduled for this day.</p>
+                      </Card>
+                    ) : (
+                      <div className="space-y-4">
+                        {tasksForSelectedDay.map((task) => (
+                          <Card
+                            key={task.id}
+                            className={`p-5 transition-all border ${
+                              task.is_completed
+                                ? 'bg-white/80 border-surface-border opacity-75'
+                                : 'bg-white border-surface-border hover:border-zinc-300 shadow-xs'
+                            }`}
+                          >
+                            <div className="flex items-start gap-4">
+                              <button
+                                onClick={() => handleToggleTask(task.id, task.is_completed)}
+                                className={`mt-1 flex-shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
+                                  task.is_completed
+                                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                                    : 'border-zinc-300 hover:border-indigo-500 bg-white'
+                                }`}
+                                title={task.is_completed ? 'Mark uncompleted' : 'Mark completed'}
+                              >
+                                {task.is_completed && <CheckCircle2 className="w-3.5 h-3.5" />}
+                              </button>
+
+                              <div className="flex-1 space-y-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="p-1 rounded bg-surface-subtle border border-surface-border">
+                                      {getTaskTypeIcon(task.task_type)}
+                                    </span>
+                                    <h4
+                                      className={`text-sm font-semibold text-ink ${
+                                        task.is_completed ? 'line-through text-ink-muted' : ''
+                                      }`}
+                                    >
+                                      {task.title}
+                                    </h4>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-1 text-xs text-ink-muted font-mono">
+                                      <Clock className="w-3 h-3" />
+                                      {task.estimated_minutes}m
+                                    </span>
+                                    <Badge variant="zinc" className="text-[10px] uppercase font-mono">
+                                      {task.task_type}
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                <p className="text-xs text-ink-muted leading-relaxed">{task.description}</p>
+
+                                {task.external_resources && task.external_resources.length > 0 && (
+                                  <div className="pt-2 border-t border-surface-border mt-3 space-y-1.5">
+                                    <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider block">
+                                      Recommended Resources:
+                                    </span>
+                                    <div className="flex flex-wrap gap-2">
+                                      {task.external_resources.map((res, idx) => (
+                                        <a
+                                          key={idx}
+                                          href={res.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100/70 px-2.5 py-1 rounded-md border border-indigo-200/80 transition-colors"
+                                        >
+                                          <span>{res.title}</span>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {task.task_type === 'coding' && (
+                                  <div className="pt-2">
+                                    <Link to="/coding">
+                                      <Button variant="secondary" size="sm" className="gap-1.5 text-xs">
+                                        <Code className="w-3.5 h-3.5 text-emerald-600" />
+                                        Open Coding Practice
+                                      </Button>
+                                    </Link>
+                                  </div>
+                                )}
+
+                                {task.task_type === 'reassessment' && (
+                                  <div className="pt-2">
+                                    <Link to="/interviews/new">
+                                      <Button variant="primary" size="sm" className="gap-1.5 text-xs">
+                                        <PlayCircle className="w-3.5 h-3.5" />
+                                        Launch Reassessment Interview
+                                      </Button>
+                                    </Link>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* Calendar Grid View */
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-bold text-ink">Calendar Study Schedule</h3>
+                      <p className="text-xs text-ink-muted">
+                        Interactive day-by-day calendar grid. Check off tasks directly or click into practice.
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono text-ink-muted">
+                      {completedCount} of {totalCount} completed ({progressPercent}%)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {days.map((day) => {
                       const dayTasks = plan.tasks.filter((t) => t.day_number === day);
                       const dayCompleted = dayTasks.length > 0 && dayTasks.every((t) => t.is_completed);
-                      const isSelected = selectedDay === day;
                       const isCurrent = plan.current_day === day;
+                      const startDate = plan.start_date ? new Date(plan.start_date) : new Date(plan.created_at || Date.now());
+                      const dayDate = new Date(startDate.getTime() + (day - 1) * 86400000);
 
                       return (
-                        <button
+                        <div
                           key={day}
-                          onClick={() => setSelectedDay(day)}
-                          className={`w-full text-left px-3.5 py-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-between ${
-                            isSelected
-                              ? 'bg-indigo-50/80 border-indigo-400 text-indigo-950 font-semibold shadow-xs'
-                              : 'bg-white border-surface-border text-ink-muted hover:border-zinc-300 hover:text-ink'
+                          className={`rounded-2xl border p-4 flex flex-col justify-between transition-all ${
+                            dayCompleted
+                              ? 'bg-emerald-50/40 border-emerald-200'
+                              : isCurrent
+                              ? 'bg-white border-indigo-400 ring-2 ring-indigo-100 shadow-sm'
+                              : 'bg-white border-surface-border hover:border-zinc-300'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-mono ${
-                                dayCompleted
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : isSelected
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'bg-surface-subtle text-ink-muted'
-                              }`}
-                            >
-                              {day}
+                          <div>
+                            {/* Day Header */}
+                            <div className="flex items-center justify-between pb-3 border-b border-surface-border mb-3">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-mono font-bold ${
+                                    dayCompleted
+                                      ? 'bg-emerald-600 text-white'
+                                      : isCurrent
+                                      ? 'bg-indigo-600 text-white'
+                                      : 'bg-surface-subtle text-ink'
+                                  }`}
+                                >
+                                  {day}
+                                </span>
+                                <div>
+                                  <h4 className="font-bold text-xs text-ink">Day {day}</h4>
+                                  <span className="text-[10px] text-ink-muted">
+                                    {dayDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div>
+                                {dayCompleted ? (
+                                  <Badge variant="emerald" size="sm" className="gap-1 text-[10px]">
+                                    <Check className="w-3 h-3" />
+                                    Done
+                                  </Badge>
+                                ) : isCurrent ? (
+                                  <Badge variant="brand" size="sm" className="text-[10px]">
+                                    Today
+                                  </Badge>
+                                ) : (
+                                  <span className="text-[11px] font-mono text-ink-subtle">
+                                    {dayTasks.filter((t) => t.is_completed).length}/{dayTasks.length}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <span>Day {day}</span>
-                            {isCurrent && (
-                              <span className="text-[10px] bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded-full font-mono font-semibold">
-                                TODAY
-                              </span>
-                            )}
+
+                            {/* Task List */}
+                            <div className="space-y-2">
+                              {dayTasks.map((task) => (
+                                <div
+                                  key={task.id}
+                                  className={`p-2.5 rounded-xl border text-xs transition-all ${
+                                    task.is_completed
+                                      ? 'bg-white/60 border-surface-border text-ink-muted line-through'
+                                      : 'bg-surface-subtle border-surface-border text-ink hover:bg-white'
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleTask(task.id, task.is_completed)}
+                                      className={`mt-0.5 w-4 h-4 rounded shrink-0 border flex items-center justify-center transition-colors ${
+                                        task.is_completed
+                                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                                          : 'border-zinc-300 hover:border-indigo-600 bg-white'
+                                      }`}
+                                    >
+                                      {task.is_completed && <Check className="w-3 h-3" />}
+                                    </button>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1 font-semibold text-xs leading-tight">
+                                        <span className="shrink-0">{getTaskTypeIcon(task.task_type)}</span>
+                                        <span className="truncate">{task.title}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-1 mt-1 text-[10px] text-ink-muted font-mono">
+                                        <span>{task.estimated_minutes}m</span>
+                                        <span className="uppercase">{task.task_type}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
 
-                          {dayCompleted ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          ) : (
-                            <span className="text-xs font-mono text-ink-subtle">
-                              {dayTasks.filter((t) => t.is_completed).length}/{dayTasks.length}
+                          <div className="pt-3 border-t border-surface-border mt-3 flex items-center justify-between text-[11px]">
+                            <span className="text-ink-muted font-mono">
+                              {dayTasks.reduce((acc, t) => acc + t.estimated_minutes, 0)} mins total
                             </span>
-                          )}
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedDay(day);
+                                setPlanView('timeline');
+                              }}
+                              className="text-indigo-600 hover:text-indigo-800 font-medium"
+                            >
+                              Expand &rarr;
+                            </button>
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
                 </div>
-
-                {/* Day Tasks */}
-                <div className="lg:col-span-3 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-ink flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-indigo-600" />
-                      Day {selectedDay} Schedule
-                    </h3>
-                    <span className="text-xs text-ink-muted font-mono">
-                      {tasksForSelectedDay.reduce((acc, t) => acc + t.estimated_minutes, 0)} mins total
-                    </span>
-                  </div>
-
-                  {tasksForSelectedDay.length === 0 ? (
-                    <Card className="p-8 text-center bg-white border border-surface-border">
-                      <p className="text-sm text-ink-muted">No tasks scheduled for this day.</p>
-                    </Card>
-                  ) : (
-                    <div className="space-y-4">
-                      {tasksForSelectedDay.map((task) => (
-                        <Card
-                          key={task.id}
-                          className={`p-5 transition-all border ${
-                            task.is_completed
-                              ? 'bg-white/80 border-surface-border opacity-75'
-                              : 'bg-white border-surface-border hover:border-zinc-300 shadow-xs'
-                          }`}
-                        >
-                          <div className="flex items-start gap-4">
-                            <button
-                              onClick={() => handleToggleTask(task.id, task.is_completed)}
-                              className={`mt-1 flex-shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
-                                task.is_completed
-                                  ? 'bg-emerald-600 border-emerald-600 text-white'
-                                  : 'border-zinc-300 hover:border-indigo-500 bg-white'
-                              }`}
-                              title={task.is_completed ? 'Mark uncompleted' : 'Mark completed'}
-                            >
-                              {task.is_completed && <CheckCircle2 className="w-3.5 h-3.5" />}
-                            </button>
-
-                            <div className="flex-1 space-y-2">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <span className="p-1 rounded bg-surface-subtle border border-surface-border">
-                                    {getTaskTypeIcon(task.task_type)}
-                                  </span>
-                                  <h4
-                                    className={`text-sm font-semibold text-ink ${
-                                      task.is_completed ? 'line-through text-ink-muted' : ''
-                                    }`}
-                                  >
-                                    {task.title}
-                                  </h4>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="inline-flex items-center gap-1 text-xs text-ink-muted font-mono">
-                                    <Clock className="w-3 h-3" />
-                                    {task.estimated_minutes}m
-                                  </span>
-                                  <Badge variant="zinc" className="text-[10px] uppercase font-mono">
-                                    {task.task_type}
-                                  </Badge>
-                                </div>
-                              </div>
-
-                              <p className="text-xs text-ink-muted leading-relaxed">{task.description}</p>
-
-                              {task.external_resources && task.external_resources.length > 0 && (
-                                <div className="pt-2 border-t border-surface-border mt-3 space-y-1.5">
-                                  <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider block">
-                                    Recommended Resources:
-                                  </span>
-                                  <div className="flex flex-wrap gap-2">
-                                    {task.external_resources.map((res, idx) => (
-                                      <a
-                                        key={idx}
-                                        href={res.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center gap-1.5 text-xs text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100/70 px-2.5 py-1 rounded-md border border-indigo-200/80 transition-colors"
-                                      >
-                                        <span>{res.title}</span>
-                                        <ExternalLink className="w-3 h-3" />
-                                      </a>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {task.task_type === 'coding' && (
-                                <div className="pt-2">
-                                  <Link to="/coding">
-                                    <Button variant="secondary" size="sm" className="gap-1.5 text-xs">
-                                      <Code className="w-3.5 h-3.5 text-emerald-600" />
-                                      Open Coding Practice
-                                    </Button>
-                                  </Link>
-                                </div>
-                              )}
-
-                              {task.task_type === 'reassessment' && (
-                                <div className="pt-2">
-                                  <Link to="/interviews/new">
-                                    <Button variant="primary" size="sm" className="gap-1.5 text-xs">
-                                      <PlayCircle className="w-3.5 h-3.5" />
-                                      Launch Reassessment Interview
-                                    </Button>
-                                  </Link>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
             </>
           )}
         </div>
@@ -1209,6 +1498,7 @@ export const PlanlyPage: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-4 border-t border-surface-border">
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={() => setIsAdaptModalOpen(false)}
@@ -1217,6 +1507,7 @@ export const PlanlyPage: React.FC = () => {
               Cancel
             </Button>
             <Button
+              type="button"
               variant="primary"
               size="sm"
               onClick={handleAdaptSchedule}
@@ -1227,6 +1518,117 @@ export const PlanlyPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* EVALUATION SPRINT CONFIGURATION MODAL */}
+      <Modal
+        isOpen={isEvalConfigOpen}
+        onClose={() => setIsEvalConfigOpen(false)}
+        title="Generate Targeted Study Sprint"
+      >
+        <form onSubmit={handleGenerateFromEvaluation} className="space-y-4 text-xs">
+          <p className="text-ink-muted leading-relaxed">
+            Configure the pace and daily commitment for your personalized curriculum synthesized from your recent
+            interview evaluation diagnostics.
+          </p>
+
+          <div>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
+              Sprint Duration (Days)
+            </label>
+            <div className="grid grid-cols-4 gap-2 mb-2">
+              {[7, 14, 21, 30].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setPrepDays(d)}
+                  className={`py-2 px-3 rounded-lg border font-mono font-semibold transition-all ${
+                    prepDays === d
+                      ? 'bg-indigo-50 border-indigo-500 text-indigo-900 shadow-xs'
+                      : 'bg-white border-surface-border text-ink-muted hover:border-zinc-300'
+                  }`}
+                >
+                  {d} Days
+                </button>
+              ))}
+            </div>
+            <Input
+              type="number"
+              min={3}
+              max={60}
+              value={prepDays}
+              onChange={(e) => setPrepDays(Math.max(3, Math.min(60, Number(e.target.value))))}
+              helperText="Choose between a 3-day sprint and a 60-day deep roadmap."
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
+              Daily Study Commitment (Minutes)
+            </label>
+            <div className="grid grid-cols-5 gap-1.5 mb-2">
+              {[30, 45, 60, 90, 120].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setPrepMinutes(m)}
+                  className={`py-1.5 px-2 rounded-lg border font-mono font-semibold text-[11px] transition-all ${
+                    prepMinutes === m
+                      ? 'bg-indigo-50 border-indigo-500 text-indigo-900 shadow-xs'
+                      : 'bg-white border-surface-border text-ink-muted hover:border-zinc-300'
+                  }`}
+                >
+                  {m}m
+                </button>
+              ))}
+            </div>
+            <Input
+              type="number"
+              min={15}
+              max={180}
+              step={15}
+              value={prepMinutes}
+              onChange={(e) => setPrepMinutes(Math.max(15, Math.min(180, Number(e.target.value))))}
+              helperText="How many minutes per day can you commit?"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1.5">
+              Target Interview Date (Optional)
+            </label>
+            <input
+              type="date"
+              value={prepTargetDate}
+              onChange={(e) => setPrepTargetDate(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-white border border-surface-border rounded-md text-ink focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <p className="text-[11px] text-ink-muted mt-1">
+              If provided, Planly will pace the sprint backward from your target interview date.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-surface-border">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsEvalConfigOpen(false)}
+              disabled={isGeneratingFromEval}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={isGeneratingFromEval}
+            >
+              Generate Calibrated Sprint
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };
+

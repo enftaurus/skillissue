@@ -13,6 +13,11 @@ import { ProgressAnalyticsPage } from './features/progress/ProgressAnalyticsPage
 import { CodingPracticePage } from './features/coding/CodingPracticePage';
 import { ProjectCatalogPage } from './features/projects/ProjectCatalogPage';
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage';
+import { CompanyTracksPage } from './features/tracks/CompanyTracksPage';
+import { CompanyTrackDetailPage } from './features/tracks/CompanyTrackDetailPage';
+import { EnterprisePortalPage } from './features/enterprise/EnterprisePortalPage';
+import { CandidateAssessmentPage } from './features/enterprise/CandidateAssessmentPage';
+import { AdminFunnelPage } from './features/admin/AdminFunnelPage';
 import { ProviderSettingsPage } from './features/provider-settings/ProviderSettingsPage';
 import { AwsSetupGuidePage } from './features/provider-settings/AwsSetupGuidePage';
 import { AwsBedrockOnboardingPage } from './features/provider-settings/AwsBedrockOnboardingPage';
@@ -75,6 +80,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     location.pathname.startsWith('/interviews/') && location.pathname !== '/interviews/new';
   const isProjectWorkspace =
     location.pathname.startsWith('/projects/') && location.pathname !== '/projects';
+  const isCandidateAssessment = location.pathname.startsWith('/assess/take/');
 
   if (!user || isAuthRoute) {
     return (
@@ -84,8 +90,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
-  // Focus Mode: zero distraction for interview session & project workspace
-  if (isInterviewSession || isProjectWorkspace) {
+  // Focus Mode: zero distraction for interview session, project workspace & hiring assessment runner
+  if (isInterviewSession || isProjectWorkspace || isCandidateAssessment) {
     return (
       <div className="min-h-screen flex flex-col bg-surface-warm font-sans text-ink">
         <main className="flex-1 flex flex-col">{children}</main>
@@ -217,6 +223,40 @@ export const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+            <Route
+              path="/tracks"
+              element={
+                <ProtectedRoute>
+                  <CompanyTracksPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/tracks/:slug"
+              element={
+                <ProtectedRoute>
+                  <CompanyTrackDetailPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/enterprise"
+              element={
+                <ProtectedRoute>
+                  <EnterprisePortalPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/assess/take/:token" element={<CandidateAssessmentPage />} />
+            <Route
+              path="/admin/funnel"
+              element={
+                <ProtectedRoute>
+                  <AdminFunnelPage />
+                </ProtectedRoute>
+              }
+            />
+
             <Route
               path="/settings/provider"
               element={

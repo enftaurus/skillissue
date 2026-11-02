@@ -25,6 +25,7 @@ This directory contains records of all architectural, infrastructural, and secur
 | [0017](0017-consolidated-bedrock-client-lifecycle-and-bounded-cache.md) | Consolidated Bedrock Client Lifecycle, Bounded LRU Cache, and Zero-Decryption Cache Hits | 2026-10-20 | Accepted | Consolidated ModelClientFactory/Resolver pipeline, zero DB/decryption on cache hit, bounded LRU/idle cache, config versioning, and atomic usage accounting. |
 | [0018](0018-azure-openai-byoc-provider.md) | Azure OpenAI BYOC Provider for Student Accessibility | 2026-10-28 | Accepted | Extends BYOC architecture to Azure OpenAI Service (GPT-4o, GPT-4o-mini, Phi-3.5) with student friction reduction, dual-cloud onboarding, and billing warnings. |
 | [0019](0019-cross-browser-cloud-neural-audio-tts-stt.md) | Cross-Browser Cloud Neural Audio Pipeline (TTS & STT) | 2026-11-02 | Accepted | Cloud neural TTS (Azure OpenAI, AWS Polly, Vaani, Edge Neural) and MediaRecorder STT for studio clarity and cross-browser parity in Firefox, Chrome, and Safari. |
+| [0020](0020-tiered-company-tracks-enterprise-exam-and-retest-delta.md) | Tiered Company Career Tracks, Enterprise Hiring Exam Portal, and Closed-Loop Retest Engine | 2026-11-03 | Accepted | Gold/Silver/Bronze company tracks, multi-round enterprise exam runner with anti-cheating telemetry, Planly interactive calendar grid with .ics export, and closed-loop retest delta cards. |
 
 ---
 

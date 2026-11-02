@@ -484,3 +484,132 @@ export interface CodingSubmission {
   created_at: string;
 }
 
+// Company Tracks (Tiered Mines & Day-1 Open)
+export interface CompanyProblemSummary {
+  id: string;
+  title: string;
+  slug: string;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  frequency_score: number;
+  acceptance_rate: number;
+  topics: string[];
+  order_index: number;
+  is_unlocked: boolean;
+  is_solved: boolean;
+}
+
+export interface CompanyProblemDetail extends CompanyProblemSummary {
+  description: string;
+  starter_code: Record<string, string>;
+  test_cases: Array<{ input: string; expected: string }>;
+}
+
+export interface CompanyTrackSummary {
+  id: string;
+  name: string;
+  slug: string;
+  tier: 'gold' | 'silver' | 'bronze';
+  role_title: string;
+  description: string;
+  community_tips: string[];
+  total_problems: number;
+  unlocked_count: number;
+  solved_count: number;
+  logo_icon: string;
+  is_gold_mine: boolean;
+}
+
+export interface CompanyTrackDetail extends CompanyTrackSummary {
+  problems: CompanyProblemSummary[];
+}
+
+// Retest & Before/After Score Delta
+export interface RetestSession {
+  id: string;
+  original_interview_id: string;
+  original_evaluation_id: string;
+  retest_interview_id?: string;
+  weakness_topic: string;
+  baseline_score: number;
+  retest_score: number;
+  delta_score: number;
+  verified_improvements: string[];
+  status: 'pending' | 'in_progress' | 'completed';
+  created_at: string;
+}
+
+// Enterprise & Campus Hiring Exam
+export interface RoundConfig {
+  round_type: 'oa_dsa' | 'ai_project' | 'tough_interview' | 'code_comprehension';
+  name: string;
+  time_limit_minutes: number;
+  is_enabled: boolean;
+  config?: Record<string, any>;
+}
+
+export interface AssessmentPipeline {
+  id: string;
+  title: string;
+  target_role: string;
+  job_description: string;
+  rounds: RoundConfig[];
+  is_active: boolean;
+  invite_token: string;
+  invite_url: string;
+  candidates_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CandidateAssessment {
+  id: string;
+  pipeline_id: string;
+  pipeline_title?: string;
+  target_role?: string;
+  candidate_name: string;
+  candidate_email: string;
+  access_token: string;
+  status: 'invited' | 'in_progress' | 'completed' | 'flagged';
+  current_round_index: number;
+  round_results: Record<string, any>;
+  composite_score: number;
+  integrity_signals: {
+    window_blurs: number;
+    copy_paste_count: number;
+    speech_code_divergence: number;
+  };
+  rounds: RoundConfig[];
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface PipelineLeaderboard {
+  pipeline_id: string;
+  pipeline_title: string;
+  target_role: string;
+  total_candidates: number;
+  completed_candidates: number;
+  average_score: number;
+  candidates: CandidateAssessment[];
+}
+
+// Funnel Telemetry
+export interface FunnelStep {
+  step_name: string;
+  count: number;
+  conversion_rate: number;
+  drop_off_rate: number;
+  description: string;
+}
+
+export interface FunnelTelemetry {
+  total_signups: number;
+  first_interview_started: number;
+  evaluations_viewed: number;
+  planly_plans_created: number;
+  retests_completed: number;
+  steps: FunnelStep[];
+  provider_reliability: Record<string, any>;
+  conversion_headline: string;
+}
+

@@ -84,14 +84,52 @@ Practice → Self-evaluate → Receive evidence-based feedback → Improve (Plan
 - **Prompt Quality Evaluator**: AI analysis of the candidate's prompts (clarity, specificity, context efficiency) with actionable recommendations on writing better engineering prompts.
 - **Timed Project Mode**: 25-minute countdown clock simulating realistic live technical screens.
 
-### 7. Planly — Adaptive Improvement Engine
-- **Dynamic 7-Day Roadmaps**: Automatically generates multi-day learning plans addressing specific diagnostic weaknesses discovered during interviews.
+### 7. Planly — Adaptive Improvement Engine & Calendar
+- **Dynamic Multi-Day Roadmaps**: Automatically generates multi-day learning plans (7, 14, 21, or 30 days) addressing specific diagnostic weaknesses discovered during interviews.
+- **Pre-Generation Configuration**: Configure duration, daily study commitment (30, 45, 60, 90, 120 mins), and target interview date before curriculum generation.
+- **Backward Interview Pacing**: Dynamically paces the daily curriculum backward from your target placement date, showing a live countdown banner.
+- **Sprint Timeline & Calendar Grid**: Toggle effortlessly between linear Day-by-Day Sprint mode and interactive Calendar Grid mode with clickable task chips and real-time completion tracking.
+- **One-Click RFC 5545 `.ics` Export**: Sync your customized study plan directly to Google Calendar, Apple Calendar, or Microsoft Outlook.
 - **Concrete Daily Tasks**: Practical balance of conceptual reading, coding challenges, system design exercises, and reassessments.
 - **Curated Learning Resources**: Links to authoritative engineering documentation, RFCs, and high-signal engineering blogs.
 - **Independent Learning Backlog**: Decoupled backlog of self-selected engineering topics to study outside scheduled plans.
 - **Non-Mutating Plan Adaptation**: Preview new schedule adaptations before applying changes to preserve historical progress.
 
-### 8. Dual-Cloud BYOC (Bring Your Own Cloud) & Cost Transparency
+### 8. Closed-Loop Retest Engine & Before/After Score Delta
+- **Direct-from-Diagnosis Retest**: Launch a focused, 3-question adaptive retest directly from any diagnosed weakness on your evaluation report.
+- **Targeted Gap Reassessment**: Evaluates whether the candidate has rectified the specific conceptual or coding blind spot without repeating the full interview.
+- **Verified Score Delta**: Visual scorecard displaying Before vs After scores, numerical delta badge (e.g. `+18%`), and concrete quotes of newly demonstrated mastery.
+- **Verifiable Growth Loop**: Closes the loop from failure to targeted practice to verified proof of improvement.
+
+### 9. Tiered Company Career Tracks (Placement Packs)
+- **Community-Curated Intelligence**: Sourced from actual candidate debriefs and experiences shared on Reddit and LeetCode Discuss.
+- **Tiered Company Mines**:
+  - **Gold Tier**: High-bar engineering benchmarks (Uber, Google, Meta).
+  - **Silver Tier**: Product and enterprise powerhouses (Amazon, Microsoft, Atlassian).
+  - **Bronze Tier**: Fast-paced scaleups and high-volume campus recruiters (Swiggy, TCS Digital, Adobe).
+- **Day-1 Openings & Progressive Unlocking**: Exactly 2–3 authentic company interview questions open from Day 1; subsequent questions unlock progressively as problems are solved.
+- **Direct Mock Interview Launcher**: Start a tailored, company-specific mock interview matching the firm's exact rubric and bar.
+
+### 10. Enterprise & Campus Hiring Exam Portal (`/enterprise`)
+- **JD & Role-Based Pipeline Configurator**: Recruiters and engineering managers upload job descriptions to generate multi-stage assessment pipelines:
+  - **Round 1**: Online Assessment (DSA Arena with isolated sandbox).
+  - **Round 2**: AI Take-Home System Project (Real-world system codebase with read-only AI copilot).
+  - **Round 3**: Anti-Sycophancy Oral Technical Interview (Voice/Text adaptive AI evaluation).
+  - **Round 4**: Google Code Comprehension (*Coming Soon*).
+- **Public Candidate Assessment Runner (`/assess/take/:token`)**: Clean, distraction-free candidate test-taking experience with automated token-based authentication.
+- **Anti-Cheating & Integrity Proctoring**: Real-time tracking of window blur events, tab switching, and duration telemetry with integrity indicators.
+- **Recruiter Candidate Cohort Leaderboard**: Sort candidates by overall composite score, review per-round breakdowns, and audit integrity telemetry flags.
+
+### 11. Admin Funnel & Observability Dashboard (`/admin/funnel`)
+- **Step-by-Step Conversion Funnel**: Telemetry tracking the full student journey:
+  1. User Signups
+  2. Cloud BYOC Connected
+  3. First Interview Completed
+  4. Diagnostic Evaluation Viewed
+  5. Retest / Planly Completed
+- **Provider Health & Latency Telemetry**: Real-time status indicators and ping checks for inference providers (AWS Bedrock, Azure OpenAI, Mock) and neural speech pipelines (Edge TTS, Whisper).
+
+### 12. Dual-Cloud BYOC (Bring Your Own Cloud) & Cost Transparency
 - **Dual Cloud Support**: Connect your own **Amazon Bedrock** or **Microsoft Azure OpenAI** account.
 - **Zero Platform Markup**: Pay raw inference costs directly to AWS or Microsoft.
 - **Automated IAM Policy Generator**: Generates least-privilege IAM policies scoped only to required foundation models (`bedrock:InvokeModel`).
@@ -99,7 +137,7 @@ Practice → Self-evaluate → Receive evidence-based feedback → Improve (Plan
 - **Live Cost & Credit Tracker**: Real-time header badge tracking tokens consumed, estimated USD cost, and configurable monthly token/spend ceiling limits.
 - **Zero-Cost Offline Mode**: Built-in `MockProvider` enables 100% offline local development without AWS or Azure accounts.
 
-### 9. Senior UI/UX Experience
+### 13. Senior UI/UX Experience
 - **Strict Light Theme**: Warm white surfaces (`#FAFAFA`, `#F4F4F5`, `#FFFFFF`), subtle borders (`#E4E4E7`), crisp dark text (`#09090B`), and restrained acid-lime and indigo accents.
 - **Command Palette (`Cmd+K` / `Ctrl+K`)**: Quick navigation, instant session access, and system commands.
 - **Rich Data Visualizations**: Recharts-powered radar skill charts, divergence delta bars, and historical competency trend lines.
@@ -191,6 +229,7 @@ Every major architectural choice in Skill Issue is documented in [`docs/decision
 - [`0017`](file:///home/rajababu/intern/skillissue/docs/decisions/0017-consolidated-bedrock-client-lifecycle-and-bounded-cache.md) — Bounded LRU Client Lifecycle Cache
 - [`0018`](file:///home/rajababu/intern/skillissue/docs/decisions/0018-azure-openai-byoc-provider.md) — Azure OpenAI BYOC Provider
 - [`0019`](file:///home/rajababu/intern/skillissue/docs/decisions/0019-cross-browser-cloud-neural-audio-tts-stt.md) — Cross-Browser Cloud Neural Audio (TTS & STT)
+- [`0020`](file:///home/rajababu/intern/skillissue/docs/decisions/0020-tiered-company-tracks-enterprise-exam-and-retest-delta.md) — Tiered Company Career Tracks, Enterprise Hiring Exam Portal, Planly Calendar Grid, and Closed-Loop Retest Delta
 
 ---
 

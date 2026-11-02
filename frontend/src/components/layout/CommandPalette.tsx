@@ -11,6 +11,9 @@ import {
   BookOpen,
   ArrowRight,
   Sparkles,
+  Target,
+  Building2,
+  BarChart3,
 } from 'lucide-react';
 
 interface PaletteItem {
@@ -50,6 +53,30 @@ const PALETTE_ITEMS: PaletteItem[] = [
     path: '/interviews/new',
     category: 'Practice',
     shortcut: '⌘3',
+  },
+  {
+    id: 'nav-tracks',
+    title: 'Company Career Tracks (Mines)',
+    subtitle: 'Uber, Google, Amazon, Meta, Swiggy curated from community experiences',
+    icon: Target,
+    path: '/tracks',
+    category: 'Practice',
+  },
+  {
+    id: 'nav-enterprise',
+    title: 'Enterprise & Campus Hiring Portal',
+    subtitle: 'Recruiter pipeline configurator, custom candidate assessments & leaderboard',
+    icon: Building2,
+    path: '/enterprise',
+    category: 'Configuration',
+  },
+  {
+    id: 'nav-funnel',
+    title: 'Admin Funnel & Observability',
+    subtitle: 'Real-time conversion metrics, drop-off tracking, and provider telemetry',
+    icon: BarChart3,
+    path: '/admin/funnel',
+    category: 'Configuration',
   },
   {
     id: 'nav-planly',

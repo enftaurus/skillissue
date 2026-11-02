@@ -12,7 +12,7 @@ import {
   Cell,
 } from 'recharts';
 import { api } from '../../lib/api';
-import { Evaluation, EvaluationComparison, Plan, WeaknessAnalysisItem, LearningBacklogItem } from '../../lib/types';
+import { Evaluation, EvaluationComparison, Plan, WeaknessAnalysisItem, LearningBacklogItem, RetestSession } from '../../lib/types';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -34,6 +34,8 @@ import {
   Download,
   User,
   Bot,
+  TrendingUp,
+  RotateCcw,
 } from 'lucide-react';
 
 export const EvaluationPage: React.FC = () => {
@@ -42,9 +44,11 @@ export const EvaluationPage: React.FC = () => {
 
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [comparison, setComparison] = useState<EvaluationComparison | null>(null);
+  const [retests, setRetests] = useState<RetestSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [isGeneratingEval, setIsGeneratingEval] = useState(false);
+  const [retestingTopic, setRetestingTopic] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [expandedQuestions, setExpandedQuestions] = useState<Record<number, boolean>>({ 0: true });
   const [activeChartTab, setActiveChartTab] = useState<'diverging' | 'grouped'>('grouped');
@@ -64,6 +68,12 @@ export const EvaluationPage: React.FC = () => {
         setComparison(compData);
       } catch {
         // comparison can be empty if self-eval wasn't submitted
+      }
+      try {
+        const retestData = await api.get<RetestSession[]>(`/evaluations/${id}/retests`);
+        setRetests(retestData);
+      } catch {
+        // retests can be empty
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load evaluation findings.');
@@ -148,6 +158,27 @@ export const EvaluationPage: React.FC = () => {
         weakness.learning_objective || ''
       )}`
     );
+  };
+
+  const handleInitiateRetest = async (topic: string, baselineScore?: number) => {
+    if (!evaluation) return;
+    setRetestingTopic(topic);
+    try {
+      const res = await api.post<RetestSession>(`/evaluations/${evaluation.id}/retest`, {
+        weakness_topic: topic,
+        baseline_score: baselineScore || evaluation.overall_score || 50,
+      });
+      if (res.retest_interview_id) {
+        navigate(`/interviews/${res.retest_interview_id}`);
+      } else {
+        const retestData = await api.get<RetestSession[]>(`/evaluations/${evaluation.id}/retests`);
+        setRetests(retestData);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to initialize adaptive retest interview.');
+    } finally {
+      setRetestingTopic(null);
+    }
   };
 
   const getFullTranscriptText = (): string => {
@@ -495,6 +526,108 @@ export const EvaluationPage: React.FC = () => {
         {/* Evidenced Weaknesses with Action A & Action B */}
       </div>
 
+      {/* CLOSED-LOOP RETEST DELTAS & VERIFIED PROGRESS */}
+      {retests && retests.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-lime-600" />
+              <h3 className="text-base font-bold text-ink">Closed-Loop Retest Deltas & Verified Progress</h3>
+              <Badge variant="emerald" className="font-mono text-[10px]">
+                {retests.length} Retest{retests.length > 1 ? 's' : ''} Tracked
+              </Badge>
+            </div>
+            <span className="text-xs text-ink-subtle hidden sm:inline">
+              Evidence of measurable before vs after score improvement
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {retests.map((rt) => {
+              const isPositiveDelta = (rt.delta_score || 0) >= 0;
+              return (
+                <Card
+                  key={rt.id}
+                  className="p-5 border-lime-200/90 bg-white space-y-4 shadow-xs hover:border-lime-300 transition-all"
+                >
+                  <div className="flex items-center justify-between border-b border-surface-border pb-3">
+                    <div>
+                      <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider block">
+                        Retested Weakness
+                      </span>
+                      <h4 className="font-bold text-sm text-ink mt-0.5">{rt.weakness_topic}</h4>
+                    </div>
+                    <Badge
+                      variant={rt.status === 'completed' ? 'emerald' : 'zinc'}
+                      size="sm"
+                      className="font-mono uppercase text-[10px]"
+                    >
+                      {rt.status}
+                    </Badge>
+                  </div>
+
+                  {/* Score Comparison */}
+                  <div className="p-3 bg-surface-subtle rounded-xl border border-surface-border flex items-center justify-between">
+                    <div className="text-center sm:text-left">
+                      <span className="text-[10px] text-ink-muted uppercase block">Baseline Score</span>
+                      <span className="font-mono font-bold text-base text-ink">
+                        {Math.round(rt.baseline_score)}%
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col items-center px-3">
+                      <Badge
+                        variant={isPositiveDelta ? 'emerald' : 'zinc'}
+                        className="font-mono font-bold text-xs gap-1"
+                      >
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        {isPositiveDelta ? `+${Math.round(rt.delta_score)}%` : `${Math.round(rt.delta_score)}%`}
+                      </Badge>
+                      <span className="text-[10px] text-ink-subtle mt-0.5">Verified Delta</span>
+                    </div>
+
+                    <div className="text-center sm:text-right">
+                      <span className="text-[10px] text-ink-muted uppercase block">Retest Score</span>
+                      <span className="font-mono font-bold text-base text-emerald-700">
+                        {rt.retest_score != null ? `${Math.round(rt.retest_score)}%` : 'In Progress'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Verified Improvements */}
+                  {rt.verified_improvements && rt.verified_improvements.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider block">
+                        Evidence of Mastery:
+                      </span>
+                      <ul className="space-y-1 text-xs text-ink">
+                        {rt.verified_improvements.map((imp, idx) => (
+                          <li key={idx} className="flex items-start gap-2">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-lime-600 shrink-0 mt-0.5" />
+                            <span>{imp}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {rt.status === 'in_progress' && rt.retest_interview_id && (
+                    <div className="pt-2 border-t border-surface-border flex justify-end">
+                      <Link to={`/interviews/${rt.retest_interview_id}`}>
+                        <Button size="sm" variant="primary" className="text-xs gap-1.5 bg-lime-600 hover:bg-lime-700 text-white border-lime-600">
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Resume Retest Interview
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -504,7 +637,7 @@ export const EvaluationPage: React.FC = () => {
             </Badge>
           </div>
           <span className="text-xs text-ink-subtle hidden sm:inline">
-            Act on findings individually: commit to a Planly schedule or queue for later revisit
+            Act on findings individually: commit to a Planly schedule, retest immediately, or queue for later revisit
           </span>
         </div>
 
@@ -524,6 +657,7 @@ export const EvaluationPage: React.FC = () => {
           ).map((item) => {
             const isQueued = !!queueSuccess[item.id];
             const isQInProgress = !!queueLoading[item.id];
+            const isRetesting = retestingTopic === item.topic;
 
             return (
               <Card key={item.id} className="p-5 border-amber-200/80 bg-white space-y-3.5 shadow-xs">
@@ -586,7 +720,7 @@ export const EvaluationPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Action Buttons: Action A & Action B */}
+                {/* Action Buttons: Action A, Action B, & Action C Retest */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-100">
                   <span className="text-xs text-slate-500">
                     {queueSuccess[item.id] ? (
@@ -595,11 +729,25 @@ export const EvaluationPage: React.FC = () => {
                         {queueSuccess[item.id]}
                       </span>
                     ) : (
-                      'Act individually: queue for later revisit or schedule in Planly'
+                      'Act individually: retest now, schedule in Planly, or queue for later'
                     )}
                   </span>
 
-                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                  <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap justify-end">
+                    {/* Action C: Retest Weakness */}
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleInitiateRetest(item.topic)}
+                      isLoading={isRetesting}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-xs bg-lime-600 hover:bg-lime-700 text-white border-lime-600 shadow-xs"
+                      title="Launch a focused 3-question adaptive retest to measure your improvement delta"
+                    >
+                      <Flame className="w-3.5 h-3.5 text-lime-200" />
+                      <span>Retest Weakness</span>
+                    </Button>
+
                     {/* Action B: Queue for later */}
                     <Button
                       type="button"
@@ -626,7 +774,7 @@ export const EvaluationPage: React.FC = () => {
                     {/* Action A: Add to Planly */}
                     <Button
                       type="button"
-                      variant="primary"
+                      variant="outline"
                       size="sm"
                       onClick={() => handleAddToPlanly(item)}
                       className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 text-xs"

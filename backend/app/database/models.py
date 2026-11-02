@@ -36,6 +36,9 @@ class User(Base):
     project_submissions: Mapped[List["ProjectSubmission"]] = relationship("ProjectSubmission", back_populates="user", cascade="all, delete-orphan")
     skills: Mapped[List["UserSkill"]] = relationship("UserSkill", back_populates="user", cascade="all, delete-orphan")
     backlog_items: Mapped[List["LearningBacklogItem"]] = relationship("LearningBacklogItem", back_populates="user", cascade="all, delete-orphan")
+    company_progress: Mapped[List["UserCompanyProgress"]] = relationship("UserCompanyProgress", back_populates="user", cascade="all, delete-orphan")
+    retest_sessions: Mapped[List["RetestSession"]] = relationship("RetestSession", back_populates="user", cascade="all, delete-orphan")
+    assessment_pipelines: Mapped[List["AssessmentPipeline"]] = relationship("AssessmentPipeline", back_populates="creator", cascade="all, delete-orphan")
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
@@ -318,3 +321,115 @@ class ProjectSubmission(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     user: Mapped["User"] = relationship("User", back_populates="project_submissions")
+
+class CompanyTrack(Base):
+    __tablename__ = "company_tracks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    tier: Mapped[str] = mapped_column(String(20), default="gold")  # 'gold', 'silver', 'bronze'
+    role_title: Mapped[str] = mapped_column(String(150), default="Software Development Engineer")
+    description: Mapped[str] = mapped_column(Text, default="")
+    community_tips: Mapped[List[str]] = mapped_column(JSON, default=list)  # Curated from community experiences
+    total_problems: Mapped[int] = mapped_column(Integer, default=0)
+    initial_unlocked_count: Mapped[int] = mapped_column(Integer, default=3)
+    logo_icon: Mapped[str] = mapped_column(String(50), default="Building2")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    problems: Mapped[List["CompanyProblem"]] = relationship("CompanyProblem", back_populates="track", cascade="all, delete-orphan")
+    progress: Mapped[List["UserCompanyProgress"]] = relationship("UserCompanyProgress", back_populates="track", cascade="all, delete-orphan")
+
+class CompanyProblem(Base):
+    __tablename__ = "company_problems"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    company_track_id: Mapped[str] = mapped_column(String(36), ForeignKey("company_tracks.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
+    difficulty: Mapped[str] = mapped_column(String(20), default="MEDIUM")  # 'EASY', 'MEDIUM', 'HARD'
+    frequency_score: Mapped[float] = mapped_column(Float, default=100.0)
+    acceptance_rate: Mapped[float] = mapped_column(Float, default=0.5)
+    topics: Mapped[List[str]] = mapped_column(JSON, default=list)
+    order_index: Mapped[int] = mapped_column(Integer, default=1)
+    is_initially_unlocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    starter_code: Mapped[Dict[str, str]] = mapped_column(JSON, default=dict)
+    test_cases: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    track: Mapped["CompanyTrack"] = relationship("CompanyTrack", back_populates="problems")
+
+class UserCompanyProgress(Base):
+    __tablename__ = "user_company_progress"
+    __table_args__ = (
+        UniqueConstraint("user_id", "company_track_id", name="uq_user_company_progress"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    company_track_id: Mapped[str] = mapped_column(String(36), ForeignKey("company_tracks.id", ondelete="CASCADE"), index=True)
+    unlocked_count: Mapped[int] = mapped_column(Integer, default=3)
+    solved_count: Mapped[int] = mapped_column(Integer, default=0)
+    solved_problem_ids: Mapped[List[str]] = mapped_column(JSON, default=list)
+    last_practiced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    user: Mapped["User"] = relationship("User", back_populates="company_progress")
+    track: Mapped["CompanyTrack"] = relationship("CompanyTrack", back_populates="progress")
+
+class RetestSession(Base):
+    __tablename__ = "retest_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    original_interview_id: Mapped[str] = mapped_column(String(36), ForeignKey("interviews.id", ondelete="CASCADE"), index=True)
+    original_evaluation_id: Mapped[str] = mapped_column(String(36), ForeignKey("evaluations.id", ondelete="CASCADE"), index=True)
+    retest_interview_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("interviews.id", ondelete="SET NULL"), nullable=True)
+    weakness_topic: Mapped[str] = mapped_column(String(150), nullable=False)
+    baseline_score: Mapped[float] = mapped_column(Float, default=0.0)
+    retest_score: Mapped[float] = mapped_column(Float, default=0.0)
+    delta_score: Mapped[float] = mapped_column(Float, default=0.0)
+    verified_improvements: Mapped[List[str]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(30), default="pending")  # 'pending', 'in_progress', 'completed'
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    user: Mapped["User"] = relationship("User", back_populates="retest_sessions")
+    original_interview: Mapped["Interview"] = relationship("Interview", foreign_keys=[original_interview_id])
+    original_evaluation: Mapped["Evaluation"] = relationship("Evaluation", foreign_keys=[original_evaluation_id])
+
+class AssessmentPipeline(Base):
+    __tablename__ = "assessment_pipelines"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    created_by_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    target_role: Mapped[str] = mapped_column(String(150), nullable=False)
+    job_description: Mapped[str] = mapped_column(Text, nullable=False)
+    rounds: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    invite_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    creator: Mapped["User"] = relationship("User", back_populates="assessment_pipelines")
+    candidates: Mapped[List["CandidateAssessment"]] = relationship("CandidateAssessment", back_populates="pipeline", cascade="all, delete-orphan")
+
+class CandidateAssessment(Base):
+    __tablename__ = "candidate_assessments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    pipeline_id: Mapped[str] = mapped_column(String(36), ForeignKey("assessment_pipelines.id", ondelete="CASCADE"), index=True)
+    candidate_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    candidate_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    access_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="invited")  # 'invited', 'in_progress', 'completed', 'flagged'
+    current_round_index: Mapped[int] = mapped_column(Integer, default=0)
+    round_results: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    composite_score: Mapped[float] = mapped_column(Float, default=0.0)
+    integrity_signals: Mapped[Dict[str, Any]] = mapped_column(JSON, default=lambda: {"window_blurs": 0, "copy_paste_count": 0, "speech_code_divergence": 0.0})
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    pipeline: Mapped["AssessmentPipeline"] = relationship("AssessmentPipeline", back_populates="candidates")

@@ -17,6 +17,9 @@ import {
   Sparkles,
   BookOpen,
   Boxes,
+  Target,
+  Building2,
+  BarChart3,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -93,10 +96,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard, shortcut: '⌘1' },
+    { label: 'Company Tracks', path: '/tracks', icon: Target, badge: 'COMMUNITY' },
     { label: 'DSA Arena', path: '/coding', icon: Code2, shortcut: '⌘2' },
     { label: 'AI Projects', path: '/projects', icon: Boxes, badge: 'NEW' },
     { label: 'Interview', path: '/interviews/new', icon: Mic, shortcut: '⌘3' },
     { label: 'Planly', path: '/planly', icon: Calendar, shortcut: '⌘4' },
+    { label: 'Hiring Exam', path: '/enterprise', icon: Building2, badge: 'RECRUITER' },
+    { label: 'Admin Funnel', path: '/admin/funnel', icon: BarChart3 },
     { label: 'Skills & Data', path: '/progress', icon: TrendingUp, shortcut: '⌘5' },
   ];
 

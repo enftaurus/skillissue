@@ -7,7 +7,7 @@ from backend.app.auth.dependencies import get_current_active_user
 from backend.app.plans.schemas import (
     PlanResponse, PlanTaskResponse, TaskToggleRequest, PlanAdaptRequest, PlanAdaptPreviewResponse,
     CreateCustomPlanRequest, TaskStatusUpdateRequest, TaskRescheduleRequest,
-    AttachBacklogItemsRequest, SuggestedBacklogItemResponse
+    AttachBacklogItemsRequest, SuggestedBacklogItemResponse, GeneratePlanFromEvaluationRequest
 )
 from backend.app.plans.service import PlanService
 
@@ -25,10 +25,16 @@ async def create_custom_topic_plan(
 @router.post("/generate/{evaluation_id}", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
 async def generate_plan_from_evaluation(
     evaluation_id: str,
+    req: Optional[GeneratePlanFromEvaluationRequest] = None,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await PlanService.create_plan_from_evaluation(db, current_user.id, evaluation_id)
+    total_days = req.total_days if req else 7
+    daily_minutes = req.daily_study_minutes if req else None
+    target_date = req.target_date if req else None
+    return await PlanService.create_plan_from_evaluation(
+        db, current_user.id, evaluation_id, total_days=total_days, daily_study_minutes=daily_minutes, target_date=target_date
+    )
 
 @router.get("/active", response_model=Optional[PlanResponse])
 async def get_active_plan(

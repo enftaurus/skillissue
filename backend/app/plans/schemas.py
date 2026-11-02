@@ -11,6 +11,11 @@ class CreateCustomPlanRequest(BaseModel):
     deadline: Optional[datetime] = None
     start_date: Optional[datetime] = None
 
+class GeneratePlanFromEvaluationRequest(BaseModel):
+    total_days: int = Field(default=7, ge=3, le=60)
+    daily_study_minutes: int = Field(default=45, ge=15, le=180)
+    target_date: Optional[datetime] = None
+
 class PlanTaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

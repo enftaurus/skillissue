@@ -16,6 +16,8 @@ from backend.app.api.v1.coding import router as coding_router
 from backend.app.api.v1.learning_backlog import router as learning_backlog_router
 from backend.app.api.v1.projects import router as projects_router
 from backend.app.api.v1.audio import router as audio_router
+from backend.app.api.v1.tracks import router as tracks_router
+from backend.app.api.v1.enterprise import router as enterprise_router
 
 def create_application() -> FastAPI:
     is_dev = settings.ENVIRONMENT.lower() in ("development", "test") or settings.DEBUG
@@ -84,6 +86,8 @@ def create_application() -> FastAPI:
     app.include_router(learning_backlog_router, prefix="/api/v1")
     app.include_router(projects_router, prefix="/api/v1")
     app.include_router(audio_router, prefix="/api/v1")
+    app.include_router(tracks_router, prefix="/api/v1")
+    app.include_router(enterprise_router, prefix="/api/v1")
 
     return app
 

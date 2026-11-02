@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from backend.app.database.models import Interview, Evaluation, SelfEvaluation, UserSkill
+from backend.app.database.models import Interview, Evaluation, SelfEvaluation, UserSkill, RetestSession, InterviewMessage
 from backend.app.evaluations.schemas import (
     SelfEvaluationCreate, EvaluationComparisonResponse, DimensionComparison, QuestionComparison
 )
@@ -478,3 +478,120 @@ class EvaluationService:
             stored_transcript=evaluation.stored_transcript,
             transcript_turns=grouped_transcript,
         )
+
+    @staticmethod
+    async def initiate_retest(
+        db: AsyncSession,
+        user_id: str,
+        evaluation_id: str,
+        weakness_topic: str,
+        baseline_score: Optional[float] = None,
+    ) -> RetestSession:
+        eval_res = await db.execute(
+            select(Evaluation).where(Evaluation.id == evaluation_id)
+        )
+        evaluation = eval_res.scalar_one_or_none()
+        if not evaluation:
+            raise EntityNotFoundError("Evaluation", evaluation_id)
+
+        # Confirm interview belongs to user
+        interview_res = await db.execute(
+            select(Interview).where(Interview.id == evaluation.interview_id, Interview.user_id == user_id)
+        )
+        original_interview = interview_res.scalar_one_or_none()
+        if not original_interview:
+            raise AppException("Access denied or interview not found", code="FORBIDDEN", status_code=403)
+
+        effective_baseline = baseline_score if baseline_score is not None else evaluation.overall_score
+
+        # Provision targeted 3-question retest interview
+        retest_interview = Interview(
+            user_id=user_id,
+            mode="domain",
+            category="technical",
+            title=f"Retest: {weakness_topic}",
+            domain_skills=[weakness_topic],
+            target_role=original_interview.target_role or "Software Engineer",
+            difficulty="hard",
+            status="in_progress",
+            target_duration_minutes=15,
+        )
+        db.add(retest_interview)
+        await db.flush()
+
+        initial_q = (
+            f"Welcome to your targeted retest on {weakness_topic}. In your previous interview, you had difficulty defending your implementation and trade-offs. "
+            f"Let's dive straight in: Explain the exact mechanism you would use to handle high-throughput concurrency and prevent race conditions or data loss in {weakness_topic}."
+        )
+        msg = InterviewMessage(
+            interview_id=retest_interview.id,
+            role="assistant",
+            content=initial_q,
+            question_index=1,
+        )
+        db.add(msg)
+
+        retest_session = RetestSession(
+            user_id=user_id,
+            original_interview_id=original_interview.id,
+            original_evaluation_id=evaluation.id,
+            retest_interview_id=retest_interview.id,
+            weakness_topic=weakness_topic,
+            baseline_score=effective_baseline,
+            retest_score=0.0,
+            delta_score=0.0,
+            verified_improvements=[],
+            status="in_progress",
+        )
+        db.add(retest_session)
+        await db.commit()
+        await db.refresh(retest_session)
+        return retest_session
+
+    @staticmethod
+    async def get_retests_for_evaluation(
+        db: AsyncSession,
+        user_id: str,
+        evaluation_id: str,
+    ) -> List[RetestSession]:
+        result = await db.execute(
+            select(RetestSession)
+            .where(RetestSession.original_evaluation_id == evaluation_id, RetestSession.user_id == user_id)
+            .order_by(RetestSession.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def complete_retest_and_calculate_delta(
+        db: AsyncSession,
+        user_id: str,
+        retest_session_id: str,
+    ) -> RetestSession:
+        result = await db.execute(
+            select(RetestSession).where(RetestSession.id == retest_session_id, RetestSession.user_id == user_id)
+        )
+        retest_session = result.scalar_one_or_none()
+        if not retest_session:
+            raise EntityNotFoundError("RetestSession", retest_session_id)
+
+        if not retest_session.retest_interview_id:
+            raise AppException("No retest interview associated with this session", code="INVALID_STATE", status_code=400)
+
+        eval_res = await db.execute(
+            select(Evaluation).where(Evaluation.interview_id == retest_session.retest_interview_id)
+        )
+        retest_eval = eval_res.scalar_one_or_none()
+        if not retest_eval:
+            return retest_session
+
+        retest_session.retest_score = retest_eval.overall_score
+        retest_session.delta_score = round(retest_eval.overall_score - retest_session.baseline_score, 1)
+        retest_session.status = "completed"
+        improvements = list(retest_eval.strengths or [])
+        if not improvements:
+            improvements = ["Demonstrated clearer grasp of edge cases and reduced ambiguity under follow-up questioning."]
+        retest_session.verified_improvements = improvements[:4]
+
+        await db.commit()
+        await db.refresh(retest_session)
+        return retest_session

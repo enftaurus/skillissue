@@ -52,6 +52,22 @@ class AnalyticsDashboardResponse(BaseModel):
     score_history: List[ScoreHistoryPoint]
     dimension_trends: List[DimensionTrend]
     recurring_strengths: List[str]
-    recurring_weaknesses: List[str]
     reassessments: List[ReassessmentComparison]
     skills: List[UserSkillResponse] = []
+
+class FunnelStep(BaseModel):
+    step_name: str
+    count: int
+    conversion_rate: float
+    drop_off_rate: float
+    description: str
+
+class FunnelTelemetryResponse(BaseModel):
+    total_signups: int
+    first_interview_started: int
+    evaluations_viewed: int
+    planly_plans_created: int
+    retests_completed: int
+    steps: List[FunnelStep]
+    provider_reliability: Dict[str, Any]
+    conversion_headline: str

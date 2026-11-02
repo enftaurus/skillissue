@@ -111,6 +111,22 @@ class EvaluationComparisonResponse(BaseModel):
     weaknesses: List[str]
     missing_concepts: List[str]
     weakness_analysis: List[WeaknessAnalysisItem] = []
-    stored_transcript: Optional[str] = None
     transcript_turns: Optional[List[Dict[str, Any]]] = None
 
+class RetestInitiateRequest(BaseModel):
+    weakness_topic: str
+    baseline_score: Optional[float] = None
+
+class RetestSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    original_interview_id: str
+    original_evaluation_id: str
+    retest_interview_id: Optional[str] = None
+    weakness_topic: str
+    baseline_score: float
+    retest_score: float
+    delta_score: float
+    verified_improvements: List[str] = []
+    status: str
+    created_at: datetime
