@@ -46,6 +46,9 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     return UserResponse(
         id=user.id,
         email=user.email,
+        role=user.role,
+        tenant_id=user.tenant_id,
+        is_test=user.is_test,
         is_active=user.is_active,
         onboarding_completed=False,
         is_provider_connected=False,
@@ -106,6 +109,9 @@ async def get_me(current_user: User = Depends(get_current_active_user)):
     return UserResponse(
         id=current_user.id,
         email=current_user.email,
+        role=current_user.role,
+        tenant_id=current_user.tenant_id,
+        is_test=current_user.is_test,
         is_active=current_user.is_active,
         onboarding_completed=bool(current_user.onboarding_completed and is_connected),
         is_provider_connected=is_connected,

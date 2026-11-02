@@ -8,9 +8,10 @@ from backend.app.core.errors import EntityNotFoundError, AppException
 from backend.app.database.models import CompanyTrack, CompanyProblem, UserCompanyProgress
 from backend.app.tracks.schemas import (
     CompanyTrackSummary, CompanyTrackDetail, CompanyProblemSummary, CompanyProblemDetail,
-    SolveCompanyProblemResponse
+    SolveCompanyProblemResponse, PresetSimulationResponse
 )
 from backend.app.tracks.seed_data import TRACKS_SEED_DATA
+from backend.app.tracks.company_registry import CompanyRegistry
 
 class CompanyTrackService:
     @classmethod
@@ -91,7 +92,9 @@ class CompanyTrackService:
         tracks = list(result.scalars().all())
 
         summaries: List[CompanyTrackSummary] = []
+        existing_slugs = set()
         for track in tracks:
+            existing_slugs.add(track.slug.lower())
             progress = await cls.get_or_create_user_progress(db, user_id, track.id)
             unlocked = max(track.initial_unlocked_count, progress.unlocked_count)
             summaries.append(
@@ -110,6 +113,29 @@ class CompanyTrackService:
                     is_gold_mine=(track.tier == "gold")
                 )
             )
+
+        # Merge dynamic 50+ companies from registry
+        for comp in CompanyRegistry.get_all_companies():
+            if comp["slug"].lower() not in existing_slugs:
+                probs = comp.get("problems", [])
+                unlocked_cnt = len([p for p in probs if p.get("is_unlocked", p.get("order", 1) <= 3)])
+                summaries.append(
+                    CompanyTrackSummary(
+                        id=f"reg-{comp['slug']}",
+                        name=comp["name"],
+                        slug=comp["slug"],
+                        tier=comp.get("tier", "silver"),
+                        role_title=comp.get("role_title", "Software Development Engineer"),
+                        description=comp.get("description", ""),
+                        community_tips=comp.get("community_tips", []),
+                        total_problems=len(probs),
+                        unlocked_count=unlocked_cnt,
+                        solved_count=0,
+                        logo_icon=comp.get("logo_icon", "Building2"),
+                        is_gold_mine=(comp.get("tier") == "gold")
+                    )
+                )
+
         await db.commit()
         return summaries
 
@@ -126,7 +152,44 @@ class CompanyTrackService:
         )
         track = result.scalar_one_or_none()
         if not track:
-            raise EntityNotFoundError("CompanyTrack", slug)
+            # Fallback to dynamic registry
+            comp_reg = CompanyRegistry.get_company_by_slug(slug)
+            if not comp_reg:
+                raise EntityNotFoundError("CompanyTrack", slug)
+
+            probs = comp_reg.get("problems", [])
+            problem_summaries = []
+            for p in probs:
+                problem_summaries.append(
+                    CompanyProblemSummary(
+                        id=f"prob-{comp_reg['slug']}-{p['slug']}",
+                        title=p["title"],
+                        slug=p["slug"],
+                        difficulty=p.get("difficulty", "MEDIUM"),
+                        frequency_score=float(p.get("frequency", 90)),
+                        acceptance_rate=0.45,
+                        topics=p.get("topics", []),
+                        order_index=p.get("order", 1),
+                        is_unlocked=p.get("is_unlocked", p.get("order", 1) <= 3),
+                        is_solved=False
+                    )
+                )
+
+            return CompanyTrackDetail(
+                id=f"reg-{comp_reg['slug']}",
+                name=comp_reg["name"],
+                slug=comp_reg["slug"],
+                tier=comp_reg.get("tier", "silver"),
+                role_title=comp_reg.get("role_title", "Software Development Engineer"),
+                description=comp_reg.get("description", ""),
+                community_tips=comp_reg.get("community_tips", []),
+                total_problems=len(probs),
+                unlocked_count=len([p for p in probs if p.get("is_unlocked", p.get("order", 1) <= 3)]),
+                solved_count=0,
+                logo_icon=comp_reg.get("logo_icon", "Building2"),
+                is_gold_mine=(comp_reg.get("tier") == "gold"),
+                problems=problem_summaries
+            )
 
         progress = await cls.get_or_create_user_progress(db, user_id, track.id)
         effective_unlocked = max(track.initial_unlocked_count, progress.unlocked_count)
@@ -274,3 +337,15 @@ class CompanyTrackService:
             total_unlocked=progress.unlocked_count,
             total_solved=progress.solved_count
         )
+
+    @classmethod
+    def get_all_simulations(cls) -> List[PresetSimulationResponse]:
+        sims = CompanyRegistry.get_all_simulations()
+        return [PresetSimulationResponse(**s) for s in sims]
+
+    @classmethod
+    def get_simulation_by_id(cls, sim_id: str) -> Optional[PresetSimulationResponse]:
+        sim = CompanyRegistry.get_simulation_by_id(sim_id)
+        if not sim:
+            raise EntityNotFoundError("PlacementSimulation", sim_id)
+        return PresetSimulationResponse(**sim)

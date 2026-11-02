@@ -22,7 +22,15 @@ export const LoginPage: React.FC = () => {
 
     try {
       await login(email, password);
-      navigate('/');
+      const stored = localStorage.getItem('skillissue_user');
+      const parsed = stored ? JSON.parse(stored) : null;
+      if (parsed?.role === 'recruiter') {
+        navigate('/enterprise');
+      } else if (parsed?.role === 'admin') {
+        navigate('/admin/analytics');
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       setError(err.message || 'Invalid email or password.');
     } finally {
@@ -75,13 +83,21 @@ export const LoginPage: React.FC = () => {
             </Button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-100 text-center">
+          <div className="mt-6 pt-5 border-t border-slate-100 flex flex-col gap-2 text-center">
             <p className="text-xs sm:text-sm text-slate-500">
               Don&apos;t have an account?{' '}
               <Link to="/register" className="font-semibold text-indigo-600 hover:text-indigo-700">
                 Register for free
               </Link>
             </p>
+            <div className="pt-2 flex justify-center gap-4 text-xs text-slate-400">
+              <Link to="/enterprise/login" className="hover:text-slate-600">
+                Recruiter Portal →
+              </Link>
+              <Link to="/admin/login" className="hover:text-slate-600">
+                Admin Console →
+              </Link>
+            </div>
           </div>
         </Card>
       </div>

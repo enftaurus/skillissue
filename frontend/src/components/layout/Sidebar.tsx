@@ -94,17 +94,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [navigate, onOpenCommandPalette]);
 
-  const navItems = [
-    { label: 'Dashboard', path: '/', icon: LayoutDashboard, shortcut: '⌘1' },
-    { label: 'Company Tracks', path: '/tracks', icon: Target, badge: 'COMMUNITY' },
-    { label: 'DSA Arena', path: '/coding', icon: Code2, shortcut: '⌘2' },
-    { label: 'AI Projects', path: '/projects', icon: Boxes, badge: 'NEW' },
-    { label: 'Interview', path: '/interviews/new', icon: Mic, shortcut: '⌘3' },
-    { label: 'Planly', path: '/planly', icon: Calendar, shortcut: '⌘4' },
-    { label: 'Hiring Exam', path: '/enterprise', icon: Building2, badge: 'RECRUITER' },
-    { label: 'Admin Funnel', path: '/admin/funnel', icon: BarChart3 },
-    { label: 'Skills & Data', path: '/progress', icon: TrendingUp, shortcut: '⌘5' },
+  const role = user?.role || 'candidate';
+
+  const allNavItems = [
+    { label: 'Dashboard', path: '/', icon: LayoutDashboard, shortcut: '⌘1', roles: ['candidate', 'recruiter', 'admin'] },
+    { label: 'Company Tracks', path: '/tracks', icon: Target, badge: '50+ PACKS', roles: ['candidate', 'recruiter', 'admin'] },
+    { label: 'DSA Arena', path: '/coding', icon: Code2, shortcut: '⌘2', roles: ['candidate', 'recruiter', 'admin'] },
+    { label: 'AI Projects', path: '/projects', icon: Boxes, badge: 'NEW', roles: ['candidate', 'recruiter', 'admin'] },
+    { label: 'Interview', path: '/interviews/new', icon: Mic, shortcut: '⌘3', roles: ['candidate', 'recruiter', 'admin'] },
+    { label: 'Planly', path: '/planly', icon: Calendar, shortcut: '⌘4', roles: ['candidate', 'recruiter', 'admin'] },
+    { label: 'Hiring Exam', path: '/enterprise', icon: Building2, badge: 'PORTAL', roles: ['recruiter', 'admin'] },
+    { label: 'Admin Analytics', path: '/admin/analytics', icon: BarChart3, badge: 'MULTI-TENANT', roles: ['admin'] },
+    { label: 'Admin Funnel', path: '/admin/funnel', icon: BarChart3, roles: ['admin'] },
+    { label: 'Skills & Data', path: '/progress', icon: TrendingUp, shortcut: '⌘5', roles: ['candidate', 'recruiter', 'admin'] },
   ];
+
+  const navItems = allNavItems.filter((item) => item.roles.includes(role));
 
   if (!user) return null;
 
@@ -122,7 +127,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           {!isCollapsed && (
             <div className="flex flex-col truncate">
-              <span className="font-bold text-sm tracking-tight text-slate-900">Skill Issue</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-sm tracking-tight text-slate-900">Skill Issue</span>
+                <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-bold uppercase border ${
+                  role === 'admin'
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : role === 'recruiter'
+                    ? 'bg-lime-50 text-lime-800 border-lime-200'
+                    : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                }`}>
+                  {role}
+                </span>
+              </div>
               <span className="text-[11px] text-slate-500 -mt-0.5 truncate font-medium">Now we have data.</span>
             </div>
           )}

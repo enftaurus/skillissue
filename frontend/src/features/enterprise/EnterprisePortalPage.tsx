@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
-import { AssessmentPipeline, PipelineLeaderboard, RoundConfig } from '../../lib/types';
+import { AssessmentPipeline, PipelineLeaderboard, RoundConfig, CandidateAssessment } from '../../lib/types';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -18,6 +18,8 @@ import {
   Code2,
   Mic,
   Boxes,
+  FileText,
+  Terminal,
 } from 'lucide-react';
 
 export const EnterprisePortalPage: React.FC = () => {
@@ -28,11 +30,19 @@ export const EnterprisePortalPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Candidate Audit Modal State
+  const [selectedCandidateForAudit, setSelectedCandidateForAudit] = useState<CandidateAssessment | null>(null);
+
   // Create Pipeline Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [pipelineTitle, setPipelineTitle] = useState('');
   const [targetRole, setTargetRole] = useState('Software Development Engineer');
   const [jobDescription, setJobDescription] = useState('');
+  const [oaMode, setOaMode] = useState<'preset' | 'custom_url' | 'codeforces_random'>('preset');
+  const [oaCustomUrl, setOaCustomUrl] = useState('');
+  const [oaCfRating, setOaCfRating] = useState(1500);
+  const [oaCfTopic, setOaCfTopic] = useState('graphs');
+
   const [rounds, setRounds] = useState<RoundConfig[]>([
     {
       round_type: 'oa_dsa',
@@ -109,6 +119,12 @@ export const EnterprisePortalPage: React.FC = () => {
         target_role: targetRole,
         job_description: jobDescription,
         rounds: rounds,
+        oa_config: {
+          mode: oaMode,
+          custom_url: oaMode === 'custom_url' ? oaCustomUrl : undefined,
+          cf_rating: oaMode === 'codeforces_random' ? Number(oaCfRating) : undefined,
+          cf_topic: oaMode === 'codeforces_random' ? oaCfTopic : undefined,
+        },
       });
       setIsCreateOpen(false);
       setPipelineTitle('');
@@ -154,27 +170,26 @@ export const EnterprisePortalPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in bg-zinc-50/40 min-h-screen">
       {/* Header */}
-      <div className="bg-white border border-surface-border rounded-xl p-6 sm:p-8 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+      <div className="bg-white border border-zinc-200 rounded-2xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div className="space-y-2 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-lime-500/10 border border-lime-500/20 text-lime-800 text-xs font-semibold">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-lime-50 border border-lime-200 text-lime-800 text-xs font-semibold">
             <Building2 className="w-3.5 h-3.5 text-lime-700" />
-            Enterprise & Campus Placement Exam Portal
+            Enterprise &amp; Campus Placement Assessment Portal
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-950">
             Recruitment Assessment Hub
           </h1>
-          <p className="text-xs sm:text-sm text-ink-muted leading-relaxed">
-            Configure automated multi-round candidate assessments: DSA coding, AI-assisted project take-home,
-            and anti-sycophancy technical oral interviews with integrity signals.
+          <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed">
+            Configure multi-round candidate assessments: OA DSA (Preset, Custom URL, or Codeforces randomizer), AI Systems take-home project, and oral technical interviews that cross-examine candidates on their submitted OA code to catch cheating.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Button
             onClick={() => setIsCreateOpen(true)}
-            className="gap-2 bg-ink text-white hover:bg-ink/90 text-xs font-semibold"
+            className="gap-2 bg-zinc-900 text-white hover:bg-zinc-800 text-xs font-semibold rounded-xl"
           >
             <Plus className="w-4 h-4 text-lime-400" />
             <span>New Hiring Assessment</span>
@@ -183,26 +198,26 @@ export const EnterprisePortalPage: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-surface-border pb-2 text-xs font-medium">
+      <div className="flex items-center gap-2 border-b border-zinc-200 pb-2 text-xs font-medium">
         <button
           onClick={() => setActiveTab('pipelines')}
-          className={`px-4 py-2 rounded-lg transition-all ${
+          className={`px-4 py-2 rounded-xl transition-all ${
             activeTab === 'pipelines'
-              ? 'bg-surface-subtle text-ink font-bold border border-surface-border'
-              : 'text-ink-muted hover:text-ink'
+              ? 'bg-zinc-900 text-white font-bold shadow-xs'
+              : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
           }`}
         >
           Assessment Pipelines ({pipelines.length})
         </button>
         <button
           onClick={() => setActiveTab('leaderboard')}
-          className={`px-4 py-2 rounded-lg transition-all ${
+          className={`px-4 py-2 rounded-xl transition-all ${
             activeTab === 'leaderboard'
-              ? 'bg-surface-subtle text-ink font-bold border border-surface-border'
-              : 'text-ink-muted hover:text-ink'
+              ? 'bg-zinc-900 text-white font-bold shadow-xs'
+              : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
           }`}
         >
-          Candidate Leaderboard & Integrity
+          Candidate Leaderboard &amp; Anti-Cheating Telemetry
         </button>
       </div>
 
@@ -212,65 +227,70 @@ export const EnterprisePortalPage: React.FC = () => {
           {loading ? (
             <div className="py-20 text-center space-y-3">
               <div className="w-8 h-8 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-ink-muted">Loading pipelines...</p>
+              <p className="text-xs text-zinc-500 font-mono">Loading pipelines...</p>
             </div>
           ) : pipelines.length === 0 ? (
-            <Card className="p-12 text-center space-y-4">
-              <Building2 className="w-12 h-12 text-ink-subtle mx-auto" />
-              <h3 className="font-bold text-base text-ink">No Assessment Pipelines Yet</h3>
-              <p className="text-xs text-ink-muted max-w-md mx-auto">
-                Create your first hiring pipeline with custom rounds: OA, AI Machine Coding, and Oral Interview.
+            <Card className="p-12 text-center space-y-4 rounded-2xl border-zinc-200 bg-white">
+              <Building2 className="w-12 h-12 text-zinc-400 mx-auto" />
+              <h3 className="font-bold text-base text-zinc-900">No Assessment Pipelines Yet</h3>
+              <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                Create an assessment pipeline with custom DSA problems, take-home projects, and anti-cheating interview rounds.
               </p>
-              <Button onClick={() => setIsCreateOpen(true)} className="gap-2 text-xs">
-                <Plus className="w-4 h-4" />
-                <span>Create Assessment Pipeline</span>
+              <Button onClick={() => setIsCreateOpen(true)} className="text-xs">
+                Create First Pipeline
               </Button>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {pipelines.map((pipe) => (
-                <Card key={pipe.id} className="p-6 space-y-5 hover:shadow-card-hover transition-all">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-bold text-base text-ink">{pipe.title}</h3>
-                      <p className="text-xs text-ink-muted font-mono">{pipe.target_role}</p>
+                <Card key={pipe.id} className="p-6 space-y-5 rounded-2xl border-zinc-200 bg-white shadow-xs flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="font-bold text-base text-zinc-950">{pipe.title}</h2>
+                        <p className="text-xs text-zinc-500">{pipe.target_role}</p>
+                      </div>
+                      <Badge variant="success" className="font-mono text-[10px]">
+                        ACTIVE DRIVE
+                      </Badge>
                     </div>
-                    <Badge variant={pipe.is_active ? 'success' : 'outline'} className="text-[10px]">
-                      {pipe.is_active ? 'Active Drive' : 'Closed'}
-                    </Badge>
-                  </div>
 
-                  {/* Configured Rounds */}
-                  <div className="space-y-2">
-                    <span className="text-[10px] uppercase font-mono tracking-wider text-ink-subtle">
-                      Configured Multi-Round Stages:
-                    </span>
-                    <div className="space-y-1.5">
-                      {pipe.rounds.map((r, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between p-2 rounded-lg bg-surface-subtle border border-surface-border text-xs"
-                        >
-                          <div className="flex items-center gap-2">
-                            {r.round_type === 'oa_dsa' && <Code2 className="w-3.5 h-3.5 text-lime-600" />}
-                            {r.round_type === 'ai_project' && <Boxes className="w-3.5 h-3.5 text-indigo-600" />}
-                            {r.round_type === 'tough_interview' && <Mic className="w-3.5 h-3.5 text-amber-600" />}
-                            {r.round_type === 'code_comprehension' && <Sparkles className="w-3.5 h-3.5 text-slate-400" />}
-                            <span className={r.is_enabled ? 'text-ink font-medium' : 'text-ink-subtle'}>
-                              {r.name}
+                    <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">
+                      {pipe.job_description}
+                    </p>
+
+                    {/* Configured Rounds */}
+                    <div className="space-y-2 pt-1">
+                      <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400 font-bold">
+                        Configured Stages:
+                      </span>
+                      <div className="space-y-1.5">
+                        {pipe.rounds.map((r, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between p-2 rounded-xl bg-zinc-50 border border-zinc-200/80 text-xs"
+                          >
+                            <div className="flex items-center gap-2">
+                              {r.round_type === 'oa_dsa' && <Code2 className="w-3.5 h-3.5 text-lime-600" />}
+                              {r.round_type === 'ai_project' && <Boxes className="w-3.5 h-3.5 text-indigo-600" />}
+                              {r.round_type === 'tough_interview' && <Mic className="w-3.5 h-3.5 text-amber-600" />}
+                              {r.round_type === 'code_comprehension' && <Sparkles className="w-3.5 h-3.5 text-zinc-400" />}
+                              <span className={r.is_enabled ? 'text-zinc-900 font-medium' : 'text-zinc-400'}>
+                                {r.name}
+                              </span>
+                            </div>
+                            <span className="text-[11px] font-mono text-zinc-500">
+                              {r.time_limit_minutes}m
                             </span>
                           </div>
-                          <span className="text-[11px] font-mono text-ink-subtle">
-                            {r.time_limit_minutes}m
-                          </span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
 
                   {/* Candidate Stats & Invite Actions */}
-                  <div className="pt-3 border-t border-surface-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <span className="text-xs text-ink-muted font-mono">
+                  <div className="pt-4 border-t border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span className="text-xs text-zinc-600 font-mono">
                       {pipe.candidates_count} Candidates Enrolled
                     </span>
                     <div className="flex items-center gap-2">
@@ -278,17 +298,17 @@ export const EnterprisePortalPage: React.FC = () => {
                         size="sm"
                         variant="outline"
                         onClick={() => copyInviteLink(pipe.invite_url, pipe.id)}
-                        className="gap-1.5 text-xs"
+                        className="gap-1.5 text-xs bg-white border-zinc-200 hover:border-zinc-300"
                       >
                         {copiedId === pipe.id ? (
                           <>
                             <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-700">Copied Link</span>
+                            <span className="text-emerald-700 font-bold">Copied Link</span>
                           </>
                         ) : (
                           <>
                             <Copy className="w-3.5 h-3.5" />
-                            <span>Copy Exam Link</span>
+                            <span>Copy Candidate Link</span>
                           </>
                         )}
                       </Button>
@@ -298,10 +318,10 @@ export const EnterprisePortalPage: React.FC = () => {
                           setSelectedPipelineId(pipe.id);
                           setIsInviteOpen(true);
                         }}
-                        className="gap-1.5 text-xs bg-ink text-white hover:bg-ink/90"
+                        className="gap-1.5 text-xs bg-zinc-900 text-white hover:bg-zinc-800"
                       >
-                        <Users className="w-3.5 h-3.5" />
-                        <span>Invite</span>
+                        <Users className="w-3.5 h-3.5 text-lime-400" />
+                        <span>Invite Candidate</span>
                       </Button>
                     </div>
                   </div>
@@ -312,50 +332,49 @@ export const EnterprisePortalPage: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 2: Leaderboard & Integrity Telemetry */}
+      {/* TAB 2: Leaderboard & Telemetry */}
       {activeTab === 'leaderboard' && (
         <div className="space-y-6">
           {/* Pipeline Selector */}
           <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-ink-muted">Select Pipeline:</span>
+            <label className="text-xs font-semibold text-zinc-700">Drive:</label>
             <select
               value={selectedPipelineId || ''}
               onChange={(e) => setSelectedPipelineId(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-surface-border bg-white text-xs font-medium text-ink focus:outline-none focus:ring-1 focus:ring-lime-500"
+              className="text-xs px-3 py-1.5 rounded-xl border border-zinc-200 bg-white font-medium text-zinc-900 focus:outline-none focus:ring-1 focus:ring-lime-500"
             >
               {pipelines.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.title}
+                  {p.title} ({p.target_role})
                 </option>
               ))}
             </select>
           </div>
 
           {leaderboard ? (
-            <Card className="overflow-hidden border border-surface-border">
-              <div className="p-5 border-b border-surface-border bg-surface-subtle/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <Card className="border-zinc-200 rounded-2xl bg-white shadow-xs overflow-hidden">
+              <div className="p-6 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="font-bold text-base text-ink">{leaderboard.pipeline_title}</h3>
-                  <p className="text-xs text-ink-muted">
-                    {leaderboard.completed_candidates} of {leaderboard.total_candidates} completed all rounds
+                  <h2 className="font-bold text-base text-zinc-950">{leaderboard.pipeline_title}</h2>
+                  <p className="text-xs text-zinc-500">
+                    {leaderboard.total_candidates} Enrolled • {leaderboard.completed_candidates} Completed
                   </p>
                 </div>
-                <div className="flex items-center gap-4 text-xs font-mono">
-                  <div className="p-2.5 rounded-lg bg-white border border-surface-border">
-                    <span className="text-ink-subtle">Average Score: </span>
-                    <span className="font-bold text-ink">{leaderboard.average_score}%</span>
+                <div className="flex items-center gap-3">
+                  <div className="px-3 py-1.5 rounded-xl bg-lime-50 border border-lime-200 text-xs font-mono font-bold text-lime-800">
+                    Cohort Avg: {leaderboard.average_score}%
                   </div>
                 </div>
               </div>
 
               {leaderboard.candidates.length === 0 ? (
-                <div className="p-12 text-center text-xs text-ink-muted">
+                <div className="p-12 text-center text-xs text-zinc-400">
                   No candidates have enrolled or submitted answers yet.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-surface-subtle border-b border-surface-border font-mono text-ink-subtle uppercase text-[10px]">
+                    <thead className="bg-zinc-50 border-b border-zinc-200 font-mono text-zinc-500 uppercase text-[10px]">
                       <tr>
                         <th className="py-3 px-4">Rank</th>
                         <th className="py-3 px-4">Candidate</th>
@@ -365,19 +384,19 @@ export const EnterprisePortalPage: React.FC = () => {
                         <th className="py-3 px-4">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-surface-border font-sans">
+                    <tbody className="divide-y divide-zinc-100 font-sans">
                       {leaderboard.candidates.map((c, index) => {
                         const isFlagged = c.status === 'flagged';
                         const divergence = c.integrity_signals?.speech_code_divergence || 0;
 
                         return (
-                          <tr key={c.id} className="hover:bg-surface-subtle/40 transition-colors">
-                            <td className="py-3 px-4 font-mono font-bold text-ink-muted">
+                          <tr key={c.id} className="hover:bg-zinc-50/70 transition-colors">
+                            <td className="py-3 px-4 font-mono font-bold text-zinc-400">
                               #{index + 1}
                             </td>
                             <td className="py-3 px-4">
-                              <p className="font-bold text-ink">{c.candidate_name}</p>
-                              <p className="text-[11px] text-ink-muted font-mono">{c.candidate_email}</p>
+                              <p className="font-bold text-zinc-950">{c.candidate_name}</p>
+                              <p className="text-[11px] text-zinc-500 font-mono">{c.candidate_email}</p>
                             </td>
                             <td className="py-3 px-4">
                               <Badge
@@ -388,24 +407,24 @@ export const EnterprisePortalPage: React.FC = () => {
                                     ? 'destructive'
                                     : 'outline'
                                 }
-                                className="text-[10px] capitalize"
+                                className="text-[10px] capitalize font-mono"
                               >
                                 {c.status}
                               </Badge>
                             </td>
                             <td className="py-3 px-4">
-                              <span className="text-sm font-bold font-mono text-ink">
+                              <span className="text-sm font-bold font-mono text-zinc-950">
                                 {c.composite_score}%
                               </span>
                             </td>
                             <td className="py-3 px-4 space-y-1">
                               <div className="flex items-center gap-1.5">
                                 {isFlagged ? (
-                                  <ShieldAlert className="w-3.5 h-3.5 text-red-600" />
+                                  <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
                                 ) : (
                                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                                 )}
-                                <span className={isFlagged ? 'text-red-700 font-semibold' : 'text-ink-muted'}>
+                                <span className={isFlagged ? 'text-rose-700 font-semibold' : 'text-zinc-600'}>
                                   {c.integrity_signals?.window_blurs || 0} Tab Switches
                                 </span>
                               </div>
@@ -415,7 +434,16 @@ export const EnterprisePortalPage: React.FC = () => {
                                 </p>
                               )}
                             </td>
-                            <td className="py-3 px-4">
+                            <td className="py-3 px-4 flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setSelectedCandidateForAudit(c)}
+                                className="text-[11px] gap-1 bg-white border-zinc-200 hover:border-zinc-300"
+                              >
+                                <FileText className="w-3 h-3 text-indigo-600" />
+                                <span>Audit &amp; Code</span>
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -423,7 +451,7 @@ export const EnterprisePortalPage: React.FC = () => {
                                 className="text-[11px] gap-1"
                               >
                                 <Copy className="w-3 h-3" />
-                                <span>Exam Token</span>
+                                <span>Token</span>
                               </Button>
                             </td>
                           </tr>
@@ -435,14 +463,96 @@ export const EnterprisePortalPage: React.FC = () => {
               )}
             </Card>
           ) : (
-            <div className="py-12 text-center text-xs text-ink-muted">
+            <div className="py-12 text-center text-xs text-zinc-400">
               Select a pipeline above to inspect candidates and integrity telemetry.
             </div>
           )}
         </div>
       )}
 
-      {/* Modal: Create Assessment Pipeline */}
+      {/* Modal: Candidate Deep Audit (Resume, Strengths/Weaknesses, Submitted Code) */}
+      <Modal
+        isOpen={Boolean(selectedCandidateForAudit)}
+        onClose={() => setSelectedCandidateForAudit(null)}
+        title={`Candidate Audit: ${selectedCandidateForAudit?.candidate_name || ''}`}
+      >
+        {selectedCandidateForAudit && (
+          <div className="space-y-5 text-xs max-h-[75vh] overflow-y-auto pr-1">
+            {/* Top Stat Bar */}
+            <div className="grid grid-cols-3 gap-3 p-3 bg-zinc-50 rounded-xl border border-zinc-200">
+              <div>
+                <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold">Composite Score</span>
+                <p className="text-lg font-black text-lime-700">{selectedCandidateForAudit.composite_score}%</p>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold">Assessment Status</span>
+                <p className="text-sm font-bold capitalize text-zinc-800">{selectedCandidateForAudit.status}</p>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold">Focus Tab Switches</span>
+                <p className={`text-sm font-bold ${selectedCandidateForAudit.integrity_signals?.window_blurs > 2 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {selectedCandidateForAudit.integrity_signals?.window_blurs || 0} Blurs
+                </p>
+              </div>
+            </div>
+
+            {/* Resume Text Section */}
+            <div className="space-y-1.5">
+              <h4 className="font-bold text-zinc-900 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-zinc-600" />
+                Candidate Resume / Project Submissions
+              </h4>
+              <div className="p-3 bg-white rounded-xl border border-zinc-200 text-zinc-700 leading-relaxed font-sans max-h-32 overflow-y-auto">
+                {selectedCandidateForAudit.resume_text || 'No resume text provided by candidate during intake.'}
+              </div>
+            </div>
+
+            {/* Submitted Round 1 OA Code (Anti-Cheating Cross-Examination) */}
+            <div className="space-y-1.5">
+              <h4 className="font-bold text-zinc-900 flex items-center gap-1.5">
+                <Terminal className="w-3.5 h-3.5 text-lime-700" />
+                Submitted Round 1 OA Code: {selectedCandidateForAudit.oa_problem_title || 'Algorithmic Challenge'}
+              </h4>
+              <div className="p-3 bg-zinc-900 rounded-xl text-lime-400 font-mono text-xs overflow-x-auto max-h-48">
+                <pre>{selectedCandidateForAudit.oa_submitted_code || selectedCandidateForAudit.round_results?.['0']?.submission?.code || '# No code recorded'}</pre>
+              </div>
+              <p className="text-[11px] text-zinc-500 italic">
+                Cross-examination note: The Round 3 oral interviewer asks the candidate to explain their choice of data structure in this exact implementation.
+              </p>
+            </div>
+
+            {/* Round Breakdown */}
+            <div className="space-y-1.5">
+              <h4 className="font-bold text-zinc-900">Multi-Round Performance Log</h4>
+              <div className="space-y-2">
+                {Object.entries(selectedCandidateForAudit.round_results || {}).map(([rIdx, rData]: [string, any]) => (
+                  <div key={rIdx} className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-zinc-900 uppercase font-mono text-[10px]">
+                        Stage {Number(rIdx) + 1}: {rData.round_type}
+                      </span>
+                      <p className="text-[11px] text-zinc-500">
+                        Submitted: {new Date(rData.submitted_at).toLocaleTimeString()}
+                      </p>
+                    </div>
+                    <span className="font-bold font-mono text-lime-700 text-sm">
+                      {rData.score}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-zinc-200 flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setSelectedCandidateForAudit(null)}>
+                Close Audit
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal: Create Assessment Pipeline with Custom OA Options */}
       <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Configure Hiring Assessment">
         <form onSubmit={handleCreatePipeline} className="space-y-4">
           <Input
@@ -455,32 +565,115 @@ export const EnterprisePortalPage: React.FC = () => {
 
           <Input
             label="Target Role & Level"
-            placeholder="e.g. SDE-1 Backend / Intern"
+            placeholder="e.g. SDE-1 Backend / Systems Engineer"
             value={targetRole}
             onChange={(e) => setTargetRole(e.target.value)}
             required
           />
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-ink">Job Description & Evaluation Focus</label>
+            <label className="text-xs font-semibold text-zinc-800">Job Description &amp; Evaluation Focus</label>
             <textarea
-              rows={4}
+              rows={3}
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste Job Description requirements, key tech stacks, and grading expectations..."
-              className="w-full px-3 py-2 rounded-lg border border-surface-border text-xs focus:ring-1 focus:ring-lime-500 focus:outline-none"
+              className="w-full px-3 py-2 rounded-xl border border-zinc-200 text-xs focus:ring-1 focus:ring-lime-500 focus:outline-none"
               required
             />
           </div>
 
+          {/* OA Question Flexibility (Preset vs Custom URL vs Codeforces Randomizer) */}
+          <div className="space-y-2 p-3 rounded-xl bg-zinc-50 border border-zinc-200">
+            <label className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+              <Code2 className="w-3.5 h-3.5 text-lime-600" />
+              Round 1 OA Question Customization
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setOaMode('preset')}
+                className={`p-2 rounded-lg text-xs font-medium border text-center transition-all ${
+                  oaMode === 'preset'
+                    ? 'bg-white border-lime-500 text-zinc-900 font-bold shadow-2xs'
+                    : 'bg-zinc-100 border-zinc-200 text-zinc-600'
+                }`}
+              >
+                Curated Preset
+              </button>
+              <button
+                type="button"
+                onClick={() => setOaMode('custom_url')}
+                className={`p-2 rounded-lg text-xs font-medium border text-center transition-all ${
+                  oaMode === 'custom_url'
+                    ? 'bg-white border-lime-500 text-zinc-900 font-bold shadow-2xs'
+                    : 'bg-zinc-100 border-zinc-200 text-zinc-600'
+                }`}
+              >
+                Custom URL
+              </button>
+              <button
+                type="button"
+                onClick={() => setOaMode('codeforces_random')}
+                className={`p-2 rounded-lg text-xs font-medium border text-center transition-all ${
+                  oaMode === 'codeforces_random'
+                    ? 'bg-white border-lime-500 text-zinc-900 font-bold shadow-2xs'
+                    : 'bg-zinc-100 border-zinc-200 text-zinc-600'
+                }`}
+              >
+                CF Randomizer
+              </button>
+            </div>
+
+            {oaMode === 'custom_url' && (
+              <Input
+                label="Custom Problem URL"
+                placeholder="https://leetcode.com/problems/... or codeforces.com/problemset/..."
+                value={oaCustomUrl}
+                onChange={(e) => setOaCustomUrl(e.target.value)}
+              />
+            )}
+
+            {oaMode === 'codeforces_random' && (
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-700">Difficulty Rating:</label>
+                  <select
+                    value={oaCfRating}
+                    onChange={(e) => setOaCfRating(Number(e.target.value))}
+                    className="w-full text-xs p-2 rounded-lg border border-zinc-200 bg-white"
+                  >
+                    <option value={1200}>1200 (Easy-Medium)</option>
+                    <option value={1500}>1500 (Standard Interview)</option>
+                    <option value={1800}>1800 (Hard FAANG Bar)</option>
+                    <option value={2100}>2100 (Master / Uber Bar)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-700">Topic Domain:</label>
+                  <select
+                    value={oaCfTopic}
+                    onChange={(e) => setOaCfTopic(e.target.value)}
+                    className="w-full text-xs p-2 rounded-lg border border-zinc-200 bg-white"
+                  >
+                    <option value="graphs">Graphs &amp; Trees</option>
+                    <option value="dp">Dynamic Programming</option>
+                    <option value="data structures">Data Structures (Segment Trees, Heaps)</option>
+                    <option value="greedy">Greedy &amp; Two Pointers</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Rounds Configurator */}
           <div className="space-y-2 pt-2">
-            <label className="text-xs font-semibold text-ink">Assessment Round Sequence:</label>
+            <label className="text-xs font-semibold text-zinc-800">Assessment Round Sequence:</label>
             <div className="space-y-2">
               {rounds.map((round, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-3 rounded-lg border border-surface-border bg-surface-subtle text-xs"
+                  className="flex items-center justify-between p-3 rounded-xl border border-zinc-200 bg-zinc-50 text-xs"
                 >
                   <div className="flex items-center gap-2">
                     <input
@@ -495,10 +688,10 @@ export const EnterprisePortalPage: React.FC = () => {
                       className="rounded text-lime-600 focus:ring-lime-500"
                     />
                     <div>
-                      <span className="font-semibold text-ink">{round.name}</span>
+                      <span className="font-semibold text-zinc-900">{round.name}</span>
                       {round.round_type === 'code_comprehension' && (
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-mono">
-                          Coming Soon (Google-Style)
+                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-mono">
+                          Google-Style Beta
                         </span>
                       )}
                     </div>
@@ -514,9 +707,9 @@ export const EnterprisePortalPage: React.FC = () => {
                         next[idx].time_limit_minutes = Number(e.target.value);
                         setRounds(next);
                       }}
-                      className="w-12 px-1.5 py-1 text-center font-mono border border-surface-border rounded bg-white"
+                      className="w-12 px-1.5 py-1 text-center font-mono border border-zinc-200 rounded-lg bg-white"
                     />
-                    <span className="text-[11px] text-ink-muted">min</span>
+                    <span className="text-[11px] text-zinc-500">min</span>
                   </div>
                 </div>
               ))}
@@ -527,7 +720,7 @@ export const EnterprisePortalPage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting} className="bg-ink text-white hover:bg-ink/90">
+            <Button type="submit" disabled={isSubmitting} className="bg-zinc-900 text-white hover:bg-zinc-800">
               {isSubmitting ? 'Creating...' : 'Create Pipeline'}
             </Button>
           </div>
@@ -558,7 +751,7 @@ export const EnterprisePortalPage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => setIsInviteOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isInviting} className="bg-ink text-white hover:bg-ink/90">
+            <Button type="submit" disabled={isInviting} className="bg-zinc-900 text-white hover:bg-zinc-800">
               {isInviting ? 'Generating...' : 'Generate Candidate Link'}
             </Button>
           </div>

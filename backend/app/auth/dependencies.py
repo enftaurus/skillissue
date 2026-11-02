@@ -2,7 +2,7 @@ from fastapi import Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.core.security import decode_access_token
-from backend.app.core.errors import AuthenticationError
+from backend.app.core.errors import AuthenticationError, AuthorizationError
 from backend.app.database.session import get_db
 from backend.app.database.models import User
 from backend.app.auth.service import AuthService
@@ -44,3 +44,18 @@ async def get_current_active_user(
     if not current_user.is_active:
         raise AuthenticationError("User account is inactive")
     return current_user
+
+async def get_current_admin_user(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    if current_user.role != "admin":
+        raise AuthorizationError("Administrative privileges required")
+    return current_user
+
+async def get_current_recruiter_user(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    if current_user.role not in ("recruiter", "admin"):
+        raise AuthorizationError("Recruiter or administrative privileges required")
+    return current_user
+

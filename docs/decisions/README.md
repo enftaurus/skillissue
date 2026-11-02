@@ -26,6 +26,7 @@ This directory contains records of all architectural, infrastructural, and secur
 | [0018](0018-azure-openai-byoc-provider.md) | Azure OpenAI BYOC Provider for Student Accessibility | 2026-10-28 | Accepted | Extends BYOC architecture to Azure OpenAI Service (GPT-4o, GPT-4o-mini, Phi-3.5) with student friction reduction, dual-cloud onboarding, and billing warnings. |
 | [0019](0019-cross-browser-cloud-neural-audio-tts-stt.md) | Cross-Browser Cloud Neural Audio Pipeline (TTS & STT) | 2026-11-02 | Accepted | Cloud neural TTS (Azure OpenAI, AWS Polly, Vaani, Edge Neural) and MediaRecorder STT for studio clarity and cross-browser parity in Firefox, Chrome, and Safari. |
 | [0020](0020-tiered-company-tracks-enterprise-exam-and-retest-delta.md) | Tiered Company Career Tracks, Enterprise Hiring Exam Portal, and Closed-Loop Retest Engine | 2026-11-03 | Accepted | Gold/Silver/Bronze company tracks, multi-round enterprise exam runner with anti-cheating telemetry, Planly interactive calendar grid with .ics export, and closed-loop retest delta cards. |
+| [0021](0021-roles-tenants-curated-simulations-and-anti-cheating.md) | Role-Based Access Control, Multi-Tenant Telemetry, 50+ Company Tracks, Placement Simulations, and Anti-Cheating Oral Cross-Examination | 2026-11-03 | Accepted | Candidate/recruiter/admin portals, real vs test cohort admin analytics, 52 community-curated company packs, 3-round placement simulations, and Stage 3 OA code cross-examination. |
 
 ---
 

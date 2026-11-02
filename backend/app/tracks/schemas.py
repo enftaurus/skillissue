@@ -52,3 +52,22 @@ class SolveCompanyProblemResponse(BaseModel):
     new_unlocked_problem_title: Optional[str] = None
     total_unlocked: int
     total_solved: int
+
+class SimulationRound(BaseModel):
+    round_number: int
+    name: str
+    type: str  # 'oa_dsa', 'ai_project', 'tough_interview'
+    time_limit: int
+    problem: str
+    description: str
+
+class PresetSimulationResponse(BaseModel):
+    id: str
+    company: str
+    title: str
+    tier: str
+    logo_icon: str
+    tagline: str
+    duration_minutes: int
+    rounds: List[SimulationRound]
+

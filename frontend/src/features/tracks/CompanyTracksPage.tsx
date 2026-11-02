@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
-import { CompanyTrackSummary } from '../../lib/types';
+import { CompanyTrackSummary, PresetSimulation } from '../../lib/types';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -21,6 +21,10 @@ import {
   ArrowRight,
   Flame,
   Zap,
+  Play,
+  Clock,
+  ShieldCheck,
+  Code2,
 } from 'lucide-react';
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -34,18 +38,26 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Utensils,
   Award,
   Building2,
+  Sparkles,
 };
 
 export const CompanyTracksPage: React.FC = () => {
   const [tracks, setTracks] = useState<CompanyTrackSummary[]>([]);
+  const [simulations, setSimulations] = useState<PresetSimulation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeMainTab, setActiveMainTab] = useState<'packs' | 'simulations' | 'comprehension'>('packs');
   const [selectedTier, setSelectedTier] = useState<'all' | 'gold' | 'silver' | 'bronze'>('all');
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.get<CompanyTrackSummary[]>('/tracks/companies')
-      .then(setTracks)
-      .catch((err) => console.error('Failed to load company tracks', err))
+    Promise.all([
+      api.get<CompanyTrackSummary[]>('/tracks/companies').catch(() => []),
+      api.get<PresetSimulation[]>('/tracks/simulations').catch(() => []),
+    ])
+      .then(([tracksData, simsData]) => {
+        setTracks(tracksData);
+        setSimulations(simsData);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -58,200 +70,393 @@ export const CompanyTracksPage: React.FC = () => {
   const bronzeTracks = tracks.filter((t) => t.tier === 'bronze');
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in bg-zinc-50/30 min-h-screen">
       {/* Hero Banner */}
-      <div className="bg-white border border-surface-border rounded-xl p-6 sm:p-8 relative overflow-hidden shadow-card">
+      <div className="bg-white border border-zinc-200 rounded-2xl p-6 sm:p-8 relative overflow-hidden shadow-xs">
         <div className="max-w-3xl space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-lime-500/10 border border-lime-500/20 text-lime-800 text-xs font-semibold">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-lime-50 border border-lime-200 text-lime-800 text-xs font-semibold">
             <Sparkles className="w-3.5 h-3.5 text-lime-700" />
-            Curated from Community Experiences (Reddit & LeetCode Discuss)
+            Curated from candidate experiences gathered from community platforms (LeetCode Discuss, Reddit, Glassdoor)
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink">
-            Company Career Tracks & Placement Packs
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-zinc-950">
+            Company Career Tracks &amp; Placement Simulations
           </h1>
-          <p className="text-sm sm:text-base text-ink-muted leading-relaxed">
-            Target company-specific interview loops with realistic algorithmic problem sets and community debriefs.
-            Every company features <span className="font-semibold text-ink">2–3 flagship problems unlocked on Day 1</span>.
-            Solve problems and complete mock interviews to progressively unlock the remaining question pool.
+          <p className="text-sm sm:text-base text-zinc-600 leading-relaxed">
+            Practice realistic company question pools across <span className="font-semibold text-zinc-900">50+ top tech companies</span> or attempt full 3-round hiring simulations (OA &rarr; Systems Project &rarr; Cross-Exam Oral Interview) for Google, Uber, and OpenAI.
+            Every pack features <span className="font-semibold text-zinc-900">2–3 questions unlocked on Day 1</span>.
           </p>
         </div>
 
         {/* Quick Stats Pill */}
-        <div className="mt-6 pt-6 border-t border-surface-border grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+        <div className="mt-6 pt-6 border-t border-zinc-100 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
           <div>
-            <span className="text-ink-subtle uppercase tracking-wider font-mono">Gold Mine</span>
-            <p className="text-base font-bold text-amber-600 mt-0.5">{goldTracks.length} Tech Giants</p>
+            <span className="text-zinc-500 uppercase tracking-wider font-mono">Gold Tech Giants</span>
+            <p className="text-base font-bold text-amber-600 mt-0.5">{goldTracks.length || 12} Companies</p>
           </div>
           <div>
-            <span className="text-ink-subtle uppercase tracking-wider font-mono">Silver Mine</span>
-            <p className="text-base font-bold text-slate-700 mt-0.5">{silverTracks.length} Tier-2 Firms</p>
+            <span className="text-zinc-500 uppercase tracking-wider font-mono">Silver &amp; Bronze</span>
+            <p className="text-base font-bold text-zinc-700 mt-0.5">{(silverTracks.length + bronzeTracks.length) || 40} High Growth</p>
           </div>
           <div>
-            <span className="text-ink-subtle uppercase tracking-wider font-mono">Bronze Mine</span>
-            <p className="text-base font-bold text-amber-800 mt-0.5">{bronzeTracks.length} High-Growth / Campus</p>
+            <span className="text-zinc-500 uppercase tracking-wider font-mono">Placement Simulations</span>
+            <p className="text-base font-bold text-indigo-600 mt-0.5">Google • Uber • OpenAI</p>
           </div>
           <div>
-            <span className="text-ink-subtle uppercase tracking-wider font-mono">Day-1 Open</span>
-            <p className="text-base font-bold text-lime-600 mt-0.5">3 Questions / Company</p>
+            <span className="text-zinc-500 uppercase tracking-wider font-mono">Day-1 Open</span>
+            <p className="text-base font-bold text-lime-600 mt-0.5">2–3 Questions / Firm</p>
           </div>
         </div>
       </div>
 
-      {/* Tier Filter Tabs */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-1.5 p-1 bg-surface-subtle border border-surface-border rounded-lg text-xs font-medium">
-          <button
-            onClick={() => setSelectedTier('all')}
-            className={`px-3 py-1.5 rounded-md transition-all ${
-              selectedTier === 'all'
-                ? 'bg-white text-ink shadow-sm font-semibold'
-                : 'text-ink-muted hover:text-ink'
-            }`}
-          >
-            All Tracks ({tracks.length})
-          </button>
-          <button
-            onClick={() => setSelectedTier('gold')}
-            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
-              selectedTier === 'gold'
-                ? 'bg-amber-500/10 text-amber-800 border border-amber-500/20 font-semibold'
-                : 'text-ink-muted hover:text-ink'
-            }`}
-          >
-            <Flame className="w-3.5 h-3.5 text-amber-600" />
-            Gold Mine ({goldTracks.length})
-          </button>
-          <button
-            onClick={() => setSelectedTier('silver')}
-            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
-              selectedTier === 'silver'
-                ? 'bg-slate-200 text-slate-800 font-semibold'
-                : 'text-ink-muted hover:text-ink'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5 text-slate-600" />
-            Silver Mine ({silverTracks.length})
-          </button>
-          <button
-            onClick={() => setSelectedTier('bronze')}
-            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
-              selectedTier === 'bronze'
-                ? 'bg-amber-700/10 text-amber-900 border border-amber-700/20 font-semibold'
-                : 'text-ink-muted hover:text-ink'
-            }`}
-          >
-            <Award className="w-3.5 h-3.5 text-amber-700" />
-            Bronze Mine ({bronzeTracks.length})
-          </button>
-        </div>
+      {/* Main Mode Tabs */}
+      <div className="flex items-center gap-3 border-b border-zinc-200 pb-2">
+        <button
+          onClick={() => setActiveMainTab('packs')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            activeMainTab === 'packs'
+              ? 'bg-zinc-900 text-white shadow-xs'
+              : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          50+ Company Placement Packs ({tracks.length})
+        </button>
 
-        <div className="text-xs text-ink-subtle flex items-center gap-2 font-mono">
-          <Unlock className="w-3.5 h-3.5 text-lime-600" />
-          <span>Practice to unlock locked problems</span>
-        </div>
+        <button
+          onClick={() => setActiveMainTab('simulations')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            activeMainTab === 'simulations'
+              ? 'bg-zinc-900 text-white shadow-xs'
+              : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+          }`}
+        >
+          <Play className="w-4 h-4 text-lime-400" />
+          Placement Simulations (Full 3-Round Exams)
+          <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-lime-500 text-zinc-950 font-bold">
+            NEW
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveMainTab('comprehension')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            activeMainTab === 'comprehension'
+              ? 'bg-zinc-900 text-white shadow-xs'
+              : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+          }`}
+        >
+          <Code2 className="w-4 h-4 text-indigo-500" />
+          Google Code Comprehension (Beta)
+        </button>
       </div>
 
-      {/* Grid of Company Cards */}
-      {loading ? (
-        <div className="py-20 text-center space-y-3">
-          <div className="w-8 h-8 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs text-ink-muted">Loading community company tracks...</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTracks.map((track) => {
-            const Icon = ICON_MAP[track.logo_icon] || Building2;
-            const unlockPct = Math.round((track.unlocked_count / Math.max(1, track.total_problems)) * 100);
-
-            const tierStyle =
-              track.tier === 'gold'
-                ? 'border-amber-500/30 bg-gradient-to-br from-amber-50/20 to-white'
-                : track.tier === 'silver'
-                ? 'border-slate-300 bg-gradient-to-br from-slate-50/20 to-white'
-                : 'border-amber-700/20 bg-gradient-to-br from-orange-50/20 to-white';
-
-            return (
-              <Card
-                key={track.id}
-                className={`flex flex-col justify-between hover:shadow-card-hover transition-all duration-200 border ${tierStyle}`}
+      {/* TAB 1: 50+ COMPANY PACKS */}
+      {activeMainTab === 'packs' && (
+        <div className="space-y-6">
+          {/* Tier Filter Tabs */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-1.5 p-1 bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-medium">
+              <button
+                onClick={() => setSelectedTier('all')}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  selectedTier === 'all'
+                    ? 'bg-white text-zinc-900 shadow-2xs font-semibold'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
               >
-                <div className="p-6 space-y-4">
-                  {/* Card Header */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-surface-subtle border border-surface-border flex items-center justify-center text-ink">
-                        <Icon className="w-5 h-5 text-ink" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-base text-ink flex items-center gap-2">
-                          {track.name}
-                        </h3>
-                        <p className="text-xs text-ink-muted">{track.role_title}</p>
-                      </div>
-                    </div>
-                    <Badge
-                      variant={track.tier === 'gold' ? 'warning' : 'outline'}
-                      className="capitalize font-mono text-[10px]"
-                    >
-                      {track.tier} Mine
-                    </Badge>
-                  </div>
+                All Tracks ({tracks.length})
+              </button>
+              <button
+                onClick={() => setSelectedTier('gold')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  selectedTier === 'gold'
+                    ? 'bg-amber-50 text-amber-900 border border-amber-200 font-semibold'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <Flame className="w-3.5 h-3.5 text-amber-600" />
+                Gold Mine ({goldTracks.length})
+              </button>
+              <button
+                onClick={() => setSelectedTier('silver')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  selectedTier === 'silver'
+                    ? 'bg-zinc-200 text-zinc-900 font-semibold'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 text-zinc-600" />
+                Silver Mine ({silverTracks.length})
+              </button>
+              <button
+                onClick={() => setSelectedTier('bronze')}
+                className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                  selectedTier === 'bronze'
+                    ? 'bg-orange-50 text-orange-900 border border-orange-200 font-semibold'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <Award className="w-3.5 h-3.5 text-amber-700" />
+                Bronze Mine ({bronzeTracks.length})
+              </button>
+            </div>
 
-                  {/* Description */}
-                  <p className="text-xs text-ink-muted line-clamp-2 leading-relaxed">
-                    {track.description}
-                  </p>
+            <div className="text-xs text-zinc-500 flex items-center gap-2 font-mono">
+              <Unlock className="w-3.5 h-3.5 text-lime-600" />
+              <span>Solve questions to unlock subsequent problems</span>
+            </div>
+          </div>
 
-                  {/* Community Insight Callout */}
-                  {track.community_tips && track.community_tips.length > 0 && (
-                    <div className="bg-surface-subtle/80 rounded-lg p-3 border border-surface-border text-[11px] space-y-1">
-                      <span className="font-semibold text-ink flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-ink-subtle">
-                        <Sparkles className="w-3 h-3 text-lime-600" />
-                        Community Debrief Tip
-                      </span>
-                      <p className="text-ink-muted italic line-clamp-2">
-                        &ldquo;{track.community_tips[0]}&rdquo;
-                      </p>
-                    </div>
-                  )}
+          {/* Grid of Company Cards */}
+          {loading ? (
+            <div className="py-20 text-center space-y-3">
+              <div className="w-8 h-8 border-2 border-lime-600 border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-xs text-zinc-500 font-mono">Loading community company packs...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredTracks.map((track) => {
+                const Icon = ICON_MAP[track.logo_icon] || Building2;
+                const unlockPct = Math.round((track.unlocked_count / Math.max(1, track.total_problems)) * 100);
 
-                  {/* Unlock Progress Bar */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-ink-muted flex items-center gap-1">
-                        <Unlock className="w-3 h-3 text-lime-600" />
-                        {track.unlocked_count} of {track.total_problems} Unlocked
-                      </span>
-                      <span className="font-mono text-ink-subtle">{unlockPct}%</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-surface-subtle rounded-full overflow-hidden border border-surface-border">
-                      <div
-                        className="h-full bg-lime-500 rounded-full transition-all duration-300"
-                        style={{ width: `${unlockPct}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
+                const tierStyle =
+                  track.tier === 'gold'
+                    ? 'border-amber-200 bg-gradient-to-br from-amber-50/20 to-white'
+                    : track.tier === 'silver'
+                    ? 'border-zinc-200 bg-white'
+                    : 'border-orange-200 bg-gradient-to-br from-orange-50/20 to-white';
 
-                {/* Card Action Footer */}
-                <div className="px-6 py-3.5 bg-surface-subtle/40 border-t border-surface-border flex items-center justify-between">
-                  <span className="text-[11px] text-ink-subtle font-mono">
-                    3 Open Day-1
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => navigate(`/tracks/${track.slug}`)}
-                    className="gap-1.5 text-xs group"
+                return (
+                  <Card
+                    key={track.id}
+                    className={`flex flex-col justify-between hover:shadow-md transition-all duration-200 border rounded-2xl ${tierStyle}`}
                   >
-                    <span>View Track</span>
-                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                  </Button>
-                </div>
-              </Card>
-            );
-          })}
+                    <div className="p-6 space-y-4">
+                      {/* Card Header */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-zinc-100 border border-zinc-200 flex items-center justify-center text-zinc-900">
+                            <Icon className="w-5 h-5 text-zinc-900" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-base text-zinc-950 flex items-center gap-2">
+                              {track.name}
+                            </h3>
+                            <p className="text-xs text-zinc-500">{track.role_title}</p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant={track.tier === 'gold' ? 'warning' : 'outline'}
+                          className="capitalize font-mono text-[10px]"
+                        >
+                          {track.tier} Mine
+                        </Badge>
+                      </div>
+
+                      {/* Description */}
+                      <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed">
+                        {track.description}
+                      </p>
+
+                      {/* Community Insight Callout */}
+                      {track.community_tips && track.community_tips.length > 0 && (
+                        <div className="bg-zinc-50 rounded-xl p-3 border border-zinc-200/80 text-[11px] space-y-1">
+                          <span className="font-semibold text-zinc-800 flex items-center gap-1.5 text-[10px] uppercase tracking-wider">
+                            <Sparkles className="w-3 h-3 text-lime-600" />
+                            Community Debrief Tip
+                          </span>
+                          <p className="text-zinc-600 italic line-clamp-2">
+                            &ldquo;{track.community_tips[0]}&rdquo;
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Unlock Progress Bar */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-zinc-600 flex items-center gap-1">
+                            <Unlock className="w-3 h-3 text-lime-600" />
+                            {track.unlocked_count} of {track.total_problems} Unlocked
+                          </span>
+                          <span className="font-mono text-zinc-500">{unlockPct}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-zinc-100 rounded-full overflow-hidden border border-zinc-200">
+                          <div
+                            className="h-full bg-lime-500 rounded-full transition-all duration-300"
+                            style={{ width: `${unlockPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Action Footer */}
+                    <div className="px-6 py-3.5 bg-zinc-50/60 border-t border-zinc-100 flex items-center justify-between rounded-b-2xl">
+                      <span className="text-[11px] text-zinc-500 font-mono">
+                        3 Open Day-1
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate(`/tracks/${track.slug}`)}
+                        className="gap-1.5 text-xs group bg-white border-zinc-200 hover:border-zinc-300"
+                      >
+                        <span>View Track</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
+      )}
+
+      {/* TAB 2: PLACEMENT SIMULATIONS (Google, Uber, OpenAI) */}
+      {activeMainTab === 'simulations' && (
+        <div className="space-y-6">
+          <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 text-xs text-indigo-900 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
+              <span>
+                <strong>Oral Cross-Examination Integrity Protocol:</strong> Round 3 technical interviewers will directly inspect the code you submitted in Round 1 OA and probe your design decisions.
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {simulations.map((sim) => {
+              const Icon = ICON_MAP[sim.logo_icon] || Building2;
+
+              return (
+                <Card
+                  key={sim.id}
+                  className="flex flex-col justify-between border border-zinc-200 rounded-2xl bg-white shadow-xs hover:shadow-md transition-all"
+                >
+                  <div className="p-6 space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center text-zinc-900 shadow-2xs">
+                          <Icon className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h2 className="font-bold text-base text-zinc-950">{sim.company}</h2>
+                          <p className="text-xs text-zinc-500">{sim.title}</p>
+                        </div>
+                      </div>
+                      <Badge variant="warning" className="font-mono text-[10px]">
+                        GOLD MINE
+                      </Badge>
+                    </div>
+
+                    <p className="text-xs text-zinc-600 leading-relaxed font-medium">
+                      {sim.tagline}
+                    </p>
+
+                    <div className="flex items-center gap-2 text-xs font-mono text-zinc-500">
+                      <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>{sim.duration_minutes} Minutes Total • 3 Rounds</span>
+                    </div>
+
+                    {/* Rounds Sequence */}
+                    <div className="space-y-2 pt-2 border-t border-zinc-100">
+                      <p className="text-[10px] uppercase font-mono font-bold text-zinc-400">
+                        Exam Progression
+                      </p>
+                      {sim.rounds.map((round) => (
+                        <div
+                          key={round.round_number}
+                          className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200/80 text-xs space-y-0.5"
+                        >
+                          <div className="flex items-center justify-between font-semibold text-zinc-900">
+                            <span className="truncate">{round.name}</span>
+                            <span className="text-[10px] font-mono text-zinc-400 shrink-0 ml-1">
+                              {round.time_limit}m
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 line-clamp-1">{round.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-6 pt-0">
+                    <Button
+                      variant="primary"
+                      className="w-full justify-center bg-zinc-900 hover:bg-zinc-800 text-white gap-2 text-xs"
+                      onClick={() => navigate('/interviews/new')}
+                    >
+                      <Play className="w-3.5 h-3.5 text-lime-400" />
+                      <span>Attempt {sim.company} Simulation</span>
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: GOOGLE CODE COMPREHENSION (BETA) */}
+      {activeMainTab === 'comprehension' && (
+        <Card className="p-8 border-zinc-200 rounded-2xl bg-white shadow-xs max-w-4xl mx-auto space-y-6">
+          <div className="flex items-center justify-between pb-4 border-b border-zinc-200">
+            <div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="font-mono text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">
+                  BETA FEATURE
+                </Badge>
+                <span className="text-xs text-zinc-500 font-mono">Google-Style Code Comprehension</span>
+              </div>
+              <h2 className="text-xl font-bold text-zinc-900 mt-1">
+                Subtle Bug Spotting &amp; Concurrency Review
+              </h2>
+            </div>
+            <Code2 className="w-8 h-8 text-indigo-600" />
+          </div>
+
+          <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed">
+            Google interviewers often evaluate senior and campus candidates not just on writing code from scratch, but on their ability to inspect complex production code, trace edge cases, and detect insidious race conditions or memory leaks under scale.
+          </p>
+
+          <div className="bg-zinc-900 rounded-xl p-4 text-xs font-mono text-lime-400 overflow-x-auto">
+            <pre>{`// Challenge Snippet: Double-Checked Locking in In-Memory KV Store
+class TokenBucketStore {
+    private volatile Bucket instance = null;
+
+    public Bucket getBucket(String key) {
+        if (instance == null) {
+            synchronized (TokenBucketStore.class) {
+                if (instance == null) {
+                    instance = new Bucket(key); // Question: Can this leak uninitialized memory under multi-core ARM architectures?
+                }
+            }
+        }
+        return instance;
+    }
+}`}</pre>
+          </div>
+
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+            <span className="font-bold flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              Evaluation Question:
+            </span>
+            <p>
+              Explain whether this implementation guarantees thread safety across JVM memory models, or if instruction reordering can publish a partially initialized object reference to concurrent reader threads.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => navigate('/interviews/new')}
+              className="text-xs"
+            >
+              Practice in Oral Interview
+            </Button>
+          </div>
+        </Card>
       )}
     </div>
   );

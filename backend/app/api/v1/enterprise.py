@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.session import get_db
 from backend.app.database.models import User
-from backend.app.auth.dependencies import get_current_active_user
+from backend.app.auth.dependencies import get_current_active_user, get_current_recruiter_user
 from backend.app.enterprise.schemas import (
     CreatePipelineRequest, AssessmentPipelineResponse, CandidateInviteRequest,
     CandidateAssessmentResponse, CandidateSubmitRoundRequest, PipelineLeaderboardResponse
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/enterprise", tags=["Enterprise & Campus Placement Ex
 @router.post("/pipelines", response_model=AssessmentPipelineResponse, status_code=status.HTTP_201_CREATED)
 async def create_assessment_pipeline(
     req: CreatePipelineRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_recruiter_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -26,7 +26,7 @@ async def create_assessment_pipeline(
 
 @router.get("/pipelines", response_model=List[AssessmentPipelineResponse])
 async def list_assessment_pipelines(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_recruiter_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -37,7 +37,7 @@ async def list_assessment_pipelines(
 @router.get("/pipelines/{pipeline_id}", response_model=AssessmentPipelineResponse)
 async def get_assessment_pipeline(
     pipeline_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_recruiter_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -49,7 +49,7 @@ async def get_assessment_pipeline(
 async def invite_candidate(
     pipeline_id: str,
     req: CandidateInviteRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_recruiter_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -60,7 +60,7 @@ async def invite_candidate(
 @router.get("/pipelines/{pipeline_id}/leaderboard", response_model=PipelineLeaderboardResponse)
 async def get_pipeline_leaderboard(
     pipeline_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_recruiter_user),
     db: AsyncSession = Depends(get_db)
 ):
     """

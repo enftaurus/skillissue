@@ -1,15 +1,26 @@
 from collections import Counter
 from datetime import datetime
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from backend.app.database.models import Interview, Evaluation, Plan, PlanTask, UserSkill, User, RetestSession
+from backend.app.database.models import Interview, Evaluation, Plan, PlanTask, UserSkill, User, RetestSession, Tenant
 from backend.app.analytics.schemas import (
     AnalyticsDashboardResponse, ScoreHistoryPoint, DimensionTrend, ReassessmentComparison,
-    UserSkillResponse, FunnelStep, FunnelTelemetryResponse
+    UserSkillResponse, FunnelStep, FunnelTelemetryResponse,
+    AdminAnalyticsResponse, TenantSummary, TenantCohortMetrics
 )
 from backend.app.interviews.rubrics import get_rubric_for_category
+
+def _extract_dim_score(val: Any) -> float:
+    if isinstance(val, dict):
+        return float(val.get("score", 0.0))
+    if isinstance(val, (int, float)):
+        return float(val)
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return 0.0
 
 class AnalyticsService:
     @staticmethod
@@ -50,20 +61,23 @@ class AnalyticsService:
                 )
             )
 
-            for s in ev.strengths:
+            for s in (ev.strengths or []):
                 strengths_counter[s] += 1
-            for w in ev.weaknesses:
+            for w in (ev.weaknesses or []):
                 weaknesses_counter[w] += 1
 
-            for dim_id, data in ev.rubric_dimension_scores.items():
-                if isinstance(data, dict) and "score" in data:
-                    dim_scores_map.setdefault(dim_id, []).append(float(data["score"]))
+            if isinstance(ev.rubric_dimension_scores, dict):
+                for dim_id, data in ev.rubric_dimension_scores.items():
+                    score_val = _extract_dim_score(data)
+                    dim_scores_map.setdefault(dim_id, []).append(score_val)
 
         avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
 
         # Dimension trends
         dim_trends: List[DimensionTrend] = []
         for dim_id, val_list in dim_scores_map.items():
+            if not val_list:
+                continue
             dim_name = dim_id.replace("_", " ").title()
             dim_trends.append(
                 DimensionTrend(
@@ -100,15 +114,15 @@ class AnalyticsService:
 
                 for dim_id, dim_meta in b_dims.items():
                     if dim_id in l_dims:
-                        b_score = b_dims[dim_id].get("score", 0)
-                        l_score = l_dims[dim_id].get("score", 0)
+                        b_score = _extract_dim_score(b_dims[dim_id])
+                        l_score = _extract_dim_score(l_dims[dim_id])
                         dim_title = rubric_dims.get(dim_id, dim_id.replace("_", " ").title())
                         if l_score > b_score:
-                            improved_dims.append(f"{dim_title} (+{l_score - b_score})")
+                            improved_dims.append(f"{dim_title} (+{round(l_score - b_score, 1)})")
                         elif l_score == b_score:
-                            stable_dims.append(f"{dim_title} ({l_score}/5)")
+                            stable_dims.append(f"{dim_title} ({round(l_score, 1)}/5)")
                         else:
-                            declined_dims.append(f"{dim_title} ({l_score - b_score})")
+                            declined_dims.append(f"{dim_title} ({round(l_score - b_score, 1)})")
 
                 reassessments.append(
                     ReassessmentComparison(
@@ -221,3 +235,78 @@ class AnalyticsService:
             provider_reliability=reliability,
             conversion_headline=headline
         )
+
+    @staticmethod
+    async def get_admin_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
+        # Real candidates stats (is_test == False)
+        real_users = (await db.execute(select(func.count(User.id)).where(User.is_test == False))).scalar_one() or 0
+        real_interviews = (await db.execute(select(func.count(Interview.id)).join(User).where(User.is_test == False))).scalar_one() or 0
+        real_completed = (await db.execute(select(func.count(Interview.id)).join(User).where(User.is_test == False, Interview.status == "completed"))).scalar_one() or 0
+        real_avg_score = (await db.execute(select(func.avg(Evaluation.overall_score)).join(Interview).join(User).where(User.is_test == False))).scalar_one() or 0.0
+        real_retests = (await db.execute(select(func.count(RetestSession.id)).join(User).where(User.is_test == False, RetestSession.status == "completed"))).scalar_one() or 0
+
+        # Test/Sandbox stats (is_test == True)
+        test_users = (await db.execute(select(func.count(User.id)).where(User.is_test == True))).scalar_one() or 0
+        test_interviews = (await db.execute(select(func.count(Interview.id)).join(User).where(User.is_test == True))).scalar_one() or 0
+        test_completed = (await db.execute(select(func.count(Interview.id)).join(User).where(User.is_test == True, Interview.status == "completed"))).scalar_one() or 0
+        test_avg_score = (await db.execute(select(func.avg(Evaluation.overall_score)).join(Interview).join(User).where(User.is_test == True))).scalar_one() or 0.0
+        test_retests = (await db.execute(select(func.count(RetestSession.id)).join(User).where(User.is_test == True, RetestSession.status == "completed"))).scalar_one() or 0
+
+        real_completion_rate = round((real_completed / real_interviews * 100), 1) if real_interviews > 0 else 0.0
+        test_completion_rate = round((test_completed / test_interviews * 100), 1) if test_interviews > 0 else 0.0
+
+        # Estimated cost calculations
+        real_cost = round(real_completed * 0.042, 2)
+        test_cost = round(test_completed * 0.005, 2)
+
+        # Tenants breakdown
+        tenants_res = await db.execute(select(Tenant).order_by(Tenant.created_at.asc()))
+        all_tenants = list(tenants_res.scalars().all())
+
+        tenant_summaries = []
+        for t in all_tenants:
+            u_cnt = (await db.execute(select(func.count(User.id)).where(User.tenant_id == t.id))).scalar_one() or 0
+            i_cnt = (await db.execute(select(func.count(Interview.id)).join(User).where(User.tenant_id == t.id))).scalar_one() or 0
+            tenant_summaries.append(
+                TenantSummary(
+                    id=t.id,
+                    name=t.name,
+                    slug=t.slug,
+                    is_test=t.is_test,
+                    user_count=u_cnt,
+                    interviews_count=i_cnt
+                )
+            )
+
+        active_providers = {
+            "aws_bedrock": {"status": "healthy", "region": "us-east-1", "models": ["anthropic.claude-3-5-haiku-20241022-v1:0", "amazon.nova-pro-v1:0"]},
+            "azure_openai": {"status": "healthy", "region": "eastus2", "models": ["gpt-4o-mini"]},
+            "edge_neural_tts": {"status": "healthy", "voice": "en-US-ChristopherNeural"},
+            "faster_whisper": {"status": "operational", "latency_ms": 420},
+            "mock_provider": {"status": "active", "latency_ms": 12}
+        }
+
+        return AdminAnalyticsResponse(
+            real_stats=TenantCohortMetrics(
+                user_count=real_users,
+                interviews_count=real_interviews,
+                completed_interviews=real_completed,
+                completion_rate=real_completion_rate,
+                average_score=round(float(real_avg_score), 1),
+                estimated_cost_usd=real_cost,
+                retests_count=real_retests
+            ),
+            test_stats=TenantCohortMetrics(
+                user_count=test_users,
+                interviews_count=test_interviews,
+                completed_interviews=test_completed,
+                completion_rate=test_completion_rate,
+                average_score=round(float(test_avg_score), 1),
+                estimated_cost_usd=test_cost,
+                retests_count=test_retests
+            ),
+            tenants=tenant_summaries,
+            total_tenants=len(tenant_summaries),
+            active_providers=active_providers
+        )
+

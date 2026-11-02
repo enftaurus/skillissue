@@ -8,6 +8,9 @@ export interface UserProfile {
 export interface User {
   id: string;
   email: string;
+  role?: 'candidate' | 'recruiter' | 'admin';
+  tenant_id?: string;
+  is_test?: boolean;
   is_active: boolean;
   onboarding_completed?: boolean;
   is_provider_connected?: boolean;
@@ -553,6 +556,12 @@ export interface AssessmentPipeline {
   target_role: string;
   job_description: string;
   rounds: RoundConfig[];
+  oa_config?: {
+    mode?: 'preset' | 'custom_url' | 'codeforces_random';
+    custom_url?: string;
+    cf_rating?: number;
+    cf_topic?: string;
+  };
   is_active: boolean;
   invite_token: string;
   invite_url: string;
@@ -570,6 +579,9 @@ export interface CandidateAssessment {
   candidate_email: string;
   access_token: string;
   status: 'invited' | 'in_progress' | 'completed' | 'flagged';
+  resume_text?: string;
+  oa_problem_title?: string;
+  oa_submitted_code?: string;
   current_round_index: number;
   round_results: Record<string, any>;
   composite_score: number;
@@ -591,6 +603,56 @@ export interface PipelineLeaderboard {
   completed_candidates: number;
   average_score: number;
   candidates: CandidateAssessment[];
+}
+
+export interface SimulationRound {
+  round_number: number;
+  name: string;
+  type: 'oa_dsa' | 'ai_project' | 'tough_interview';
+  time_limit: number;
+  problem: string;
+  description: string;
+}
+
+export interface PresetSimulation {
+  id: string;
+  company: string;
+  title: string;
+  tier: 'gold' | 'silver' | 'bronze';
+  logo_icon: string;
+  tagline: string;
+  duration_minutes: number;
+  rounds: SimulationRound[];
+}
+
+export interface TenantSummary {
+  id: string;
+  name: string;
+  slug: string;
+  is_test: boolean;
+  user_count: number;
+  interview_count: number;
+  evaluation_count: number;
+  avg_score: number;
+  created_at: string;
+}
+
+export interface TenantCohortMetrics {
+  cohort_type: 'real' | 'test_sandbox';
+  total_users: number;
+  total_interviews: number;
+  total_evaluations: number;
+  avg_overall_score: number;
+  avg_readiness_pct: number;
+  dimension_breakdown: Record<string, number>;
+  recurring_weaknesses: string[];
+}
+
+export interface AdminAnalyticsResponse {
+  real_cohort: TenantCohortMetrics;
+  test_cohort: TenantCohortMetrics;
+  tenants: TenantSummary[];
+  active_model_providers: Record<string, any>;
 }
 
 // Funnel Telemetry

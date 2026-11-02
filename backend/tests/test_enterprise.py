@@ -6,7 +6,7 @@ from httpx import AsyncClient
 async def test_enterprise_pipeline_and_candidate_exam(client: AsyncClient):
     # Register and login recruiter
     email = f"recruiter_{uuid.uuid4().hex[:8]}@acme.corp"
-    await client.post("/api/v1/auth/register", json={"email": email, "password": "Password123!"})
+    await client.post("/api/v1/auth/register", json={"email": email, "password": "Password123!", "role": "recruiter"})
     login_res = await client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}

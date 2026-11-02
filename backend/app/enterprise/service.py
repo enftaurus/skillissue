@@ -73,6 +73,7 @@ class EnterpriseService:
             target_role=data.target_role,
             job_description=data.job_description,
             rounds=rounds_data,
+            oa_config=data.oa_config or {},
             is_active=True,
             invite_token=invite_token
         )
@@ -86,6 +87,7 @@ class EnterpriseService:
             target_role=pipeline.target_role,
             job_description=pipeline.job_description,
             rounds=pipeline.rounds or [],
+            oa_config=pipeline.oa_config or {},
             is_active=pipeline.is_active,
             invite_token=pipeline.invite_token,
             invite_url=f"/assess/take/{pipeline.invite_token}",
@@ -115,6 +117,7 @@ class EnterpriseService:
                     target_role=p.target_role,
                     job_description=p.job_description,
                     rounds=p.rounds or [],
+                    oa_config=p.oa_config or {},
                     is_active=p.is_active,
                     invite_token=p.invite_token,
                     invite_url=f"/assess/take/{p.invite_token}",
@@ -144,6 +147,7 @@ class EnterpriseService:
             target_role=p.target_role,
             job_description=p.job_description,
             rounds=p.rounds or [],
+            oa_config=p.oa_config or {},
             is_active=p.is_active,
             invite_token=p.invite_token,
             invite_url=f"/assess/take/{p.invite_token}",
@@ -191,6 +195,9 @@ class EnterpriseService:
             candidate_email=candidate.candidate_email,
             access_token=candidate.access_token,
             status=candidate.status,
+            resume_text=candidate.resume_text,
+            oa_problem_title=candidate.oa_problem_title,
+            oa_submitted_code=candidate.oa_submitted_code,
             current_round_index=candidate.current_round_index,
             round_results=candidate.round_results or {},
             composite_score=candidate.composite_score,
@@ -223,6 +230,9 @@ class EnterpriseService:
                 candidate_email=candidate.candidate_email,
                 access_token=candidate.access_token,
                 status=candidate.status,
+                resume_text=candidate.resume_text,
+                oa_problem_title=candidate.oa_problem_title,
+                oa_submitted_code=candidate.oa_submitted_code,
                 current_round_index=candidate.current_round_index,
                 round_results=candidate.round_results or {},
                 composite_score=candidate.composite_score,
@@ -318,6 +328,14 @@ class EnterpriseService:
 
         candidate.integrity_signals = signals
 
+        # Update resume and OA submitted code if supplied
+        if req.resume_text:
+            candidate.resume_text = req.resume_text
+        if req.oa_problem_title:
+            candidate.oa_problem_title = req.oa_problem_title
+        if req.oa_submitted_code:
+            candidate.oa_submitted_code = req.oa_submitted_code
+
         # Advance to next round or complete
         candidate.current_round_index = req.round_index + 1
         if candidate.current_round_index >= len(enabled_rounds):
@@ -343,6 +361,9 @@ class EnterpriseService:
             candidate_email=candidate.candidate_email,
             access_token=candidate.access_token,
             status=candidate.status,
+            resume_text=candidate.resume_text,
+            oa_problem_title=candidate.oa_problem_title,
+            oa_submitted_code=candidate.oa_submitted_code,
             current_round_index=candidate.current_round_index,
             round_results=candidate.round_results,
             composite_score=candidate.composite_score,
@@ -387,6 +408,9 @@ class EnterpriseService:
                     candidate_email=c.candidate_email,
                     access_token=c.access_token,
                     status=c.status,
+                    resume_text=c.resume_text,
+                    oa_problem_title=c.oa_problem_title,
+                    oa_submitted_code=c.oa_submitted_code,
                     current_round_index=c.current_round_index,
                     round_results=c.round_results or {},
                     composite_score=c.composite_score,

@@ -33,6 +33,9 @@ def build_interviewer_system_prompt(
     jd_requirements: Optional[List[str]] = None,
     resume_skills: Optional[List[str]] = None,
     resume_projects: Optional[List[dict]] = None,
+    company_name: Optional[str] = None,
+    oa_problem_title: Optional[str] = None,
+    oa_submitted_code: Optional[str] = None,
 ) -> str:
     context_parts = []
     if jd_role or jd_skills or jd_requirements:
@@ -62,9 +65,46 @@ def build_interviewer_system_prompt(
 
     scope_context = " | ".join(context_parts) if context_parts else "General engineering fundamentals."
 
-    return SYSTEM_INTERVIEWER_PROMPT_TEMPLATE.format(
+    prompt = SYSTEM_INTERVIEWER_PROMPT_TEMPLATE.format(
         category=category.upper(),
         target_role=target_role,
         difficulty=difficulty,
         scope_context=scope_context,
     )
+
+    # Company-specific behavioral flavor
+    if company_name:
+        comp_lower = company_name.lower()
+        if "google" in comp_lower:
+            prompt += (
+                "\n\nCOMPANY CALIBRATION: GOOGLE SDE\n"
+                "- Require rigorous big-O time and space complexity explanations before answering.\n"
+                "- Ask about boundary conditions: integer overflow, memory leaks, negative cycles.\n"
+                "- Evaluate 'Googleyness': intellectual humility, bias for action, and navigating ambiguity."
+            )
+        elif "uber" in comp_lower:
+            prompt += (
+                "\n\nCOMPANY CALIBRATION: UBER SYSTEMS\n"
+                "- Challenge them on high concurrency: race conditions, distributed locking, and geospatial indexing.\n"
+                "- Inquire how their architecture handles 500k concurrent active drivers with GPS packet jitter."
+            )
+        elif "openai" in comp_lower:
+            prompt += (
+                "\n\nCOMPANY CALIBRATION: OPENAI AI SYSTEMS\n"
+                "- Probe understanding of GPU memory management (KV caching, tensor parallelism) and LLM streaming.\n"
+                "- Test their stance on AGI safety vs deployment velocity, and ask 'Why OpenAI specifically?'."
+            )
+
+    # Anti-cheating cross-examination of submitted OA code
+    if oa_submitted_code:
+        prompt += (
+            f"\n\nROUND 1 OA INTEGRITY CHECK & CODE CROSS-EXAMINATION:\n"
+            f"The candidate submitted the following code in Round 1 Online Assessment for '{oa_problem_title or 'OA Problem'}':\n"
+            f"```\n{oa_submitted_code[:1200]}\n```\n"
+            "CROSS-EXAMINATION PROTOCOL:\n"
+            "1. You MUST probe their implementation details: ask why they chose this specific data structure or algorithm.\n"
+            "2. Ask them how this exact code would behave on an edge case (e.g. empty input, extreme constraints, memory limits).\n"
+            "3. If their verbal explanation does not align with the submitted code, challenge them directly to verify authenticity."
+        )
+
+    return prompt

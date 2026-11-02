@@ -3,8 +3,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database.session import get_db
 from backend.app.database.models import User
-from backend.app.auth.dependencies import get_current_active_user
-from backend.app.analytics.schemas import AnalyticsDashboardResponse, UserSkillResponse, FunnelTelemetryResponse
+from backend.app.auth.dependencies import get_current_active_user, get_current_admin_user
+from backend.app.analytics.schemas import (
+    AnalyticsDashboardResponse, UserSkillResponse, FunnelTelemetryResponse, AdminAnalyticsResponse
+)
 from backend.app.analytics.service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["Analytics & Progress"])
@@ -33,3 +35,14 @@ async def get_funnel_telemetry(
     Returns platform-wide activation funnel metrics, drop-off rates, and provider reliability signals.
     """
     return await AnalyticsService.get_funnel_telemetry(db)
+
+@router.get("/admin/stats", response_model=AdminAnalyticsResponse)
+async def get_admin_analytics_stats(
+    current_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns admin tenant telemetry with strict isolation between Real Candidate Stats and Test/Sandbox Stats.
+    """
+    return await AnalyticsService.get_admin_analytics(db)
+

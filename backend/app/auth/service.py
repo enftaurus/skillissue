@@ -18,10 +18,17 @@ class AuthService:
         if result.scalar_one_or_none():
             raise AppException("An account with this email address already exists", code="EMAIL_ALREADY_EXISTS")
 
+        # Determine tenant: test sandbox or default
+        tenant_id = "tenant-test-sandbox" if getattr(data, "is_test", False) else "tenant-prod-default"
+        user_role = getattr(data, "role", "candidate")
+
         # Create user
         user = User(
             email=data.email.lower(),
             hashed_password=hash_password(data.password),
+            role=user_role,
+            tenant_id=tenant_id,
+            is_test=getattr(data, "is_test", False),
             is_active=True,
             onboarding_completed=False,
             token_version=1,
@@ -83,6 +90,9 @@ class AuthService:
             refresh_token=refresh_token,
             user_id=user.id,
             email=user.email,
+            role=user.role,
+            tenant_id=user.tenant_id,
+            is_test=user.is_test,
             onboarding_completed=is_onboarded,
         )
 
@@ -115,6 +125,9 @@ class AuthService:
             refresh_token=new_refresh_token,
             user_id=user.id,
             email=user.email,
+            role=user.role,
+            tenant_id=user.tenant_id,
+            is_test=user.is_test,
             onboarding_completed=is_onboarded,
         )
 

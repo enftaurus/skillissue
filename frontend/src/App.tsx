@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AuthProvider, useAuth } from './lib/auth';
 
 import { LoginPage } from './features/auth/LoginPage';
+import { EnterpriseLoginPage } from './features/auth/EnterpriseLoginPage';
+import { AdminLoginPage } from './features/auth/AdminLoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { InterviewSetupPage } from './features/interview-setup/InterviewSetupPage';
@@ -17,6 +19,7 @@ import { CompanyTracksPage } from './features/tracks/CompanyTracksPage';
 import { CompanyTrackDetailPage } from './features/tracks/CompanyTrackDetailPage';
 import { EnterprisePortalPage } from './features/enterprise/EnterprisePortalPage';
 import { CandidateAssessmentPage } from './features/enterprise/CandidateAssessmentPage';
+import { AdminAnalyticsPage } from './features/admin/AdminAnalyticsPage';
 import { AdminFunnelPage } from './features/admin/AdminFunnelPage';
 import { ProviderSettingsPage } from './features/provider-settings/ProviderSettingsPage';
 import { AwsSetupGuidePage } from './features/provider-settings/AwsSetupGuidePage';
@@ -26,7 +29,10 @@ import { Sidebar } from './components/layout/Sidebar';
 import { CommandPalette } from './components/layout/CommandPalette';
 import { CreditsUsageBadge } from './components/layout/CreditsUsageBadge';
 
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({
+  children,
+  allowedRoles,
+}) => {
   const { user, isLoading } = useAuth();
   const location = useLocation();
 
@@ -40,7 +46,24 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }
 
   if (!user) {
+    if (allowedRoles?.includes('admin')) {
+      return <Navigate to="/admin/login" state={{ from: location }} replace />;
+    }
+    if (allowedRoles?.includes('recruiter')) {
+      return <Navigate to="/enterprise/login" state={{ from: location }} replace />;
+    }
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  const role = user.role || 'candidate';
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    if (role === 'recruiter') {
+      return <Navigate to="/enterprise" replace />;
+    }
+    if (role === 'admin') {
+      return <Navigate to="/admin/analytics" replace />;
+    }
+    return <Navigate to="/" replace />;
   }
 
   if (
@@ -73,6 +96,8 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   const isAuthRoute =
     location.pathname === '/login' ||
+    location.pathname === '/enterprise/login' ||
+    location.pathname === '/admin/login' ||
     location.pathname === '/register' ||
     location.pathname === '/onboarding/bedrock';
 
@@ -148,6 +173,8 @@ export const App: React.FC = () => {
           <Routes>
             {/* Public Auth Routes */}
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/enterprise/login" element={<EnterpriseLoginPage />} />
+            <Route path="/admin/login" element={<AdminLoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
 
             {/* Protected Core Application Routes */}
@@ -242,16 +269,24 @@ export const App: React.FC = () => {
             <Route
               path="/enterprise"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['recruiter', 'admin']}>
                   <EnterprisePortalPage />
                 </ProtectedRoute>
               }
             />
             <Route path="/assess/take/:token" element={<CandidateAssessmentPage />} />
             <Route
+              path="/admin/analytics"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminAnalyticsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/admin/funnel"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['admin']}>
                   <AdminFunnelPage />
                 </ProtectedRoute>
               }

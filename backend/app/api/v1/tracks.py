@@ -7,11 +7,32 @@ from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
 from backend.app.tracks.schemas import (
     CompanyTrackSummary, CompanyTrackDetail, CompanyProblemDetail,
-    SolveCompanyProblemRequest, SolveCompanyProblemResponse
+    SolveCompanyProblemRequest, SolveCompanyProblemResponse,
+    PresetSimulationResponse
 )
 from backend.app.tracks.service import CompanyTrackService
 
 router = APIRouter(prefix="/tracks", tags=["Company Career Tracks"])
+
+@router.get("/simulations", response_model=List[PresetSimulationResponse])
+async def list_preset_simulations(
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Returns full company hiring assessment simulations (Google SDE, Uber SDE, OpenAI AI Engineer).
+    Features OA -> Take-Home Project -> Cross-Exam Interview.
+    """
+    return CompanyTrackService.get_all_simulations()
+
+@router.get("/simulations/{sim_id}", response_model=PresetSimulationResponse)
+async def get_preset_simulation(
+    sim_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Returns details of a specific hiring assessment simulation.
+    """
+    return CompanyTrackService.get_simulation_by_id(sim_id)
 
 @router.get("/companies", response_model=List[CompanyTrackSummary])
 async def list_company_tracks(

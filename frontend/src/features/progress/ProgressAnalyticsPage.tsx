@@ -82,8 +82,8 @@ export const ProgressAnalyticsPage: React.FC = () => {
     );
   }
 
-  // Topics sorted by score descending
-  const sortedSkills = [...skills].sort((a, b) => b.score - a.score);
+  // Topics sorted by score descending with safe fallback
+  const sortedSkills = (skills || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -173,7 +173,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
           </div>
           <div className="mt-3 flex items-baseline gap-2">
             <span className="text-3xl font-bold font-mono text-ink">
-              {data.reassessments.length}
+              {(data.reassessments || []).length}
             </span>
             <span className="text-xs text-ink-muted">verified cycles</span>
           </div>
@@ -206,11 +206,11 @@ export const ProgressAnalyticsPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {sortedSkills.map((skill) => {
               const isEvidenceOpen = !!expandedSkillEvidence[skill.id];
-              const confPercent = Math.round(skill.confidence * 100);
+              const confPercent = Math.round((skill.confidence || 0) * 100);
               const scoreColor =
-                skill.score >= 75
+                (skill.score || 0) >= 75
                   ? 'bg-emerald-500'
-                  : skill.score >= 50
+                  : (skill.score || 0) >= 50
                   ? 'bg-indigo-500'
                   : 'bg-rose-500';
 
@@ -224,7 +224,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
                       <div>
                         <div className="flex items-center gap-1.5">
                           <Badge variant="brand" size="sm" className="font-mono text-xs">
-                            Last updated {new Date(skill.last_seen).toLocaleDateString()}
+                            Last updated {skill.last_seen ? new Date(skill.last_seen).toLocaleDateString() : 'Recent'}
                           </Badge>
                           <span className="text-xs text-ink-subtle font-mono">
                             {skill.evidence_refs?.length || 1} signal{(skill.evidence_refs?.length || 1) !== 1 ? 's' : ''}
@@ -317,7 +317,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
           </span>
         </div>
 
-        {data.reassessments.length === 0 ? (
+        {(data.reassessments || []).length === 0 ? (
           <Card className="p-8 text-center bg-white border border-surface-border">
             <p className="text-sm text-ink-muted mb-2">No reassessments completed yet.</p>
             <p className="text-xs text-ink-subtle max-w-md mx-auto mb-4">
@@ -330,7 +330,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
           </Card>
         ) : (
           <div className="space-y-4">
-            {data.reassessments.map((r, idx) => {
+            {(data.reassessments || []).map((r, idx) => {
               const isPositive = r.score_delta > 0;
               const isNeutral = r.score_delta === 0;
 
@@ -441,21 +441,21 @@ export const ProgressAnalyticsPage: React.FC = () => {
           </h2>
 
           <Card className="p-6 bg-white border border-surface-border space-y-5">
-            {data.dimension_trends.length === 0 ? (
+            {(data.dimension_trends || []).length === 0 ? (
               <p className="text-sm text-ink-muted">
                 Dimension trends will appear as you complete scored interviews.
               </p>
             ) : (
-              data.dimension_trends.map((dim) => {
-                const percent = Math.min(100, Math.round(dim.average_score * 20)); // out of 5 -> percent
+              (data.dimension_trends || []).map((dim) => {
+                const percent = Math.min(100, Math.round((dim.average_score || 0) * 20)); // out of 5 -> percent
                 return (
                   <div key={dim.dimension_id} className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-ink">{dim.dimension_name}</span>
                       <div className="flex items-center gap-2 font-mono">
-                        <span className="text-ink font-bold">{dim.latest_score.toFixed(1)}/5.0</span>
+                        <span className="text-ink font-bold">{(dim.latest_score ?? 0).toFixed(1)}/5.0</span>
                         <span className="text-ink-subtle">
-                          (avg {dim.average_score.toFixed(1)})
+                          (avg {(dim.average_score ?? 0).toFixed(1)})
                         </span>
                       </div>
                     </div>
@@ -472,13 +472,13 @@ export const ProgressAnalyticsPage: React.FC = () => {
           </Card>
 
           {/* Recent Score Timeline */}
-          {data.score_history.length > 0 && (
+          {(data.score_history || []).length > 0 && (
             <Card className="p-6 bg-white border border-surface-border space-y-4">
               <h3 className="text-sm font-semibold text-ink uppercase tracking-wider text-xs">
                 Score Timeline History
               </h3>
               <div className="space-y-2">
-                {data.score_history.slice(0, 5).map((s) => (
+                {(data.score_history || []).slice(0, 5).map((s) => (
                   <div
                     key={s.interview_id}
                     className="flex items-center justify-between p-3 rounded-lg bg-surface-subtle border border-surface-border text-xs"
@@ -491,7 +491,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
                         {s.title}
                       </Link>
                       <div className="text-[11px] text-ink-muted mt-0.5">
-                        {s.category} • {new Date(s.completed_at).toLocaleDateString()}
+                        {s.category} • {s.completed_at ? new Date(s.completed_at).toLocaleDateString() : ''}
                       </div>
                     </div>
                     <span className="font-mono font-bold text-sm text-indigo-800 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200/80">
@@ -514,13 +514,13 @@ export const ProgressAnalyticsPage: React.FC = () => {
             <p className="text-xs text-ink-subtle">
               Consistently demonstrated across multiple interview sessions:
             </p>
-            {data.recurring_strengths.length === 0 ? (
+            {(data.recurring_strengths || []).length === 0 ? (
               <p className="text-xs text-ink-muted italic">
                 None identified yet. Complete more sessions to build patterns.
               </p>
             ) : (
               <ul className="space-y-2">
-                {data.recurring_strengths.map((str, i) => (
+                {(data.recurring_strengths || []).map((str, i) => (
                   <li
                     key={i}
                     className="text-xs text-ink bg-emerald-50/60 border border-emerald-200/80 p-2.5 rounded-md leading-relaxed"
@@ -540,13 +540,13 @@ export const ProgressAnalyticsPage: React.FC = () => {
             <p className="text-xs text-ink-subtle">
               Patterns that interviewers repeatedly flag for follow-up or correction:
             </p>
-            {data.recurring_weaknesses.length === 0 ? (
+            {(data.recurring_weaknesses || []).length === 0 ? (
               <p className="text-xs text-ink-muted italic">
                 None identified yet. Complete more sessions to build patterns.
               </p>
             ) : (
               <ul className="space-y-2">
-                {data.recurring_weaknesses.map((weak, i) => (
+                {(data.recurring_weaknesses || []).map((weak, i) => (
                   <li
                     key={i}
                     className="text-xs text-ink bg-rose-50/60 border border-rose-200/80 p-2.5 rounded-md leading-relaxed"

@@ -13,12 +13,26 @@ def generate_uuid() -> str:
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
+class Tenant(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    users: Mapped[List["User"]] = relationship("User", back_populates="tenant")
+
 class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(30), default="candidate")  # 'candidate', 'recruiter', 'admin'
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     token_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
@@ -26,6 +40,7 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships with cascade delete for tenant data purging
+    tenant: Mapped[Optional["Tenant"]] = relationship("Tenant", back_populates="users")
     profile: Mapped[Optional["UserProfile"]] = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
     provider_config: Mapped[Optional["ProviderConfig"]] = relationship("ProviderConfig", back_populates="user", uselist=False, cascade="all, delete-orphan")
     resumes: Mapped[List["Resume"]] = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
@@ -408,6 +423,7 @@ class AssessmentPipeline(Base):
     target_role: Mapped[str] = mapped_column(String(150), nullable=False)
     job_description: Mapped[str] = mapped_column(Text, nullable=False)
     rounds: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    oa_config: Mapped[Dict[str, Any]] = mapped_column(JSON, default=lambda: {"mode": "preset", "custom_url": "", "rating_min": 1200, "rating_max": 1600, "topic_tags": ["dp", "graphs"]})
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     invite_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -425,6 +441,9 @@ class CandidateAssessment(Base):
     candidate_email: Mapped[str] = mapped_column(String(255), nullable=False)
     access_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="invited")  # 'invited', 'in_progress', 'completed', 'flagged'
+    resume_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    oa_problem_title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    oa_submitted_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     current_round_index: Mapped[int] = mapped_column(Integer, default=0)
     round_results: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     composite_score: Mapped[float] = mapped_column(Float, default=0.0)

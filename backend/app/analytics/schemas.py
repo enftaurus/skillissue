@@ -51,8 +51,9 @@ class AnalyticsDashboardResponse(BaseModel):
     planly_completion_rate: float
     score_history: List[ScoreHistoryPoint]
     dimension_trends: List[DimensionTrend]
-    recurring_strengths: List[str]
-    reassessments: List[ReassessmentComparison]
+    recurring_strengths: List[str] = []
+    recurring_weaknesses: List[str] = []
+    reassessments: List[ReassessmentComparison] = []
     skills: List[UserSkillResponse] = []
 
 class FunnelStep(BaseModel):
@@ -71,3 +72,27 @@ class FunnelTelemetryResponse(BaseModel):
     steps: List[FunnelStep]
     provider_reliability: Dict[str, Any]
     conversion_headline: str
+
+class TenantSummary(BaseModel):
+    id: str
+    name: str
+    slug: str
+    is_test: bool
+    user_count: int
+    interviews_count: int
+
+class TenantCohortMetrics(BaseModel):
+    user_count: int
+    interviews_count: int
+    completed_interviews: int
+    completion_rate: float
+    average_score: float
+    estimated_cost_usd: float
+    retests_count: int
+
+class AdminAnalyticsResponse(BaseModel):
+    real_stats: TenantCohortMetrics
+    test_stats: TenantCohortMetrics
+    tenants: List[TenantSummary]
+    total_tenants: int
+    active_providers: Dict[str, Any]
