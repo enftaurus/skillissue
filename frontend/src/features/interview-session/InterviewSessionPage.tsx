@@ -10,7 +10,7 @@ import {
   CodingProblem,
   HintResponse,
 } from '../../lib/types';
-import { SpeechHandler } from '../../lib/speech';
+import { SpeechHandler, VoiceOption, DEFAULT_VOICES, getSelectedVoice, setSelectedVoice } from '../../lib/speech';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -49,6 +49,9 @@ export const InterviewSessionPage: React.FC = () => {
   const [isSpeechSupported, setIsSpeechSupported] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [selectedVoice, setSelectedVoiceState] = useState<string>(getSelectedVoice());
+  const [availableVoices, setAvailableVoices] = useState<VoiceOption[]>(DEFAULT_VOICES);
   const speechHandlerRef = useRef<SpeechHandler | null>(null);
 
   // Coding Sandbox Pane (for DSA / coding sessions)
@@ -117,7 +120,12 @@ export const InterviewSessionPage: React.FC = () => {
       .catch((err) => setError(err.message || 'Failed to load interview session.'))
       .finally(() => setLoading(false));
 
-    // Initialize Speech Handler
+    // Fetch Neural Voice catalog
+    SpeechHandler.fetchVoices().then((v) => {
+      if (v && v.length > 0) setAvailableVoices(v);
+    }).catch(() => {});
+
+    // Initialize Cross-Browser Cloud Neural Speech Handler
     const handler = new SpeechHandler(
       (text, isFinal) => {
         if (isFinal) {
@@ -130,7 +138,8 @@ export const InterviewSessionPage: React.FC = () => {
         }
       },
       (err) => console.warn('Speech recognition notice:', err),
-      (listening) => setIsListening(listening)
+      (listening) => setIsListening(listening),
+      (level) => setAudioLevel(level)
     );
     speechHandlerRef.current = handler;
     setIsSpeechSupported(handler.isSupported);
@@ -189,11 +198,15 @@ export const InterviewSessionPage: React.FC = () => {
         speechHandlerRef.current.stop();
       }
       setIsSpeaking(true);
-      SpeechHandler.speak(text, () => {
-        setIsSpeaking(false);
-      });
+      SpeechHandler.speak(
+        text,
+        () => {
+          setIsSpeaking(false);
+        },
+        selectedVoice
+      );
     },
-    [isListening]
+    [isListening, selectedVoice]
   );
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -396,21 +409,43 @@ export const InterviewSessionPage: React.FC = () => {
             ⏱ {formatTime(secondsElapsed)} / {interview?.target_duration_minutes || 20}:00
           </div>
 
-          {/* AI Voice Toggle */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setAutoSpeak(!autoSpeak)}
-            title={autoSpeak ? 'Mute AI Voice' : 'Enable AI Voice readout'}
-            className="text-xs gap-1"
-          >
-            {autoSpeak ? (
-              <Volume2 className="w-4 h-4 text-indigo-600" />
-            ) : (
-              <VolumeX className="w-4 h-4 text-ink-subtle" />
+          {/* AI Voice Toggle & Persona Picker */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 rounded-lg p-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setAutoSpeak(!autoSpeak)}
+              title={autoSpeak ? 'Mute AI Voice' : 'Enable AI Voice readout'}
+              className="text-xs gap-1 h-7 px-2"
+            >
+              {autoSpeak ? (
+                <Volume2 className="w-3.5 h-3.5 text-indigo-600" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+              )}
+              <span className="hidden md:inline font-medium text-xs">
+                {autoSpeak ? 'Voice On' : 'Voice Off'}
+              </span>
+            </Button>
+
+            {autoSpeak && (
+              <select
+                value={selectedVoice}
+                onChange={(e) => {
+                  setSelectedVoiceState(e.target.value);
+                  setSelectedVoice(e.target.value);
+                }}
+                className="text-xs bg-white border border-slate-200 text-slate-800 rounded-md px-2 py-0.5 font-sans focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-2xs"
+                title="Select Interviewer Voice Persona"
+              >
+                {availableVoices.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
             )}
-            <span className="hidden md:inline">{autoSpeak ? 'Voice On' : 'Voice Off'}</span>
-          </Button>
+          </div>
 
           {/* Coding Editor Toggle (for DSA or technical rounds) */}
           <Button
@@ -600,6 +635,7 @@ export const InterviewSessionPage: React.FC = () => {
               onToggleAutoSpeak={() => setAutoSpeak(!autoSpeak)}
               interviewerTitle={`Senior Staff Interviewer (${interview?.target_role || 'Engineering'})`}
               category={interview?.category}
+              voicePersonaName={availableVoices.find((v) => v.id === selectedVoice)?.name}
             />
 
             <Card className="p-5 bg-white border border-slate-200/80 rounded-2xl shadow-xs text-xs space-y-3">
@@ -640,6 +676,7 @@ export const InterviewSessionPage: React.FC = () => {
                 onToggleAutoSpeak={() => setAutoSpeak(!autoSpeak)}
                 interviewerTitle="Senior Staff Interviewer"
                 category={interview?.category}
+                voicePersonaName={availableVoices.find((v) => v.id === selectedVoice)?.name}
               />
             </div>
           )}
@@ -708,19 +745,32 @@ export const InterviewSessionPage: React.FC = () => {
 
           {/* Active Voice Input Wave Banner */}
           {isListening && (
-            <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs sm:text-sm flex items-center justify-between animate-fade-in shadow-xs">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
-                <span className="font-semibold">
-                  Listening to your answer... Speak naturally into your microphone.
+            <div className="p-3.5 bg-indigo-50/80 border border-indigo-200/80 rounded-xl text-indigo-950 text-xs sm:text-sm flex items-center justify-between animate-fade-in shadow-xs">
+              <div className="flex items-center gap-3">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping" />
+                <span className="font-semibold text-slate-900">
+                  Recording your response... State your technical answer clearly.
                 </span>
+                {/* Dynamic Audio Level Equalizer Bars */}
+                <div className="flex items-end gap-1 h-5 px-2 bg-indigo-100/70 rounded-md">
+                  {[0.4, 0.8, 1.0, 0.7, 0.5, 0.9, 0.3].map((multiplier, i) => {
+                    const barHeight = Math.max(3, Math.min(20, Math.round(audioLevel * 20 * multiplier) + (i % 2 === 0 ? 3 : 2)));
+                    return (
+                      <div
+                        key={i}
+                        className="w-1 bg-indigo-600 rounded-full transition-all duration-75"
+                        style={{ height: `${barHeight}px` }}
+                      />
+                    );
+                  })}
+                </div>
               </div>
               <Button
                 type="button"
                 variant="danger"
                 size="sm"
                 onClick={toggleSpeechRecognition}
-                className="text-xs py-1 px-3"
+                className="text-xs py-1 px-3 shadow-xs"
               >
                 Done Speaking
               </Button>

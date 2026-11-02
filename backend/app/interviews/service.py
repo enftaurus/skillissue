@@ -324,7 +324,10 @@ class InterviewService:
     @staticmethod
     def compute_grouped_transcript(messages: List[InterviewMessage]) -> List[dict]:
         turns: List[dict] = []
-        sorted_msgs = sorted(messages, key=lambda m: (m.created_at or datetime.min, m.id))
+        sorted_msgs = sorted(
+            messages,
+            key=lambda m: (m.question_index or 0, 0 if m.role == "assistant" else 1, m.created_at or datetime.min)
+        )
 
         current_turn: Optional[dict] = None
         q_idx = 1
@@ -373,6 +376,12 @@ class InterviewService:
         interview = result.scalar_one_or_none()
         if not interview:
             raise EntityNotFoundError("Interview", interview_id)
+
+        try:
+            await db.refresh(interview, attribute_names=["messages"])
+        except Exception:
+            pass
+
         interview.grouped_transcript = cls.compute_grouped_transcript(interview.messages)
         return interview
 

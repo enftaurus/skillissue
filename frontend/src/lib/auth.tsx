@@ -20,8 +20,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refreshUser = async () => {
+    const activeToken = localStorage.getItem('skillissue_token');
     try {
-      if (token) {
+      if (activeToken) {
         const userData = await api.get<User>('/auth/me');
         setUser(userData);
         localStorage.setItem('skillissue_user', JSON.stringify(userData));
@@ -49,7 +50,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
     localStorage.setItem('skillissue_token', res.access_token);
     setToken(res.access_token);
-    await refreshUser();
+    try {
+      const userData = await api.get<User>('/auth/me');
+      setUser(userData);
+      localStorage.setItem('skillissue_user', JSON.stringify(userData));
+    } catch (e) {
+      console.warn('Failed to fetch user profile after login:', e);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const register = async (data: { email: string; password: string; target_role?: string; daily_study_minutes?: number }) => {

@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     CF_API_KEY: str = ""
     CF_API_SECRET: str = ""
 
+    # Vaani.dev / VaaniStack Speech API Credentials (Optional)
+    VAANI_API_KEY: str = ""
+    VAANI_API_URL: str = "https://api.vaanistack.com/v1"
+
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):

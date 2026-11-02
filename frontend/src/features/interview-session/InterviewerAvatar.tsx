@@ -9,6 +9,7 @@ interface InterviewerAvatarProps {
   onToggleAutoSpeak: () => void;
   interviewerTitle?: string;
   category?: string;
+  voicePersonaName?: string;
 }
 
 export const InterviewerAvatar: React.FC<InterviewerAvatarProps> = ({
@@ -19,6 +20,7 @@ export const InterviewerAvatar: React.FC<InterviewerAvatarProps> = ({
   onToggleAutoSpeak,
   interviewerTitle = 'Senior Staff Engineer',
   category = 'technical',
+  voicePersonaName,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
@@ -199,7 +201,7 @@ export const InterviewerAvatar: React.FC<InterviewerAvatarProps> = ({
       <div className="text-center space-y-1">
         <div className="font-bold text-sm text-slate-900">{interviewerTitle}</div>
         <div className="text-xs text-slate-500 font-mono uppercase tracking-wider">
-          Persona: Gilfoyle Rigor · {category}
+          {voicePersonaName ? `Voice: ${voicePersonaName}` : `Persona: Gilfoyle Rigor · ${category}`}
         </div>
       </div>
 
