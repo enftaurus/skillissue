@@ -1,7 +1,7 @@
 // Cross-Browser Cloud Neural Speech Engine
 // Studio-quality Text-to-Speech (HTML5 Audio streaming via /api/v1/audio/tts)
-// Cross-Browser Speech-to-Text (MediaRecorder via /api/v1/audio/stt)
-// Flawless performance in Firefox, Chrome, Safari, and Edge.
+// Cloud-grade Speech-to-Text via Backend Faster-Whisper & AWS Transcribe (/api/v1/audio/stt)
+// Completely free from unreliable browser SpeechRecognition
 
 import { api } from './api';
 
@@ -16,40 +16,72 @@ export interface VoiceOption {
 
 export const DEFAULT_VOICES: VoiceOption[] = [
   {
-    id: 'en-US-ChristopherNeural',
-    name: 'Christopher (US Male)',
+    id: 'aws-polly-matthew',
+    name: 'Matthew (AWS Polly Neural)',
     gender: 'Male',
     accent: 'US',
-    provider: 'edge-azure',
+    provider: 'aws-polly',
     description: 'Senior Staff Engineer & Hiring Manager. Authoritative, direct, crisp.',
   },
   {
+    id: 'aws-polly-kajal',
+    name: 'Kajal (AWS Polly Neural)',
+    gender: 'Female',
+    accent: 'India',
+    provider: 'aws-polly',
+    description: 'Principal Systems Architect. Natural Indian English rhythm, methodical and sharp.',
+  },
+  {
+    id: 'aws-polly-ruth',
+    name: 'Ruth (AWS Polly Generative)',
+    gender: 'Female',
+    accent: 'US',
+    provider: 'aws-polly',
+    description: 'AWS Polly Generative Engine. Ultra-realistic conversational human prosody.',
+  },
+  {
+    id: 'aws-polly-arthur',
+    name: 'Arthur (AWS Polly Neural)',
+    gender: 'Male',
+    accent: 'UK',
+    provider: 'aws-polly',
+    description: 'Technical Lead. Dry, analytical, and measured British accent.',
+  },
+  {
+    id: 'en-US-ChristopherNeural',
+    name: 'Christopher (Studio Neural)',
+    gender: 'Male',
+    accent: 'US',
+    provider: 'edge-azure',
+    description: 'Senior Staff Engineer & Hiring Manager. Direct, crisp, zero artificial praise.',
+  },
+  {
     id: 'en-US-JennyNeural',
-    name: 'Jenny (US Female)',
+    name: 'Jenny (Studio Neural)',
     gender: 'Female',
     accent: 'US',
     provider: 'edge-azure',
     description: 'Lead Systems Architect. Clear, precise, articulate.',
   },
   {
-    id: 'en-IN-NeerjaNeural',
-    name: 'Neerja (India Female)',
-    gender: 'Female',
-    accent: 'India',
-    provider: 'edge-azure',
-    description: 'Principal Systems Engineer. Authentic Indian English cadence and clarity.',
-  },
-  {
     id: 'en-IN-PrabhatNeural',
-    name: 'Prabhat (India Male)',
+    name: 'Prabhat (Studio Neural)',
     gender: 'Male',
     accent: 'India',
     provider: 'edge-azure',
     description: 'Senior Technical Lead. Natural Indian English rhythm, methodical and sharp.',
   },
   {
+    id: 'en-IN-NeerjaNeural',
+    name: 'Neerja (Studio Neural)',
+    gender: 'Female',
+    accent: 'India',
+    provider: 'edge-azure',
+    description: 'Principal Systems Engineer. Authentic Indian English cadence and clarity.',
+  },
+  {
     id: 'en-GB-RyanNeural',
-    name: 'Ryan (UK Male)',
+    name: 'Ryan (Studio Neural)',
     gender: 'Male',
     accent: 'UK',
     provider: 'edge-azure',
@@ -60,8 +92,8 @@ export const DEFAULT_VOICES: VoiceOption[] = [
 const SELECTED_VOICE_KEY = 'skillissue_voice_id';
 
 export function getSelectedVoice(): string {
-  if (typeof window === 'undefined') return 'en-US-ChristopherNeural';
-  return localStorage.getItem(SELECTED_VOICE_KEY) || 'en-US-ChristopherNeural';
+  if (typeof window === 'undefined') return 'aws-polly-matthew';
+  return localStorage.getItem(SELECTED_VOICE_KEY) || 'aws-polly-matthew';
 }
 
 export function setSelectedVoice(voiceId: string) {
@@ -82,8 +114,8 @@ export class SpeechHandler {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private animFrameId: number | null = null;
-  private recognition: any = null;
-  private hasNativeSpeechResult: boolean = false;
+
+  private static globalAudioContext: AudioContext | null = null;
 
   constructor(
     private onResult: (text: string, isFinal: boolean) => void,
@@ -92,23 +124,46 @@ export class SpeechHandler {
     private onAudioLevel?: (level: number) => void
   ) {
     if (typeof window !== 'undefined') {
-      const hasSpeechRec = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
       const hasMedia = !!(
         navigator.mediaDevices &&
         typeof navigator.mediaDevices.getUserMedia === 'function' &&
         window.MediaRecorder
       );
-      this.isSupported = hasSpeechRec || hasMedia;
+      this.isSupported = hasMedia;
+    }
+  }
+
+  // Pre-activates browser audio subsystem on user gesture so auto-speak plays seamlessly
+  public static unlockAudioContext() {
+    if (typeof window === 'undefined') return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!SpeechHandler.globalAudioContext || SpeechHandler.globalAudioContext.state === 'closed') {
+        SpeechHandler.globalAudioContext = new AudioCtx();
+      }
+      if (SpeechHandler.globalAudioContext.state === 'suspended') {
+        SpeechHandler.globalAudioContext.resume();
+      }
+      // Warm up an inaudible 1-sample buffer to satisfy browser autoplay policies
+      const buffer = SpeechHandler.globalAudioContext.createBuffer(1, 1, 22050);
+      const source = SpeechHandler.globalAudioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(SpeechHandler.globalAudioContext.destination);
+      source.start(0);
+    } catch (e) {
+      console.warn('AudioContext pre-activation notice:', e);
     }
   }
 
   async start() {
     if (this.isListening) return;
 
-    this.hasNativeSpeechResult = false;
+    // Pre-activate audio context on user gesture
+    SpeechHandler.unlockAudioContext();
     this.audioChunks = [];
 
-    // 1. Initialize Microphone Audio Stream & Audio Level Visualizer
+    // Initialize Microphone Audio Stream & Audio Level Visualizer
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -116,12 +171,12 @@ export class SpeechHandler {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
+            sampleRate: 16000,
           },
         });
         this.audioStream = stream;
         this.startAudioMeter(stream);
 
-        // Fallback recorder if Web Speech API isn't present
         let mimeType = 'audio/webm';
         if (!MediaRecorder.isTypeSupported('audio/webm')) {
           if (MediaRecorder.isTypeSupported('audio/mp4')) {
@@ -146,9 +201,7 @@ export class SpeechHandler {
 
         recorder.onstop = async () => {
           this.stopAudioMeter();
-          // If native web speech already produced results, skip slow backend STT
-          if (this.hasNativeSpeechResult || this.audioChunks.length === 0) {
-            this.audioChunks = [];
+          if (this.audioChunks.length === 0) {
             return;
           }
 
@@ -161,92 +214,30 @@ export class SpeechHandler {
             const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
             formData.append('audio', audioBlob, `recording.${ext}`);
 
+            // Send clean audio to server-side Faster-Whisper / AWS Transcribe
             const res = await api.post<{ text: string }>('/audio/stt', formData);
             if (res.text && res.text.trim()) {
               this.onResult(res.text.trim(), true);
             }
           } catch (err: any) {
-            console.warn('Backend STT notice:', err);
+            console.warn('Server STT notice:', err);
+            if (this.onError) this.onError(err.message || 'Speech recognition failed');
           }
         };
 
         recorder.start(250);
+        this.isListening = true;
+        this.onStateChange(true);
       }
     } catch (micErr: any) {
       console.warn('Microphone permission notice:', micErr);
       if (this.onError) this.onError(micErr.message || 'Microphone access denied');
     }
-
-    // 2. Initialize Native High-Accuracy Streaming Speech Recognition (Web Speech API)
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRec) {
-      try {
-        const rec = new SpeechRec();
-        rec.continuous = true;
-        rec.interimResults = true;
-        rec.lang = navigator.language || 'en-US';
-        rec.maxAlternatives = 1;
-
-        rec.onresult = (event: any) => {
-          let interimTranscript = '';
-          let finalTranscript = '';
-
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalTranscript += transcript;
-            } else {
-              interimTranscript += transcript;
-            }
-          }
-
-          if (finalTranscript.trim()) {
-            this.hasNativeSpeechResult = true;
-            this.onResult(finalTranscript.trim(), true);
-          } else if (interimTranscript.trim()) {
-            this.onResult(interimTranscript.trim(), false);
-          }
-        };
-
-        rec.onerror = (e: any) => {
-          if (e.error === 'no-speech') {
-            // Normal silence; do not abort
-            return;
-          }
-          console.warn('Native speech recognition notice:', e.error);
-          if (this.onError) this.onError(e.error);
-        };
-
-        rec.onend = () => {
-          // If still marked as listening, restart recognition (Chrome ends on pauses)
-          if (this.isListening && this.recognition) {
-            try {
-              this.recognition.start();
-            } catch (e) {}
-          }
-        };
-
-        rec.start();
-        this.recognition = rec;
-      } catch (recErr) {
-        console.warn('Web Speech API instantiation notice:', recErr);
-      }
-    }
-
-    this.isListening = true;
-    this.onStateChange(true);
   }
 
   stop() {
     this.isListening = false;
     this.onStateChange(false);
-
-    if (this.recognition) {
-      try {
-        this.recognition.stop();
-      } catch (e) {}
-      this.recognition = null;
-    }
 
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       try {
@@ -315,10 +306,11 @@ export class SpeechHandler {
     }
   }
 
-  // --- Cloud Neural TTS Implementation with Auto-Play Resilience ---
+  // --- Studio Neural TTS Implementation with Auto-Play by Default ---
 
   static async speak(text: string, onEnd?: () => void, voice?: string) {
     SpeechHandler.stopSpeaking();
+    SpeechHandler.unlockAudioContext();
 
     const selectedVoice = voice || getSelectedVoice();
 
@@ -371,7 +363,7 @@ export class SpeechHandler {
       try {
         await audio.play();
       } catch (playErr: any) {
-        // If browser blocks unprompted autoplay before user gesture, attach one-time resume handler
+        // If browser blocks unprompted autoplay before initial gesture, attach auto-resume on first interaction
         if (playErr.name === 'NotAllowedError') {
           const resumeOnFirstTouch = () => {
             audio.play().catch(() => {});

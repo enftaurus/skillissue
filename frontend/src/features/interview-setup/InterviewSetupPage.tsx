@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { SpeechHandler } from '../../lib/speech';
 import { Interview, JobDescription, Resume, CodeforcesProblem } from '../../lib/types';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -202,6 +203,7 @@ export const InterviewSetupPage: React.FC = () => {
         });
       }
 
+      SpeechHandler.unlockAudioContext();
       navigate(`/interviews/${interview.id}`);
     } catch (err: any) {
       setError(err.message || 'Failed to initiate interview session.');

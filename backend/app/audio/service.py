@@ -20,60 +20,12 @@ _WHISPER_LOCK = asyncio.Lock()
 
 AVAILABLE_VOICES: List[VoiceOption] = [
     VoiceOption(
-        id="en-US-ChristopherNeural",
-        name="Christopher (US Male)",
-        gender="Male",
-        accent="US",
-        provider="edge-azure",
-        description="Senior Staff Engineer & Hiring Manager. Authoritative, direct, crisp."
-    ),
-    VoiceOption(
-        id="en-US-JennyNeural",
-        name="Jenny (US Female)",
-        gender="Female",
-        accent="US",
-        provider="edge-azure",
-        description="Lead Systems Architect. Clear, precise, articulate."
-    ),
-    VoiceOption(
-        id="en-IN-NeerjaNeural",
-        name="Neerja (India Female)",
-        gender="Female",
-        accent="India",
-        provider="edge-azure",
-        description="Principal Systems Engineer. Authentic Indian English cadence and clarity."
-    ),
-    VoiceOption(
-        id="en-IN-PrabhatNeural",
-        name="Prabhat (India Male)",
-        gender="Male",
-        accent="India",
-        provider="edge-azure",
-        description="Senior Technical Lead. Natural Indian English rhythm, methodical and sharp."
-    ),
-    VoiceOption(
-        id="en-GB-RyanNeural",
-        name="Ryan (UK Male)",
-        gender="Male",
-        accent="UK",
-        provider="edge-azure",
-        description="Technical Lead. Dry, analytical, and measured British accent."
-    ),
-    VoiceOption(
-        id="aws-polly-joanna",
-        name="Joanna (AWS Polly Neural)",
-        gender="Female",
-        accent="US",
-        provider="aws-polly",
-        description="AWS Polly Neural conversational voice."
-    ),
-    VoiceOption(
         id="aws-polly-matthew",
         name="Matthew (AWS Polly Neural)",
         gender="Male",
         accent="US",
         provider="aws-polly",
-        description="AWS Polly Neural male conversational voice."
+        description="Senior Staff Engineer & Hiring Manager. Authoritative, direct, crisp."
     ),
     VoiceOption(
         id="aws-polly-kajal",
@@ -81,15 +33,63 @@ AVAILABLE_VOICES: List[VoiceOption] = [
         gender="Female",
         accent="India",
         provider="aws-polly",
-        description="AWS Polly Indian English Neural voice."
+        description="Principal Systems Architect. Natural Indian English rhythm, methodical and sharp."
     ),
     VoiceOption(
-        id="vaani-indic-priya",
-        name="Priya (Vaani AI Research)",
+        id="aws-polly-ruth",
+        name="Ruth (AWS Polly Generative)",
+        gender="Female",
+        accent="US",
+        provider="aws-polly",
+        description="AWS Polly Generative Engine. Ultra-realistic conversational human prosody."
+    ),
+    VoiceOption(
+        id="aws-polly-arthur",
+        name="Arthur (AWS Polly Neural)",
+        gender="Male",
+        accent="UK",
+        provider="aws-polly",
+        description="Technical Lead. Dry, analytical, and measured British accent."
+    ),
+    VoiceOption(
+        id="en-US-ChristopherNeural",
+        name="Christopher (Studio Neural)",
+        gender="Male",
+        accent="US",
+        provider="edge-azure",
+        description="Senior Staff Engineer & Hiring Manager. Direct, crisp, zero artificial praise."
+    ),
+    VoiceOption(
+        id="en-US-JennyNeural",
+        name="Jenny (Studio Neural)",
+        gender="Female",
+        accent="US",
+        provider="edge-azure",
+        description="Lead Systems Architect. Clear, precise, articulate."
+    ),
+    VoiceOption(
+        id="en-IN-PrabhatNeural",
+        name="Prabhat (Studio Neural)",
+        gender="Male",
+        accent="India",
+        provider="edge-azure",
+        description="Senior Technical Lead. Natural Indian English rhythm, methodical and sharp."
+    ),
+    VoiceOption(
+        id="en-IN-NeerjaNeural",
+        name="Neerja (Studio Neural)",
         gender="Female",
         accent="India",
-        provider="vaani",
-        description="Vaani AI studio voice with fluent multilingual pronunciation."
+        provider="edge-azure",
+        description="Principal Systems Engineer. Authentic Indian English cadence and clarity."
+    ),
+    VoiceOption(
+        id="en-GB-RyanNeural",
+        name="Ryan (Studio Neural)",
+        gender="Male",
+        accent="UK",
+        provider="edge-azure",
+        description="Technical Lead. Dry, analytical, and measured British accent."
     ),
     VoiceOption(
         id="azure-alloy",
@@ -105,12 +105,16 @@ def clean_text_for_speech(raw_text: str) -> str:
     """Strip markdown symbols, code fences, and bracketed metadata for natural prosody."""
     if not raw_text:
         return ""
-    # Strip markdown code blocks ```...```
+    # Strip markdown code blocks ```...``` replacing with a spoken placeholder
     text = re.sub(r'```[\s\S]*?```', ' [code snippet omitted for audio] ', raw_text)
-    # Strip markdown bold/italics
-    text = re.sub(r'[*_~`#]', '', text)
+    # Strip markdown URLs [text](url) -> text
+    text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+    # Strip markdown bold/italics/headers
+    text = re.sub(r'[*_~`#>]', '', text)
     # Strip bracketed hint tags like [Level 1 Hint - Socratic Direction]
     text = re.sub(r'\[Level \d+.*?\]', 'Hint: ', text)
+    # Clean up multi-dashes or bullets
+    text = re.sub(r'^\s*[-•]\s*', '', text, flags=re.MULTILINE)
     # Normalize whitespace
     text = re.sub(r'\s+', ' ', text).strip()
     return text
@@ -121,8 +125,12 @@ def _get_whisper_model():
     if _WHISPER_MODEL is None:
         try:
             from faster_whisper import WhisperModel
-            logger.info("Initializing faster-whisper (tiny.en, cpu, int8)...")
-            _WHISPER_MODEL = WhisperModel("tiny.en", device="cpu", compute_type="int8")
+            logger.info("Initializing faster-whisper (base.en, cpu, int8)...")
+            try:
+                _WHISPER_MODEL = WhisperModel("base.en", device="cpu", compute_type="int8")
+            except Exception:
+                logger.info("Falling back to tiny.en...")
+                _WHISPER_MODEL = WhisperModel("tiny.en", device="cpu", compute_type="int8")
             logger.info("faster-whisper model successfully loaded.")
         except Exception as e:
             logger.error(f"Failed to load faster-whisper: {e}")
@@ -159,29 +167,49 @@ class AudioService:
         target_voice = voice or "en-US-ChristopherNeural"
 
         # 1. Check AWS Polly Neural
-        if target_voice.startswith("aws-polly-") and user_id and db:
+        if target_voice.startswith("aws-polly-"):
             try:
                 import boto3
-                config = await ProviderConfigService.get_config(db, user_id)
-                creds = await ModelResolver.resolve_credentials(config, user_id)
-                if creds.provider_name == "bedrock" and creds.aws_access_key and creds.aws_secret_key:
+                aws_access_key = None
+                aws_secret_key = None
+                aws_session_token = None
+                aws_region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+
+                # Check database credentials if available
+                if user_id and db:
+                    config = await ProviderConfigService.get_config(db, user_id)
+                    creds = await ModelResolver.resolve_credentials(config, user_id)
+                    if creds.provider_name == "bedrock" and creds.aws_access_key and creds.aws_secret_key:
+                        aws_access_key = creds.aws_access_key
+                        aws_secret_key = creds.aws_secret_key
+                        aws_session_token = creds.aws_session_token
+                        aws_region = creds.aws_region or aws_region
+
+                # Check environment / AWS CLI variables
+                if not aws_access_key:
+                    aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+                    aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+                    aws_session_token = os.environ.get("AWS_SESSION_TOKEN")
+
+                if aws_access_key and aws_secret_key:
                     polly_voice = target_voice.replace("aws-polly-", "").capitalize()
+                    engine = "generative" if polly_voice.lower() in ("ruth", "danielle") else "neural"
                     polly_client = boto3.client(
                         "polly",
-                        aws_access_key_id=creds.aws_access_key,
-                        aws_secret_access_key=creds.aws_secret_key,
-                        aws_session_token=creds.aws_session_token,
-                        region_name=creds.aws_region or "us-east-1"
+                        aws_access_key_id=aws_access_key,
+                        aws_secret_access_key=aws_secret_key,
+                        aws_session_token=aws_session_token,
+                        region_name=aws_region
                     )
                     polly_resp = polly_client.synthesize_speech(
-                        Engine="neural",
+                        Engine=engine,
                         VoiceId=polly_voice,
                         OutputFormat="mp3",
                         Text=clean_text[:3000]
                     )
                     return polly_resp["AudioStream"].read()
             except Exception as e:
-                logger.warning(f"AWS Polly TTS synthesis failed, falling back to neural TTS: {e}")
+                logger.warning(f"AWS Polly TTS synthesis failed, falling back to studio neural TTS: {e}")
 
         # 2. Check Azure OpenAI TTS
         if target_voice.startswith("azure-") and user_id and db:
@@ -223,16 +251,17 @@ class AudioService:
                 logger.warning(f"Vaani TTS API failed, falling back to neural TTS: {e}")
 
         # 4. Universal High-Clarity Studio Neural Fallback (Edge Neural Engine)
-        # Maps requested voice to valid Microsoft Azure neural voices
         neural_voice_map = {
-            "en-US-ChristopherNeural": "en-US-ChristopherNeural",
-            "en-US-JennyNeural": "en-US-JennyNeural",
-            "en-IN-NeerjaNeural": "en-IN-NeerjaNeural",
-            "en-IN-PrabhatNeural": "en-IN-PrabhatNeural",
-            "en-GB-RyanNeural": "en-GB-RyanNeural",
-            "aws-polly-joanna": "en-US-JennyNeural",
             "aws-polly-matthew": "en-US-ChristopherNeural",
             "aws-polly-kajal": "en-IN-NeerjaNeural",
+            "aws-polly-ruth": "en-US-JennyNeural",
+            "aws-polly-arthur": "en-GB-RyanNeural",
+            "aws-polly-joanna": "en-US-JennyNeural",
+            "en-US-ChristopherNeural": "en-US-ChristopherNeural",
+            "en-US-JennyNeural": "en-US-JennyNeural",
+            "en-IN-PrabhatNeural": "en-IN-PrabhatNeural",
+            "en-IN-NeerjaNeural": "en-IN-NeerjaNeural",
+            "en-GB-RyanNeural": "en-GB-RyanNeural",
             "vaani-indic-priya": "en-IN-NeerjaNeural",
             "azure-alloy": "en-US-ChristopherNeural",
         }
@@ -277,7 +306,7 @@ class AudioService:
     ) -> str:
         """
         Transcribe audio bytes (WebM, WAV, MP3, etc.) into text.
-        Supports Azure OpenAI Whisper, Vaani.dev STT, and local faster-whisper.
+        Supports Azure OpenAI Whisper, Vaani.dev STT, and local faster-whisper with domain vocabulary conditioning.
         """
         if not audio_bytes:
             return ""
@@ -318,8 +347,7 @@ class AudioService:
             except Exception as e:
                 logger.warning(f"Vaani STT API failed: {e}")
 
-        # 3. High-Speed Local Faster-Whisper
-        # Determine appropriate file extension
+        # 3. High-Speed Local Faster-Whisper with Domain Vocabulary Prompting
         ext = ".webm"
         if "wav" in content_type or filename.endswith(".wav"):
             ext = ".wav"
@@ -336,17 +364,22 @@ class AudioService:
                 f.write(audio_bytes)
                 temp_path = f.name
 
-            # Run faster-whisper in a thread pool with VAD noise filtering and multi-accent support
             def _transcribe():
                 model = _get_whisper_model()
+                initial_prompt = (
+                    "Technical engineering interview: LeetCode, DSA, Big-O notation, O(1), O(N), O(N^2), "
+                    "O(N log N), dynamic programming, memoization, recursion, two pointers, sliding window, "
+                    "hash map, dictionary, binary search, tree, graph, Python, FastAPI, Redis, PostgreSQL, "
+                    "latency, throughput."
+                )
                 segments, info = model.transcribe(
                     temp_path,
+                    initial_prompt=initial_prompt,
                     beam_size=5,
                     vad_filter=True,
-                    vad_parameters=dict(min_silence_duration_ms=400),
+                    vad_parameters=dict(min_silence_duration_ms=300),
                 )
                 return " ".join([seg.text for seg in segments]).strip()
-
 
             result = await asyncio.to_thread(_transcribe)
             return result

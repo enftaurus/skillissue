@@ -11,6 +11,7 @@ import {
   HintResponse,
 } from '../../lib/types';
 import { SpeechHandler, VoiceOption, DEFAULT_VOICES, getSelectedVoice, setSelectedVoice } from '../../lib/speech';
+import { useEditorTelemetry } from '../../lib/useEditorTelemetry';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -84,6 +85,13 @@ export const InterviewSessionPage: React.FC = () => {
       (window as any).__setInterviewCode = (val: string) => setCode(val);
     }
   }, []);
+
+  // Monaco Editor Telemetry Ingestion (captures typing cadence, deltas, and pastes)
+  const { attachMonaco, flushQueue: flushEditorTelemetry } = useEditorTelemetry({
+    roundKey: id || 'interview',
+    enabled: showCodeEditor,
+    batchIntervalMs: 3000,
+  });
 
   // Socratic Hint Ladder
   const [hintLevelUsed, setHintLevelUsed] = useState(0);
@@ -372,6 +380,7 @@ export const InterviewSessionPage: React.FC = () => {
     if (!codingProblem || isExecutingCode || !id) return;
     setIsExecutingCode(true);
     setCodeExecutionError('');
+    await flushEditorTelemetry();
 
     try {
       const res = await api.post<any>(`/interviews/${id}/code`, {
@@ -390,6 +399,9 @@ export const InterviewSessionPage: React.FC = () => {
           total_tests: res.execution.tests_total ?? res.execution.total_tests ?? 0,
           test_results: res.execution.test_results || [],
         });
+        if (res.assistant_message?.content && autoSpeak) {
+          speakWithMicSuppression(res.assistant_message.content);
+        }
       } else {
         setExecutionResult(res);
       }
@@ -420,7 +432,10 @@ export const InterviewSessionPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4">
+    <div
+      onClick={() => SpeechHandler.unlockAudioContext()}
+      className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-4"
+    >
       {/* FOCUS MODE HEADER BAR */}
       <div className="bg-white border border-surface-border rounded-xl px-4 py-3 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* Left: Live status & title */}
@@ -954,6 +969,9 @@ export const InterviewSessionPage: React.FC = () => {
                   theme="vs"
                   value={code}
                   onChange={(val) => setCode(val || '')}
+                  onMount={(editor, monaco) => {
+                    attachMonaco(editor, monaco);
+                  }}
                   options={{
                     minimap: { enabled: false },
                     fontSize: 12,

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { SpeechHandler } from '../../lib/speech';
 import { CompanyTrackDetail, ToggleProblemSolvedResponse } from '../../lib/types';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -62,6 +63,7 @@ export const CompanyTrackDetailPage: React.FC = () => {
         target_role: track.role_title,
         difficulty: track.tier === 'gold' ? 'hard' : 'intermediate',
       });
+      SpeechHandler.unlockAudioContext();
       navigate(`/interviews/${res.id}`);
     } catch (err) {
       console.error('Failed to launch company mock interview', err);

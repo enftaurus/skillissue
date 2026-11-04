@@ -30,14 +30,16 @@ async def ingest_editor_telemetry(
     caps batch sizes, and stores deltas for replay analysis.
     """
     user, ca = actor
-    if not ca:
-        raise AuthenticationError("Valid candidate assessment session token required")
+    if not ca and not user:
+        raise AuthenticationError("Valid candidate access token or session required")
 
-    return await TelemetryService.ingest_batch(
-        req=req,
-        candidate_assessment=ca,
-        db=db,
-    )
+    if ca:
+        return await TelemetryService.ingest_batch(
+            req=req,
+            candidate_assessment=ca,
+            db=db,
+        )
+    return {"status": "ok", "batch_seq": req.seq, "events_count": len(req.events)}
 
 
 @router.get("/editor/{candidate_assessment_id}/{round_key}", response_model=EditorTelemetryReplayResponse)
