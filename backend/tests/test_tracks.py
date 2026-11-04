@@ -51,10 +51,13 @@ async def test_company_tracks_day_1_open(client: AsyncClient):
     assert "leetcode_url" in p_data
     assert p_data["leetcode_url"].startswith("https://leetcode.com/problems/")
 
-    # 3. Verify all problems in Uber track have leetcode_url
+    # 3. Verify leetcode_url is exposed for unlocked problems, but hidden for locked problems
     for prob in uber_detail["problems"]:
         assert "leetcode_url" in prob
-        assert prob["leetcode_url"] == f"https://leetcode.com/problems/{prob['slug']}/"
+        if prob["is_unlocked"]:
+            assert prob["leetcode_url"].startswith("https://leetcode.com/problems/")
+        else:
+            assert prob["leetcode_url"] == ""
 
     # 4. Toggle problem solved on LeetCode
     toggle_res = await client.post(f"/api/v1/tracks/problems/{p1['id']}/toggle-solved", headers=headers)

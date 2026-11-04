@@ -332,7 +332,9 @@ export const CompanyTrackDetailPage: React.FC = () => {
               ) : (
                 currentSlice.map((problem) => {
                   const isDay1 = problem.order_index <= 3;
-                  const leetcodeLink = problem.leetcode_url || `https://leetcode.com/problems/${problem.slug}/`;
+                  const leetcodeLink = problem.is_unlocked
+                    ? (problem.leetcode_url || `https://leetcode.com/problems/${problem.slug}/`)
+                    : '';
 
                   return (
                     <div
@@ -391,19 +393,26 @@ export const CompanyTrackDetailPage: React.FC = () => {
                             )}
                           </div>
 
-                          {/* Direct LeetCode URL */}
-                          <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
-                            <span className="text-[11px] font-semibold text-zinc-500">LeetCode Link:</span>
-                            <a
-                              href={leetcodeLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] font-mono text-lime-700 hover:text-lime-850 hover:underline"
-                            >
-                              <span>{leetcodeLink}</span>
-                              <ExternalLink className="w-2.5 h-2.5 text-lime-600" />
-                            </a>
-                          </div>
+                          {/* Direct LeetCode URL - only shown when unlocked */}
+                          {problem.is_unlocked && leetcodeLink ? (
+                            <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                              <span className="text-[11px] font-semibold text-zinc-500">LeetCode Link:</span>
+                              <a
+                                href={leetcodeLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] font-mono text-lime-700 hover:text-lime-850 hover:underline"
+                              >
+                                <span>{leetcodeLink}</span>
+                                <ExternalLink className="w-2.5 h-2.5 text-lime-600" />
+                              </a>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 pt-0.5 text-[11px] text-ink-subtle font-mono">
+                              <Lock className="w-3 h-3 text-zinc-400 shrink-0" />
+                              <span>LeetCode link locked (solve problem #{problem.order_index - 1} to reveal)</span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2 flex-shrink-0">

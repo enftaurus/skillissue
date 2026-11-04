@@ -18,6 +18,9 @@ class CompanyProblemSummary(BaseModel):
 
     @model_validator(mode="after")
     def ensure_leetcode_url(self) -> "CompanyProblemSummary":
+        if not self.is_unlocked:
+            self.leetcode_url = ""
+            return self
         if not self.leetcode_url and self.slug:
             self.leetcode_url = f"https://leetcode.com/problems/{self.slug}/"
         return self
