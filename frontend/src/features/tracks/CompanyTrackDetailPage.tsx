@@ -14,6 +14,11 @@ import {
   Sparkles,
   ExternalLink,
   Search,
+  Users,
+  Terminal,
+  Brain,
+  X,
+  ChevronRight,
 } from 'lucide-react';
 
 export const CompanyTrackDetailPage: React.FC = () => {
@@ -26,6 +31,8 @@ export const CompanyTrackDetailPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'ALL' | 'UNLOCKED' | 'SOLVED' | 'EASY' | 'MEDIUM' | 'HARD'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isRoundSelectOpen, setIsRoundSelectOpen] = useState(false);
+  const [launchingCategory, setLaunchingCategory] = useState<string | null>(null);
   const pageSize = 25;
   const navigate = useNavigate();
 
@@ -42,19 +49,24 @@ export const CompanyTrackDetailPage: React.FC = () => {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  const handleStartMockInterview = async () => {
+  const handleLaunchRound = async (
+    category: 'technical' | 'dsa' | 'behavioral' | 'managerial',
+    customSkills: string[]
+  ) => {
     if (!track) return;
+    setLaunchingCategory(category);
     try {
-      // Create targeted interview for this company
       const res = await api.post<any>('/interviews/domain', {
-        category: 'technical',
-        domain_skills: [track.name, 'System Design', 'Algorithms', 'Concurrency'],
+        category,
+        domain_skills: [track.name, ...customSkills],
         target_role: track.role_title,
         difficulty: track.tier === 'gold' ? 'hard' : 'intermediate',
       });
       navigate(`/interviews/${res.id}`);
     } catch (err) {
       console.error('Failed to launch company mock interview', err);
+    } finally {
+      setLaunchingCategory(null);
     }
   };
 
@@ -152,7 +164,7 @@ export const CompanyTrackDetailPage: React.FC = () => {
           {/* Action Button: Start Mock Interview */}
           <div className="flex-shrink-0">
             <Button
-              onClick={handleStartMockInterview}
+              onClick={() => setIsRoundSelectOpen(true)}
               className="w-full sm:w-auto gap-2 bg-ink text-white hover:bg-ink/90 text-xs font-semibold"
             >
               <Mic className="w-4 h-4 text-lime-400" />
@@ -497,6 +509,147 @@ export const CompanyTrackDetailPage: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* Round Selection Modal */}
+      {isRoundSelectOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-surface-border rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden animate-fade-in">
+            <div className="p-6 border-b border-surface-border flex items-center justify-between bg-surface-subtle/30">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-md bg-lime-500/10 text-lime-700">
+                    <Building2 className="w-4 h-4" />
+                  </span>
+                  <h3 className="text-base font-bold text-ink">
+                    Select {track.name} Interview Round
+                  </h3>
+                </div>
+                <p className="text-xs text-ink-muted">
+                  Choose a tailored round customized with {track.name}&apos;s engineering standards and question rubrics.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsRoundSelectOpen(false)}
+                className="text-ink-muted hover:text-ink p-1.5 rounded-lg hover:bg-surface-subtle transition-colors"
+                disabled={!!launchingCategory}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3 max-h-[70vh] overflow-y-auto">
+              {[
+                {
+                  category: 'dsa' as const,
+                  name: 'DSA & Algorithmic Coding',
+                  badge: 'Live Code Editor',
+                  badgeVariant: 'warning' as const,
+                  icon: Code2,
+                  description:
+                    'Solve core algorithmic challenges in the focus editor. Features runtime complexity analysis, edge-case probing, and calibrated progressive hints from brute force to optimal.',
+                  skills: ['Algorithms', 'Data Structures', 'Dynamic Programming', 'Complexity Analysis'],
+                },
+                {
+                  category: 'technical' as const,
+                  name: 'Technical Systems Architecture',
+                  badge: 'Systems & Scale',
+                  badgeVariant: 'outline' as const,
+                  icon: Terminal,
+                  description: `In-depth technical architecture probe tailored for ${track.name}. High-throughput distributed systems, fault tolerance, concurrency, and real-time data pipelines.`,
+                  skills: ['Distributed Systems', 'System Design', 'Concurrency', 'High Throughput'],
+                },
+                {
+                  category: 'behavioral' as const,
+                  name: 'HR & Behavioral Evaluation',
+                  badge: 'STAR Framework',
+                  badgeVariant: 'outline' as const,
+                  icon: Users,
+                  description: `Targeted behavioral interview assessing engineering ownership, conflict resolution, leadership values, and company culture fit using structured STAR probing.`,
+                  skills: ['Behavioral Competencies', 'Culture Fit', 'STAR Framework', 'Conflict Resolution'],
+                },
+                {
+                  category: 'managerial' as const,
+                  name: 'Managerial & Engineering Lead',
+                  badge: 'Engineering Leadership',
+                  badgeVariant: 'outline' as const,
+                  icon: Brain,
+                  description: `Deep dive into engineering leadership: technical debt vs velocity trade-offs, incident post-mortems, stakeholder alignment, and developer mentorship.`,
+                  skills: ['Engineering Leadership', 'Technical Debt vs Velocity', 'Incident Post-mortems', 'Mentorship'],
+                },
+              ].map((rc) => {
+                const Icon = rc.icon;
+                const isLaunching = launchingCategory === rc.category;
+                return (
+                  <div
+                    key={rc.category}
+                    className="border border-surface-border rounded-xl p-4 hover:border-lime-500/50 hover:bg-lime-50/20 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                  >
+                    <div className="space-y-1.5 max-w-md">
+                      <div className="flex items-center gap-2">
+                        <span className="p-1.5 rounded-lg bg-surface-subtle border border-surface-border group-hover:border-lime-500/30 group-hover:bg-lime-500/10 text-ink group-hover:text-lime-700 transition-colors">
+                          <Icon className="w-4 h-4" />
+                        </span>
+                        <h4 className="text-sm font-bold text-ink">{rc.name}</h4>
+                        <Badge variant={rc.badgeVariant} className="text-[10px] py-0 px-2 font-mono">
+                          {rc.badge}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-ink-muted leading-relaxed">
+                        {rc.description}
+                      </p>
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {rc.skills.map((s, idx) => (
+                          <span
+                            key={idx}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-subtle text-ink-subtle border border-surface-border"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex-shrink-0">
+                      <Button
+                        onClick={() => handleLaunchRound(rc.category, rc.skills)}
+                        disabled={!!launchingCategory}
+                        className="w-full sm:w-auto text-xs font-semibold gap-1.5 bg-ink text-white hover:bg-ink/90"
+                      >
+                        {isLaunching ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Launching...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Start Round</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 bg-surface-subtle/50 border-t border-surface-border flex items-center justify-between text-xs text-ink-muted">
+              <span className="font-mono text-[11px]">
+                Difficulty: {track.tier === 'gold' ? 'Hard (Senior Tier)' : 'Intermediate (Core Bar)'}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRoundSelectOpen(false)}
+                disabled={!!launchingCategory}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

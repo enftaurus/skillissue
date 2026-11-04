@@ -41,6 +41,14 @@ class InterviewAgentService:
             for skill in domain_skills
         }
 
+        # Extract potential company name from interview title, role, or domain skills
+        comp_name = None
+        search_blob = f"{interview.title or ''} {interview.target_role or ''} {' '.join(domain_skills)}".lower()
+        for comp in ["google", "uber", "openai", "meta", "amazon", "apple", "netflix", "microsoft", "stripe"]:
+            if comp in search_blob:
+                comp_name = comp.capitalize()
+                break
+
         system_prompt = build_interviewer_system_prompt(
             category=interview.category,
             target_role=interview.target_role,
@@ -51,6 +59,7 @@ class InterviewAgentService:
             jd_requirements=jd.extracted_requirements if jd else None,
             resume_skills=resume.extracted_skills if resume else None,
             resume_projects=resume.projects_context if resume else None,
+            company_name=comp_name,
         )
 
         if interview.category == "dsa":
@@ -58,10 +67,40 @@ class InterviewAgentService:
                 "Hey man, welcome to the mock interview of Skill Issue! Before we start, "
                 "introduce yourself and tell me about your background and your knowledge or favorite areas in DSA."
             )
-
-        else:
+        elif interview.category == "behavioral":
+            comp_label = f" for {comp_name}" if comp_name else ""
             first_q_prompt = (
-                f"The candidate is ready for a {interview.difficulty}-level {interview.category} interview "
+                f"The candidate is ready for a {interview.difficulty}-level HR / Behavioral round{comp_label} "
+                f"for the role of {interview.target_role}. Start as an authentic hiring manager: "
+                "Welcome them to the behavioral round and ask them to introduce themselves and walk through a high-impact engineering project they personally owned. "
+                "Ask exactly ONE concise question under 3 sentences. No artificial flattery."
+            )
+            prompt_messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=first_q_prompt),
+            ]
+            response = await model.ainvoke(prompt_messages)
+            raw_content = response.content
+            initial_question = ("".join(b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text").strip() or str(raw_content)).strip() if isinstance(raw_content, list) else str(raw_content).strip()
+        elif interview.category == "managerial":
+            comp_label = f" at {comp_name}" if comp_name else ""
+            first_q_prompt = (
+                f"The candidate is ready for an engineering leadership / Managerial round{comp_label} "
+                f"for the role of {interview.target_role}. Start as a VP of Engineering: "
+                "Welcome them and ask them to introduce their leadership style and how they prioritize technical debt against product shipping deadlines. "
+                "Ask exactly ONE concise question under 3 sentences. No artificial flattery."
+            )
+            prompt_messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=first_q_prompt),
+            ]
+            response = await model.ainvoke(prompt_messages)
+            raw_content = response.content
+            initial_question = ("".join(b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text").strip() or str(raw_content)).strip() if isinstance(raw_content, list) else str(raw_content).strip()
+        else:
+            comp_label = f" ({comp_name})" if comp_name else ""
+            first_q_prompt = (
+                f"The candidate is ready for a {interview.difficulty}-level {interview.category} interview{comp_label} "
                 f"for the role of {interview.target_role}. Start the interview like an authentic senior engineering hiring manager: "
                 "Welcome them and ask them to briefly introduce themselves, their primary tech stack, and an interesting project or architectural challenge they handled recently. "
                 "Ask exactly ONE concise question under 3 sentences. No artificial flattery."

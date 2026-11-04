@@ -86,6 +86,11 @@ async def get_interview_state(
     response_model=CodingTurnResponse,
     dependencies=[Depends(rate_limit(max_requests=15, window_seconds=60))]
 )
+@router.post(
+    "/{interview_id}/code",
+    response_model=CodingTurnResponse,
+    dependencies=[Depends(rate_limit(max_requests=15, window_seconds=60))]
+)
 async def submit_coding_turn(
     interview_id: str,
     data: CodingTurnRequest,

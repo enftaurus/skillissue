@@ -139,3 +139,156 @@ async def test_domain_and_jd_interview_workflows(client: httpx.AsyncClient):
     assert hint2["penalty_pct"] == 15
     assert hint2["total_hint_level_used"] == 2
 
+
+@pytest.mark.asyncio
+async def test_company_specific_rounds_and_brute_force_hints(client: httpx.AsyncClient):
+    # 1. Register candidate
+    email = f"candidate_dsa_{uuid.uuid4().hex[:8]}@example.com"
+    await client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": "Password123!"}
+    )
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "Password123!"}
+    )
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Launch Uber DSA Interview Round
+    dsa_res = await client.post(
+        "/api/v1/interviews/domain",
+        headers=headers,
+        json={
+            "category": "dsa",
+            "domain_skills": ["Uber", "Dynamic Programming", "Algorithms"],
+            "target_role": "Backend Engineer",
+            "difficulty": "intermediate",
+        }
+    )
+    assert dsa_res.status_code == 201
+    dsa_interview = dsa_res.json()
+    dsa_id = dsa_interview["id"]
+    # Check conversational onboarding message
+    first_msg = dsa_interview["messages"][0]["content"]
+    assert "introduce yourself" in first_msg.lower() or "dsa" in first_msg.lower()
+
+    # 3. Candidate introduces themselves mentioning favorite topic (DP & Competitive Programming)
+    intro_res = await client.post(
+        f"/api/v1/interviews/{dsa_id}/message",
+        headers=headers,
+        json={"content": "I am Raja Babu, a BTech CSE student and hobby competitive programmer. My favorite topic is dynamic programming because of overlapping subproblems and memoization."}
+    )
+    assert intro_res.status_code == 200
+    problem_turn = intro_res.json()
+    assert "session" in problem_turn["content"].lower() or "question" in problem_turn["content"].lower() or "two sum" in problem_turn["content"].lower()
+
+    # 4. Candidate executes Brute-Force Solution (nested loops O(N^2))
+    brute_force_code = """
+import sys
+
+def solve():
+    lines = sys.stdin.read().split()
+    if not lines:
+        return
+    n = int(lines[0])
+    nums = [int(x) for x in lines[1:n+1]]
+    target = int(lines[n+1])
+    
+    # Brute force nested loops O(N^2)
+    for i in range(len(nums)):
+        for j in range(i + 1, len(nums)):
+            if nums[i] + nums[j] == target:
+                print(f"{i} {j}")
+                return
+
+if __name__ == "__main__":
+    solve()
+"""
+    code_res = await client.post(
+        f"/api/v1/interviews/{dsa_id}/code",
+        headers=headers,
+        json={
+            "language": "python",
+            "code": brute_force_code,
+            "run_mode": "run"
+        }
+    )
+    assert code_res.status_code == 200
+    code_turn = code_res.json()
+    assert "execution" in code_turn
+    feedback = code_turn["assistant_message"]["content"]
+    # Assert brute force feedback, quadratic time complexity warning, and progressive hints
+    feedback_lower = feedback.lower()
+    assert any(term in feedback_lower for term in ["brute-force", "o(n^2)", "quadratic", "tle", "time limit", "nested loop"])
+    assert any(term in feedback_lower for term in ["trade space", "data structure", "refactor", "optimal", "o(n)"])
+
+    # 5. Candidate submits Optimal Solution (Hash Map O(N))
+    optimal_code = """
+import sys
+
+def solve():
+    lines = sys.stdin.read().split()
+    if not lines:
+        return
+    n = int(lines[0])
+    nums = [int(x) for x in lines[1:n+1]]
+    target = int(lines[n+1])
+    
+    # Optimal Hash Map O(N)
+    seen = {}
+    for i, num in enumerate(nums):
+        complement = target - num
+        if complement in seen:
+            print(f"{seen[complement]} {i}")
+            return
+        seen[num] = i
+
+if __name__ == "__main__":
+    solve()
+"""
+    optimal_res = await client.post(
+        f"/api/v1/interviews/{dsa_id}/code",
+        headers=headers,
+        json={
+            "language": "python",
+            "code": optimal_code,
+            "run_mode": "submit"
+        }
+    )
+    assert optimal_res.status_code == 200
+    optimal_turn = optimal_res.json()
+    optimal_feedback = optimal_turn["assistant_message"]["content"].lower()
+    assert any(term in optimal_feedback for term in ["optimal", "pass", "clean", "space complexity", "edge cases"])
+
+    # 6. Test Company-Specific Behavioral Round (e.g. OpenAI)
+    openai_beh_res = await client.post(
+        "/api/v1/interviews/domain",
+        headers=headers,
+        json={
+            "category": "behavioral",
+            "domain_skills": ["OpenAI", "STAR Framework", "Culture Fit"],
+            "target_role": "AI Research Engineer",
+            "difficulty": "hard",
+        }
+    )
+    assert openai_beh_res.status_code == 201
+    beh_msg = openai_beh_res.json()["messages"][0]["content"]
+    assert any(term in beh_msg.lower() for term in ["openai", "star", "safety", "deadline", "velocity"])
+
+    # 7. Test Company-Specific Managerial Round (e.g. Uber)
+    uber_mgr_res = await client.post(
+        "/api/v1/interviews/domain",
+        headers=headers,
+        json={
+            "category": "managerial",
+            "domain_skills": ["Uber", "Engineering Leadership", "Technical Debt"],
+            "target_role": "Engineering Manager",
+            "difficulty": "hard",
+        }
+    )
+    assert uber_mgr_res.status_code == 201
+    mgr_msg = uber_mgr_res.json()["messages"][0]["content"]
+    assert any(term in mgr_msg.lower() for term in ["uber", "technical debt", "velocity", "dispatch", "prioritize"])
+
+

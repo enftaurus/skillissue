@@ -44,7 +44,7 @@ class MockProvider(BaseProvider):
         elif "hint" in prompt_lower:
             text = "Focus on the invariant: what information do you need at each step, and what data structure lets you check or update that in O(1) time?"
         # DSA Intro / Problem Presentation Turn
-        elif "here is your question" in prompt_lower or "candidate just introduced themselves" in prompt_lower or ("dsa" in sys_lower and "introduce" in prompt_lower):
+        elif "here is your question" in prompt_lower or "candidate just introduced themselves" in prompt_lower or (("category: dsa" in sys_lower or "- category: dsa" in sys_lower) and "introduce" in prompt_lower):
             ack = "Nice to meet you. "
             if "raja" in last_user_message or "raja babu" in last_user_message or "raja" in prompt_lower:
                 ack = "Nice to meet you, Raja Babu. "
@@ -79,20 +79,66 @@ class MockProvider(BaseProvider):
                 f"{problem_block}\n\n"
                 "Before you start writing code, please walk me through your initial thoughts and the algorithmic approach you plan to follow, your target time and space complexity, and any edge cases you're considering."
             )
-        # Adaptive follow-up simulation
+        # Code execution & Brute-Force vs Optimal analysis
+        elif "candidate code submission" in prompt_lower or "execution details" in prompt_lower or "brute force detected" in prompt_lower or "execution status:" in prompt_lower:
+            if "brute force" in prompt_lower or "nested loop" in prompt_lower or ("for " in prompt_lower and prompt_lower.count("for ") >= 2):
+                text = (
+                    "Your brute-force solution passes the sample test cases functionally with O(N^2) quadratic time complexity. "
+                    "However, under production scale (N >= 10^5), this nested loop will hit a Time Limit Exceeded (TLE) bottleneck. "
+                    "Notice you are repeatedly scanning for the complement: what data structure would allow you to trade space for time to check if a previously seen element exists in O(1) time? "
+                    "Walk me through how you would refactor this to achieve an optimal O(N) linear time complexity."
+                )
+            elif "passed" in prompt_lower:
+                text = (
+                    "Clean implementation—the sample test cases pass with optimal time complexity. "
+                    "What are the worst-case space complexity implications of storing every seen element, and how does your solution behave on boundary edge cases like duplicate elements or extreme negative values?"
+                )
+            else:
+                text = (
+                    "The execution encountered a test failure or error. "
+                    "Looking at your invariant and test input, what specific boundary condition was violated, and how would you adjust your logic to handle it?"
+                )
+        # Adaptive follow-up simulation (Candidate claims, latency, tech choices)
+        elif "faster" in last_user_message or "10x" in last_user_message or "improved" in last_user_message:
+            text = "You said that made it faster. How exactly did you measure that latency delta, and what were your p95 and p99 figures?"
         elif "redis" in last_user_message or "redis" in prompt_lower:
-
             text = "You mentioned using Redis for caching. What specific eviction policy did you configure, and how did you verify that memory wouldn't be exhausted under peak throughput?"
-        elif "fastapi" in last_user_message or "fastapi" in prompt_lower or "python" in last_user_message:
+        elif "fastapi" in last_user_message or "python" in last_user_message:
             text = "FastAPI handles concurrency with async event loops. Did your route handlers perform any blocking I/O or CPU-bound transformations that could block the main event loop thread?"
         elif "postgres" in last_user_message or "database" in last_user_message or "sql" in last_user_message:
             text = "When your queries started slowing down, what did the EXPLAIN ANALYZE show? Was it a sequential scan or index contention?"
         elif "kafka" in last_user_message or "queue" in last_user_message:
             text = "What was your consumer failure recovery strategy? If a downstream consumer dies mid-batch, did you risk duplicate processing or dropped events?"
-        elif "faster" in last_user_message or "10x" in last_user_message or "improved" in last_user_message:
-            text = "You said that made it faster. How exactly did you measure that latency delta, and what were your p95 and p99 figures?"
-        elif history_len == 0:
-            text = "Let's dive into your architecture. Looking at your background, pick one backend system you designed and explain the primary failure mode you had to engineer around."
+        # Company-specific Behavioral & Managerial Questions (Initial Questions)
+        elif ("- category: behavioral" in sys_lower or "category: behavioral" in sys_lower or "hr" in prompt_lower) and (history_len == 0 or "first question" in prompt_lower or "ready" in prompt_lower):
+            if "openai" in sys_lower or "openai" in prompt_lower:
+                text = "At OpenAI, we balance rapid deployment velocity with deep frontier safety guarantees. Tell me about a time you had to balance shipping a critical feature under deadline pressure against rigorous testing or reliability concerns."
+            elif "uber" in sys_lower or "uber" in prompt_lower:
+                text = "Uber's operations run in high-urgency physical time. Tell me about a critical production incident or delivery failure you owned: what was your triage process, and how did you communicate with stakeholders?"
+            elif "google" in sys_lower or "google" in prompt_lower:
+                text = "In Google's consensus-driven engineering culture, intellectual humility is paramount. Tell me about a time you had a technical disagreement with a peer or tech lead: how did you navigate the ambiguity and reach alignment?"
+            elif "amazon" in sys_lower or "amazon" in prompt_lower:
+                text = "Amazon operates on our 16 Leadership Principles. Tell me about a time you had to 'Disagree and Commit' on an architectural direction, or demonstrated 'Customer Obsession' by pushing back on business requirements."
+            else:
+                text = "Using the STAR method (Situation, Task, Action, Result), tell me about a time you had a significant technical disagreement with a teammate or lead. What was your personal contribution to reaching resolution?"
+        elif ("- category: managerial" in sys_lower or "category: managerial" in sys_lower or "leadership" in sys_lower) and (history_len == 0 or "first question" in prompt_lower or "ready" in prompt_lower):
+            if "openai" in sys_lower or "openai" in prompt_lower:
+                text = "As an engineering leader at OpenAI, how do you handle cross-functional tension between research scientists iterating on novel model capabilities and infrastructure engineers demanding strict uptime SLAs?"
+            elif "uber" in sys_lower or "uber" in prompt_lower:
+                text = "In a hyper-growth environment like Uber, how do you manage technical debt when product managers are pushing for continuous feature rollouts for rider/driver dispatch?"
+            elif "google" in sys_lower or "google" in prompt_lower:
+                text = "When leading engineering initiatives at Google scale, how do you manage an underperforming senior engineer without disrupting team velocity and psychological safety?"
+            else:
+                text = "How do you systematically prioritize technical debt refactoring against customer-facing roadmap deliverables when engineering capacity is constrained?"
+        elif history_len == 0 or "first question" in prompt_lower or "ready" in prompt_lower:
+            if "openai" in sys_lower or "openai" in prompt_lower:
+                text = "OpenAI's inference clusters handle massive concurrent token generation. How would you design the KV cache memory pooling to prevent GPU memory fragmentation during continuous batching?"
+            elif "uber" in sys_lower or "uber" in prompt_lower:
+                text = "Uber processes hundreds of thousands of concurrent driver GPS pings per second. How would you design a geospatial indexing layer using H3 hexagons to achieve sub-50ms driver-rider dispatch matching?"
+            elif "google" in sys_lower or "google" in prompt_lower:
+                text = "At Google scale, handling billions of search indices requires massive distributed consistency. How would you design a distributed cache invalidation scheme to guarantee linearizability without bottlenecking throughput?"
+            else:
+                text = "Let's dive into your architecture. Looking at your background, pick one backend system you designed and explain the primary failure mode you had to engineer around."
         elif history_len <= 3:
             text = "That's a clean high-level view. Now let's get into the concrete trade-offs: what was the single biggest bottleneck you ran into, and why not choose an off-the-shelf message queue?"
         elif history_len <= 6:

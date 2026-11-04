@@ -324,12 +324,59 @@ async def generate_question_node(
             "4. Ask them: 'Before you start writing code, please walk me through your initial thoughts and the algorithmic approach you plan to follow, your target time and space complexity, and any edge cases you\\'re considering.'"
         )
     elif "Candidate Code Submission" in latest_answer or "Execution Status:" in latest_answer:
-        instruction = (
-            f"The candidate submitted their code solution. Execution details:\n{latest_answer}\n"
-            "Analyze their code and test outcomes. If tests passed, ask about time and space complexity (Big-O) or memory trade-offs. "
-            "If tests failed, timed out, or threw compilation/runtime errors, ask them what invariant was violated and how they would debug it. "
-            "Ask exactly ONE direct question. Under 3 sentences. No praise."
-        )
+        # Detect if code is quadratic brute force (nested loops without hash lookup)
+        code_match = re.search(r"```(?:\w+)?\n([\s\S]*?)```", latest_answer)
+        code_snippet = code_match.group(1) if code_match else latest_answer
+        clean_lines = [l.strip() for l in code_snippet.split("\n") if l.strip() and not l.strip().startswith(("#", "//", "/*", "*"))]
+        clean_text = "\n".join(clean_lines).lower()
+        has_nested_loop = bool(re.search(r'for\s+.*\n\s+.*for\s+', clean_text)) or bool(re.search(r'while\s+.*\n\s+.*(while|for)\s+', clean_text))
+        has_hash_map = bool(re.search(r'\b(dict|set|\{\}|hashmap|hashset|unordered_map|unordered_set|seen|lookup)\b', clean_text))
+        has_two_pointers = bool(re.search(r'\b(left|right|start|end|ptr|low|high)\b', clean_text) and re.search(r'(\+= 1|-= 1|\+\+|--)', clean_text))
+        is_brute_force = has_nested_loop and not (has_hash_map or has_two_pointers)
+
+        if is_brute_force:
+            instruction = (
+                f"The candidate executed their code solution. Execution outcome:\n{latest_answer}\n\n"
+                "CRITICAL INTERVIEWER TASK — BRUTE FORCE DETECTED:\n"
+                "1. Acknowledge that the brute-force baseline functionally passes basic sample cases, but state directly that the nested loop O(N^2) quadratic time complexity will hit a Time Limit Exceeded (TLE) bottleneck at scale (N >= 10^5).\n"
+                "2. Provide a Socratic, progressive hint towards the optimal approach (e.g. trading space for time using a hash map to look up previously seen elements in O(1) time). Do NOT write out the whole solution code.\n"
+                "3. Ask them: 'What is the exact time and space complexity of your current solution, and how would you refactor this repeated scanning logic to achieve an optimal O(N) time complexity?'\n"
+                "Persona: Gilfoyle-level engineering rigor, direct, under 4 sentences, zero artificial flattery."
+            )
+        else:
+            instruction = (
+                f"The candidate executed their code solution. Execution outcome:\n{latest_answer}\n\n"
+                "CRITICAL INTERVIEWER TASK — COMPLEXITY & BOUNDARY ANALYSIS:\n"
+                "If tests passed: Inquire about the exact time and space complexity (Big-O) trade-offs, and challenge them on tricky edge cases (e.g. duplicate values, empty or extreme inputs, integer overflow).\n"
+                "If tests failed or timed out: Ask what invariant failed and how they would systematically debug it.\n"
+                "Persona: Gilfoyle-level engineering rigor, direct, under 3 sentences, zero artificial flattery."
+            )
+    elif category == "behavioral":
+        if next_action == "ask_follow_up":
+            instruction = (
+                f"The candidate said: '{latest_answer}'. "
+                "Probe using the STAR method: ask for their specific individual contribution, the concrete metrics/results, or what trade-off was made. "
+                "Ask exactly ONE direct follow-up question. Under 3 sentences. No praise."
+            )
+        else:
+            instruction = (
+                f"Move to a new behavioral scenario on '{current_topic}'. "
+                "Ask a situational or experiential question regarding technical disagreement, ownership during a critical outage, or navigating ambiguous requirements. "
+                "Ask exactly ONE direct question. Under 3 sentences. No praise."
+            )
+    elif category == "managerial":
+        if next_action == "ask_follow_up":
+            instruction = (
+                f"The candidate said: '{latest_answer}'. "
+                "Probe their engineering leadership decision: ask how they measured team impact, handled stakeholder pushback, or mitigated technical risk. "
+                "Ask exactly ONE direct question. Under 3 sentences. No praise."
+            )
+        else:
+            instruction = (
+                f"Move to a leadership/management topic on '{current_topic}'. "
+                "Ask a question regarding prioritization between technical debt refactoring versus product roadmap deadlines, or mentoring a struggling engineer. "
+                "Ask exactly ONE direct question. Under 3 sentences. No praise."
+            )
     elif next_action == "ask_follow_up":
         instruction = (
             f"The candidate said: '{latest_answer}'. "

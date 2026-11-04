@@ -492,5 +492,12 @@ def get_problem(problem_id: str) -> Optional[CodingProblem]:
         return CODING_PROBLEMS[problem_id]
     if problem_id.lower().startswith("cf-"):
         from backend.app.coding.codeforces import CodeforcesClient
-        return CodeforcesClient.get_coding_problem_by_id(problem_id)
-    return None
+        res = CodeforcesClient.get_coding_problem_by_id(problem_id)
+        if isinstance(res, CodingProblem):
+            return res
+        if isinstance(res, dict):
+            try:
+                return CodingProblem(**res)
+            except Exception:
+                pass
+    return CODING_PROBLEMS.get("two-sum")

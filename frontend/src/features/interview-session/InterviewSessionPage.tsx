@@ -79,6 +79,12 @@ export const InterviewSessionPage: React.FC = () => {
   const [executionResult, setExecutionResult] = useState<CodeExecutionResult | null>(null);
   const [isExecutingCode, setIsExecutingCode] = useState(false);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__setInterviewCode = (val: string) => setCode(val);
+    }
+  }, []);
+
   // Socratic Hint Ladder
   const [hintLevelUsed, setHintLevelUsed] = useState(0);
   const [isRequestingHint, setIsRequestingHint] = useState(false);
@@ -368,13 +374,25 @@ export const InterviewSessionPage: React.FC = () => {
     setCodeExecutionError('');
 
     try {
-      const res = await api.post<CodeExecutionResult>(`/interviews/${id}/code`, {
+      const res = await api.post<any>(`/interviews/${id}/code`, {
         problem_id: codingProblem.id,
         language: codeLanguage,
         code,
         run_mode: 'run',
       });
-      setExecutionResult(res);
+      if (res && res.execution) {
+        setExecutionResult({
+          status: res.execution.status,
+          stdout: res.execution.stdout || '',
+          stderr: res.execution.stderr || '',
+          execution_time_ms: res.execution.execution_time_ms || 0,
+          total_passed: res.execution.tests_passed ?? res.execution.total_passed ?? 0,
+          total_tests: res.execution.tests_total ?? res.execution.total_tests ?? 0,
+          test_results: res.execution.test_results || [],
+        });
+      } else {
+        setExecutionResult(res);
+      }
       const updated = await api.get<Interview>(`/interviews/${id}`);
       setMessages(updated.messages || []);
     } catch (err: any) {

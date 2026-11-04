@@ -27,6 +27,7 @@ class CodingTurnRequest(BaseModel):
     language: str = Field(default="python", pattern="^(python|cpp|java)$")
     code: str = Field(min_length=1, max_length=50000)
     run_mode: str = Field(default="submit", pattern="^(run|submit)$")
+    problem_id: Optional[str] = None
     client_turn_id: Optional[str] = None
     candidate_notes: Optional[str] = None
 
