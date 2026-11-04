@@ -136,6 +136,31 @@ async def test_evaluation_and_planly_lifecycle(client: httpx.AsyncClient):
     adapted_plan = adapt_res.json()
     assert adapted_plan["total_days"] >= plan["total_days"]
 
+    # 11b. Test Reschedule to Today Preview and Execution
+    resched_prev = await client.post(
+        f"/api/v1/plans/{plan_id}/reschedule-to-today/preview",
+        headers=headers,
+        json={}
+    )
+    assert resched_prev.status_code == 200
+    r_prev_data = resched_prev.json()
+    assert r_prev_data["completed_tasks_count"] == 1  # 1 was completed above
+    assert r_prev_data["remaining_tasks_count"] == len(plan["tasks"]) - 1
+    assert len(r_prev_data["shifted_tasks"]) == len(plan["tasks"]) - 1
+    assert r_prev_data["shifted_tasks"][0]["is_today"] is True
+    assert r_prev_data["shifted_tasks"][0]["new_day"] == 2
+
+    resched_exec = await client.post(
+        f"/api/v1/plans/{plan_id}/reschedule-to-today",
+        headers=headers,
+        json={}
+    )
+    assert resched_exec.status_code == 200
+    resched_plan = resched_exec.json()
+    assert resched_plan["current_day"] == 2
+    assert resched_plan["tasks"][0]["is_completed"] is True
+    assert resched_plan["tasks"][1]["status"] == "in_progress"
+
     # 12. Verify Persistent User Skills Endpoint
     skills_res = await client.get("/api/v1/analytics/skills", headers=headers)
     assert skills_res.status_code == 200

@@ -267,11 +267,34 @@ export interface PlanTask {
   day_number: number;
   title: string;
   description: string;
+  subtopic?: string;
   task_type: 'concept' | 'practice' | 'coding' | 'reassessment';
   estimated_minutes: number;
+  scheduled_date?: string;
+  status?: 'upcoming' | 'in_progress' | 'completed' | 'skipped';
   external_resources: Array<{ title: string; url: string; type: string }>;
   is_completed: boolean;
   completed_at?: string;
+}
+
+export interface ShiftedTaskSchedule {
+  task_id: string;
+  title: string;
+  old_date?: string;
+  new_date: string;
+  old_day: number;
+  new_day: number;
+  is_today: boolean;
+}
+
+export interface PlanReschedulePreview {
+  plan_id: string;
+  reschedule_date: string;
+  completed_tasks_count: number;
+  remaining_tasks_count: number;
+  original_target_date?: string;
+  new_target_date: string;
+  shifted_tasks: ShiftedTaskSchedule[];
 }
 
 export interface Plan {

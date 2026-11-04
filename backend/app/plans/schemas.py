@@ -92,3 +92,25 @@ class SuggestedBacklogItemResponse(BaseModel):
     priority: str
     status: str
     suggested_reason: str
+
+class PlanRescheduleToTodayRequest(BaseModel):
+    start_date: Optional[datetime] = None
+
+class ShiftedTaskSchedule(BaseModel):
+    task_id: str
+    title: str
+    old_date: Optional[datetime] = None
+    new_date: datetime
+    old_day: int
+    new_day: int
+    is_today: bool
+
+class PlanReschedulePreviewResponse(BaseModel):
+    plan_id: str
+    reschedule_date: datetime
+    completed_tasks_count: int
+    remaining_tasks_count: int
+    original_target_date: Optional[datetime] = None
+    new_target_date: datetime
+    shifted_tasks: List[ShiftedTaskSchedule]
+

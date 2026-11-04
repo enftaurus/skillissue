@@ -6,6 +6,7 @@ import {
   PlanAdaptPreview,
   LearningBacklogItem,
   SuggestedBacklogItem,
+  PlanReschedulePreview,
 } from '../../lib/types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -56,11 +57,17 @@ export const PlanlyPage: React.FC = () => {
   const [prepTargetDate, setPrepTargetDate] = useState<string>('');
   const [isEvalConfigOpen, setIsEvalConfigOpen] = useState<boolean>(false);
 
-  // Adapt Schedule Modal
+  // Adapt / Reschedule Modal State
   const [isAdaptModalOpen, setIsAdaptModalOpen] = useState<boolean>(false);
   const [daysBehind, setDaysBehind] = useState<number>(1);
   const [adaptPreview, setAdaptPreview] = useState<PlanAdaptPreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState<boolean>(false);
+
+  // Reschedule to Today State
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState<boolean>(false);
+  const [reschedulePreview, setReschedulePreview] = useState<PlanReschedulePreview | null>(null);
+  const [loadingReschedulePreview, setLoadingReschedulePreview] = useState<boolean>(false);
+  const [rescheduleSuccessMsg, setRescheduleSuccessMsg] = useState<string>('');
 
   // Create Custom Plan Modal
   const [isCreatePlanOpen, setIsCreatePlanOpen] = useState<boolean>(false);
@@ -316,6 +323,58 @@ export const PlanlyPage: React.FC = () => {
     }
   };
 
+  // Live preview for Reschedule to Today
+  useEffect(() => {
+    if (!isRescheduleModalOpen || !plan) return;
+    let isCancelled = false;
+
+    const fetchPreview = async () => {
+      setLoadingReschedulePreview(true);
+      try {
+        const preview = await api.post<PlanReschedulePreview>(
+          `/plans/${plan.id}/reschedule-to-today/preview`,
+          {}
+        );
+        if (!isCancelled) {
+          setReschedulePreview(preview);
+        }
+      } catch (err: any) {
+        console.warn('Failed to load reschedule preview', err);
+      } finally {
+        if (!isCancelled) {
+          setLoadingReschedulePreview(false);
+        }
+      }
+    };
+
+    fetchPreview();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isRescheduleModalOpen, plan?.id]);
+
+  const handleRescheduleToToday = async () => {
+    if (!plan) return;
+    setActionLoading(true);
+    setActionError('');
+    try {
+      const updated = await api.post<Plan>(`/plans/${plan.id}/reschedule-to-today`, {});
+      setPlan(updated);
+      setSelectedDay(updated.current_day || 1);
+      setIsRescheduleModalOpen(false);
+      const finishedCount = updated.tasks.filter((t) => t.is_completed).length;
+      const remainingCount = updated.tasks.filter((t) => !t.is_completed).length;
+      setRescheduleSuccessMsg(
+        `Sprint successfully rescheduled starting today! Preserved ${finishedCount} finished tasks, remaining ${remainingCount} tasks aligned starting today.`
+      );
+      setTimeout(() => setRescheduleSuccessMsg(''), 7000);
+    } catch (err: any) {
+      setActionError(err.message || 'Could not reschedule sprint to today.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleCreateCustomPlan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customTopic.trim()) return;
@@ -549,6 +608,21 @@ export const PlanlyPage: React.FC = () => {
         </button>
       </div>
 
+      {rescheduleSuccessMsg && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs sm:text-sm font-semibold flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{rescheduleSuccessMsg}</span>
+          </div>
+          <button
+            onClick={() => setRescheduleSuccessMsg('')}
+            className="text-emerald-700 hover:text-emerald-900 font-bold px-2 py-0.5 rounded hover:bg-emerald-100"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* SPRINT VIEW */}
       {activeTab === 'sprint' && (
         <div className="space-y-8">
@@ -616,15 +690,27 @@ export const PlanlyPage: React.FC = () => {
 
                     <div className="h-8 w-px bg-surface-border hidden sm:block" />
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsAdaptModalOpen(true)}
-                      className="gap-1.5 text-xs whitespace-nowrap"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5 text-ink-muted" />
-                      Adapt Schedule
-                    </Button>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setIsRescheduleModalOpen(true)}
+                        className="gap-1.5 text-xs whitespace-nowrap shadow-xs"
+                        title="Reschedule remaining sprint tasks starting today based on your current progress"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Reschedule to Today</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsAdaptModalOpen(true)}
+                        className="gap-1.5 text-xs whitespace-nowrap text-ink-muted hover:text-ink"
+                        title="Shift schedule forward by custom days behind"
+                      >
+                        Adapt
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -1514,6 +1600,136 @@ export const PlanlyPage: React.FC = () => {
               isLoading={actionLoading}
             >
               Apply Schedule Shift
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* RESCHEDULE TO TODAY MODAL */}
+      <Modal
+        isOpen={isRescheduleModalOpen}
+        onClose={() => setIsRescheduleModalOpen(false)}
+        title="Reschedule Sprint to Today"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-ink-muted leading-relaxed">
+            Anchor your sprint to today. All your completed tasks remain preserved in your history,
+            while all remaining unfinished tasks are automatically scheduled starting from today so you can
+            pick up immediately without feeling behind.
+          </p>
+
+          <div className="p-3.5 bg-surface-subtle rounded-xl border border-surface-border space-y-3">
+            <div className="flex items-center justify-between text-xs font-semibold text-ink">
+              <span className="flex items-center gap-1.5">
+                <Calendar className={`w-4 h-4 text-indigo-600 ${loadingReschedulePreview ? 'animate-spin' : ''}`} />
+                <span>Reschedule Preview (Anchored to Today)</span>
+              </span>
+              {reschedulePreview && (
+                <span className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                  Today: {new Date(reschedulePreview.reschedule_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+              )}
+            </div>
+
+            {reschedulePreview ? (
+              <div className="space-y-3 pt-1 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                  <div className="p-2 rounded-lg bg-emerald-50/80 border border-emerald-200 flex flex-col">
+                    <span className="text-emerald-700 font-medium">Completed (Preserved)</span>
+                    <span className="text-emerald-950 font-bold font-mono text-sm mt-0.5">
+                      {reschedulePreview.completed_tasks_count} tasks
+                    </span>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-indigo-50/80 border border-indigo-200 flex flex-col">
+                    <span className="text-indigo-700 font-medium">Remaining (Rescheduled)</span>
+                    <span className="text-indigo-950 font-bold font-mono text-sm mt-0.5">
+                      {reschedulePreview.remaining_tasks_count} tasks
+                    </span>
+                  </div>
+
+                  <div className="p-2 rounded-lg bg-white border border-surface-border flex flex-col col-span-2 sm:col-span-1">
+                    <span className="text-ink-subtle font-medium">New Target Finish</span>
+                    <span className="text-ink font-bold font-mono text-xs mt-0.5 truncate">
+                      {new Date(reschedulePreview.new_target_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider">
+                    Upcoming Sequence
+                  </div>
+                  {reschedulePreview.shifted_tasks.length > 0 ? (
+                    <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
+                      {reschedulePreview.shifted_tasks.map((shift) => (
+                        <div
+                          key={shift.task_id}
+                          className={`p-2.5 rounded-lg border text-xs flex items-center justify-between gap-3 ${
+                            shift.is_today
+                              ? 'bg-indigo-50/70 border-indigo-300 ring-1 ring-indigo-400/30'
+                              : 'bg-white border-surface-border'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {shift.is_today && (
+                                <Badge variant="brand" size="sm" className="px-1.5 py-0 text-[10px]">
+                                  TODAY
+                                </Badge>
+                              )}
+                              <span className="font-semibold text-ink truncate">
+                                {shift.title}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-ink-muted">
+                              {new Date(shift.new_date).toLocaleDateString(undefined, {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0 font-mono text-[11px]">
+                            <span className="text-ink-subtle">Day {shift.old_day}</span>
+                            <ArrowRight className="w-3 h-3 text-indigo-600" />
+                            <span className="font-bold text-indigo-700">Day {shift.new_day}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-ink-subtle italic py-2">
+                      All tasks on your current roadmap have already been finished!
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-ink-subtle py-2">Calculating preview schedule...</p>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-surface-border">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsRescheduleModalOpen(false)}
+              disabled={actionLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={handleRescheduleToToday}
+              isLoading={actionLoading}
+              disabled={!reschedulePreview || reschedulePreview.shifted_tasks.length === 0}
+            >
+              Confirm & Reschedule from Today
             </Button>
           </div>
         </div>

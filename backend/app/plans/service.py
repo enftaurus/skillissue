@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from backend.app.database.models import Plan, PlanTask, Evaluation, UserProfile, UserSkill
 from backend.app.plans.schemas import (
-    CreateCustomPlanRequest, PlanAdaptRequest, PlanAdaptPreviewResponse, TaskShiftPreview
+    CreateCustomPlanRequest, PlanAdaptRequest, PlanAdaptPreviewResponse, TaskShiftPreview,
+    PlanRescheduleToTodayRequest, ShiftedTaskSchedule, PlanReschedulePreviewResponse
 )
 from backend.app.providers.factory import ModelFactory
 from backend.app.core.errors import EntityNotFoundError, AppException
@@ -444,6 +445,93 @@ class PlanService:
 
         await db.commit()
         return await cls.get_plan_by_id(db, user_id, plan.id)
+
+    @classmethod
+    async def preview_reschedule_to_today(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        plan_id: str,
+        start_date: Optional[datetime] = None,
+    ) -> PlanReschedulePreviewResponse:
+        plan = await cls.get_plan_by_id(db, user_id, plan_id)
+        tasks = sorted(plan.tasks, key=lambda t: t.day_number)
+        completed_tasks = [t for t in tasks if t.is_completed]
+        remaining_tasks = [t for t in tasks if not t.is_completed]
+
+        if not remaining_tasks:
+            raise AppException("All tasks in this sprint are already completed. Create a new sprint to continue.", status_code=400)
+
+        base_date = start_date or datetime.now(timezone.utc)
+        base_date = base_date.replace(hour=9, minute=0, second=0, microsecond=0)
+
+        day_name_map = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+        schedule_days = getattr(plan, "schedule_days", []) or []
+        allowed_weekdays = {day_name_map[d.lower()] for d in schedule_days if d.lower() in day_name_map}
+
+        curr_date = base_date
+        assigned_dates: List[datetime] = []
+        while len(assigned_dates) < len(remaining_tasks):
+            if not allowed_weekdays or curr_date.weekday() in allowed_weekdays:
+                assigned_dates.append(curr_date)
+            curr_date += timedelta(days=1)
+
+        completed_count = len(completed_tasks)
+        shifted_tasks: List[ShiftedTaskSchedule] = []
+
+        for idx, task in enumerate(remaining_tasks):
+            new_day = completed_count + 1 + idx
+            new_date = assigned_dates[idx]
+            shifted_tasks.append(
+                ShiftedTaskSchedule(
+                    task_id=task.id,
+                    title=task.title,
+                    old_date=task.scheduled_date,
+                    new_date=new_date,
+                    old_day=task.day_number,
+                    new_day=new_day,
+                    is_today=(idx == 0),
+                )
+            )
+
+        new_target_date = assigned_dates[-1] if assigned_dates else base_date
+
+        return PlanReschedulePreviewResponse(
+            plan_id=plan.id,
+            reschedule_date=base_date,
+            completed_tasks_count=completed_count,
+            remaining_tasks_count=len(remaining_tasks),
+            original_target_date=plan.target_date,
+            new_target_date=new_target_date,
+            shifted_tasks=shifted_tasks,
+        )
+
+    @classmethod
+    async def reschedule_plan_to_today(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        plan_id: str,
+        start_date: Optional[datetime] = None,
+    ) -> Plan:
+        preview = await cls.preview_reschedule_to_today(db, user_id, plan_id, start_date)
+        plan = await cls.get_plan_by_id(db, user_id, plan_id)
+
+        shift_map = {item.task_id: item for item in preview.shifted_tasks}
+        for task in plan.tasks:
+            if task.id in shift_map:
+                info = shift_map[task.id]
+                task.day_number = info.new_day
+                task.scheduled_date = info.new_date
+                task.status = "in_progress" if info.is_today else "upcoming"
+
+        plan.current_day = preview.completed_tasks_count + 1
+        plan.total_days = preview.completed_tasks_count + preview.remaining_tasks_count
+        plan.target_date = preview.new_target_date
+
+        await db.commit()
+        return await cls.get_plan_by_id(db, user_id, plan.id)
+
 
     @staticmethod
     async def _update_user_skill_from_task(

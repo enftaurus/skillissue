@@ -7,7 +7,8 @@ from backend.app.auth.dependencies import get_current_active_user
 from backend.app.plans.schemas import (
     PlanResponse, PlanTaskResponse, TaskToggleRequest, PlanAdaptRequest, PlanAdaptPreviewResponse,
     CreateCustomPlanRequest, TaskStatusUpdateRequest, TaskRescheduleRequest,
-    AttachBacklogItemsRequest, SuggestedBacklogItemResponse, GeneratePlanFromEvaluationRequest
+    AttachBacklogItemsRequest, SuggestedBacklogItemResponse, GeneratePlanFromEvaluationRequest,
+    PlanRescheduleToTodayRequest, PlanReschedulePreviewResponse
 )
 from backend.app.plans.service import PlanService
 
@@ -102,6 +103,28 @@ async def adapt_plan_schedule(
     db: AsyncSession = Depends(get_db),
 ):
     return await PlanService.adapt_plan(db, current_user.id, plan_id, data.days_behind)
+
+@router.post("/{plan_id}/reschedule-to-today/preview", response_model=PlanReschedulePreviewResponse)
+async def preview_reschedule_to_today(
+    plan_id: str,
+    data: Optional[PlanRescheduleToTodayRequest] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Previews rescheduling uncompleted tasks to start from today, preserving completed progress."""
+    start_date = data.start_date if data else None
+    return await PlanService.preview_reschedule_to_today(db, current_user.id, plan_id, start_date)
+
+@router.post("/{plan_id}/reschedule-to-today", response_model=PlanResponse)
+async def reschedule_plan_to_today(
+    plan_id: str,
+    data: Optional[PlanRescheduleToTodayRequest] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reschedules all remaining uncompleted tasks to start from today's date based on current progress."""
+    start_date = data.start_date if data else None
+    return await PlanService.reschedule_plan_to_today(db, current_user.id, plan_id, start_date)
 
 @router.get("/{plan_id}/suggested-backlog", response_model=List[SuggestedBacklogItemResponse])
 async def get_suggested_backlog(
