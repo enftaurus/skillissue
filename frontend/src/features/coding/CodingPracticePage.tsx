@@ -558,7 +558,7 @@ export const CodingPracticePage: React.FC = () => {
       <div className="flex-1 min-h-0">
         <PanelGroup orientation="horizontal" className="h-full">
           {/* LEFT PANEL: LeetCode Style Problem Tabs (45% default) */}
-          <Panel defaultSize={45} minSize={30} className="bg-white flex flex-col h-full border-r border-surface-border">
+          <Panel defaultSize="45%" minSize="28%" className="bg-white flex flex-col h-full border-r border-surface-border">
             {/* Header Tabs */}
             <div className="h-10 px-3 border-b border-surface-border flex items-center justify-between bg-surface-warm/50 flex-shrink-0">
               <div className="flex items-center gap-1">
@@ -955,7 +955,7 @@ export const CodingPracticePage: React.FC = () => {
           <PanelResizeHandle className="w-1.5 bg-slate-200 hover:bg-indigo-500 transition-colors cursor-col-resize" />
 
           {/* RIGHT PANEL: Monaco Editor + Collapsible LeetCode Console (55% default) */}
-          <Panel defaultSize={55} minSize={35} className="bg-white flex flex-col h-full">
+          <Panel defaultSize="55%" minSize="35%" className="bg-white flex flex-col h-full">
             {/* Editor Toolbar Header */}
             <div className="h-11 px-4 border-b border-slate-200/80 flex items-center justify-between bg-slate-50/60 flex-shrink-0">
               <div className="flex items-center gap-1.5">

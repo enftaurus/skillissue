@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, usePanelRef } from 'react-resizable-panels';
 import { api } from '../../lib/api';
 import {
   Play,
@@ -20,6 +20,11 @@ import {
   Lock,
   ArrowLeft,
   X,
+  Maximize2,
+  Minimize2,
+  PanelRightClose,
+  PanelLeftClose,
+  GripVertical,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -109,6 +114,53 @@ export const ProjectWorkspacePage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [analysisModalOpen, setAnalysisModalOpen] = useState<boolean>(false);
   const [promptAnalysis, setPromptAnalysis] = useState<PromptAnalysisData | null>(null);
+
+  // Resizable Panel Refs & Layout State
+  const leftPanelRef = usePanelRef();
+  const rightPanelRef = usePanelRef();
+  const [isChatbotVisible, setIsChatbotVisible] = useState<boolean>(true);
+  const [isChatbotExpanded, setIsChatbotExpanded] = useState<boolean>(false);
+  const [isLeftVisible, setIsLeftVisible] = useState<boolean>(true);
+
+  const handleToggleExpandChatbot = () => {
+    if (!isChatbotVisible) {
+      rightPanelRef.current?.expand();
+      rightPanelRef.current?.resize('30%');
+      setIsChatbotVisible(true);
+      setIsChatbotExpanded(false);
+      return;
+    }
+    if (isChatbotExpanded) {
+      rightPanelRef.current?.resize('30%');
+      setIsChatbotExpanded(false);
+    } else {
+      rightPanelRef.current?.resize('50%');
+      setIsChatbotExpanded(true);
+    }
+  };
+
+  const handleToggleChatbot = () => {
+    if (isChatbotVisible) {
+      rightPanelRef.current?.collapse();
+      setIsChatbotVisible(false);
+      setIsChatbotExpanded(false);
+    } else {
+      rightPanelRef.current?.expand();
+      rightPanelRef.current?.resize(isChatbotExpanded ? '50%' : '30%');
+      setIsChatbotVisible(true);
+    }
+  };
+
+  const handleToggleLeft = () => {
+    if (isLeftVisible) {
+      leftPanelRef.current?.collapse();
+      setIsLeftVisible(false);
+    } else {
+      leftPanelRef.current?.expand();
+      leftPanelRef.current?.resize('20%');
+      setIsLeftVisible(true);
+    }
+  };
 
   // Load project data
   useEffect(() => {
@@ -322,7 +374,7 @@ export const ProjectWorkspacePage: React.FC = () => {
   return (
     <div className="h-screen flex flex-col bg-surface-warm font-sans text-slate-900 overflow-hidden">
       {/* TOP WORKSPACE NAVIGATION BAR */}
-      <header className="h-13 bg-white border-b border-slate-200/80 px-4 flex items-center justify-between shrink-0 z-10 shadow-xs">
+      <header className="h-14 bg-white border-b border-slate-200/80 px-4 flex items-center justify-between shrink-0 z-10 shadow-xs">
         {/* Left: Back button & Project Title */}
         <div className="flex items-center gap-3">
           <button
@@ -360,8 +412,24 @@ export const ProjectWorkspacePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Actions (Run Tests & Submit) */}
+        {/* Right: Actions (AI Copilot Toggle, Run Tests & Submit) */}
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={handleToggleChatbot}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+              isChatbotVisible
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-200 shadow-xs'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+            title={isChatbotVisible ? "Collapse AI Pair Programmer" : "Open AI Pair Programmer"}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+            <span>AI Copilot</span>
+            <span className="text-[10px] font-mono text-indigo-600 font-bold">
+              {isChatbotVisible ? (isChatbotExpanded ? '50%' : '30%') : 'Off'}
+            </span>
+          </button>
+
           <Button
             variant="ghost"
             size="sm"
@@ -387,33 +455,91 @@ export const ProjectWorkspacePage: React.FC = () => {
       </header>
 
       {/* THREE-PANEL RESIZABLE DESKTOP IDE */}
-      <div className="flex-1 min-h-0">
-        <PanelGroup orientation="horizontal" className="h-full">
+      <div className="relative flex-1 min-h-0 w-full overflow-hidden">
+        {/* Floating dock button if Left Panel is collapsed */}
+        {!isLeftVisible && (
+          <button
+            onClick={() => {
+              leftPanelRef.current?.expand();
+              leftPanelRef.current?.resize('20%');
+              setIsLeftVisible(true);
+            }}
+            className="absolute left-0 top-1/3 z-30 bg-slate-800 hover:bg-slate-900 text-white py-3 px-1.5 rounded-r-xl shadow-md flex flex-col items-center gap-2 transition-all hover:pl-2.5 cursor-pointer"
+            title="Open Files & Spec"
+          >
+            <Folder className="w-3.5 h-3.5" />
+            <span className="[writing-mode:vertical-rl] text-[10px] font-bold tracking-wider uppercase font-mono">
+              Files
+            </span>
+          </button>
+        )}
+
+        {/* Floating dock button if Right Panel (Chatbot) is collapsed */}
+        {!isChatbotVisible && (
+          <button
+            onClick={() => {
+              rightPanelRef.current?.expand();
+              rightPanelRef.current?.resize('30%');
+              setIsChatbotVisible(true);
+            }}
+            className="absolute right-0 top-1/3 z-30 bg-indigo-600 hover:bg-indigo-700 text-white py-3 px-1.5 rounded-l-xl shadow-md flex flex-col items-center gap-2 transition-all hover:pr-2.5 cursor-pointer animate-pulse"
+            title="Open AI Pair Programmer"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span className="[writing-mode:vertical-rl] text-[10px] font-bold tracking-wider uppercase font-mono">
+              AI Copilot
+            </span>
+          </button>
+        )}
+
+        <PanelGroup orientation="horizontal" className="h-full w-full">
           {/* LEFT PANEL: File Explorer & Problem Spec (20% default) */}
-          <Panel defaultSize={20} minSize={15} maxSize={30} className="bg-white border-r border-slate-200/80 flex flex-col h-full min-w-0 overflow-hidden">
-            {/* Tab switch header */}
-            <div className="h-10 border-b border-slate-200/80 px-2 flex items-center gap-1 bg-slate-50/60 shrink-0">
+          <Panel
+            panelRef={leftPanelRef}
+            defaultSize="20%"
+            minSize="14%"
+            maxSize="35%"
+            collapsible={true}
+            collapsedSize="0%"
+            onResize={() => {
+              const isCol = leftPanelRef.current?.isCollapsed() ?? false;
+              setIsLeftVisible(!isCol);
+            }}
+            className="bg-white border-r border-slate-200/80 flex flex-col h-full min-w-0 overflow-hidden"
+          >
+            {/* Tab switch header with collapse button */}
+            <div className="h-10 border-b border-slate-200/80 px-2 flex items-center justify-between bg-slate-50/60 shrink-0">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setLeftTab('files')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    leftTab === 'files'
+                      ? 'bg-white text-indigo-700 font-semibold shadow-xs border border-slate-200/60'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Folder className="w-3.5 h-3.5" />
+                  <span>Files</span>
+                </button>
+                <button
+                  onClick={() => setLeftTab('spec')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    leftTab === 'spec'
+                      ? 'bg-white text-indigo-700 font-semibold shadow-xs border border-slate-200/60'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Specification</span>
+                </button>
+              </div>
+
               <button
-                onClick={() => setLeftTab('files')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  leftTab === 'files'
-                    ? 'bg-white text-indigo-700 font-semibold shadow-xs border border-slate-200/60'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+                onClick={handleToggleLeft}
+                className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors"
+                title="Collapse Files & Spec"
               >
-                <Folder className="w-3.5 h-3.5" />
-                <span>Files</span>
-              </button>
-              <button
-                onClick={() => setLeftTab('spec')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  leftTab === 'spec'
-                    ? 'bg-white text-indigo-700 font-semibold shadow-xs border border-slate-200/60'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Specification</span>
+                <PanelLeftClose className="w-3.5 h-3.5" />
               </button>
             </div>
 
@@ -473,10 +599,12 @@ export const ProjectWorkspacePage: React.FC = () => {
           </Panel>
 
           {/* Left Resize Handle */}
-          <PanelResizeHandle className="w-1.5 bg-slate-200 hover:bg-indigo-500 transition-colors cursor-col-resize" />
+          <PanelResizeHandle className="w-2 hover:w-2 bg-slate-100 hover:bg-indigo-300 border-x border-slate-200 transition-colors flex items-center justify-center cursor-col-resize group shrink-0 select-none">
+            <GripVertical className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+          </PanelResizeHandle>
 
-          {/* CENTER PANEL: Monaco Multi-Tab Editor + Bottom CI/CD Drawer (52% default) */}
-          <Panel defaultSize={52} minSize={35} className="bg-white flex flex-col h-full min-w-0 overflow-hidden">
+          {/* CENTER PANEL: Monaco Multi-Tab Editor + Bottom CI/CD Drawer (50% default) */}
+          <Panel defaultSize="50%" minSize="30%" className="bg-white flex flex-col h-full min-w-0 overflow-hidden">
             {/* Tab Bar Header */}
             <div className="h-10 border-b border-slate-200/80 px-2 flex items-center justify-between bg-slate-50/60 shrink-0">
               <div className="flex items-center gap-1 overflow-x-auto">
@@ -716,14 +844,31 @@ export const ProjectWorkspacePage: React.FC = () => {
           </Panel>
 
           {/* Right Resize Handle */}
-          <PanelResizeHandle className="w-1.5 bg-slate-200 hover:bg-indigo-500 transition-colors cursor-col-resize" />
+          <PanelResizeHandle className="w-2 hover:w-2 bg-slate-100 hover:bg-indigo-300 border-x border-slate-200 transition-colors flex items-center justify-center cursor-col-resize group shrink-0 select-none">
+            <GripVertical className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+          </PanelResizeHandle>
 
-          {/* RIGHT PANEL: Read-Only AI Pair Programmer (28% default) */}
-          <Panel defaultSize={28} minSize={20} maxSize={40} className="bg-white border-l border-slate-200/80 flex flex-col h-full min-w-0 min-h-0 overflow-hidden">
+          {/* RIGHT PANEL: Read-Only AI Pair Programmer (30% default) */}
+          <Panel
+            panelRef={rightPanelRef}
+            defaultSize="30%"
+            minSize="20%"
+            maxSize="65%"
+            collapsible={true}
+            collapsedSize="0%"
+            onResize={() => {
+              const isCol = rightPanelRef.current?.isCollapsed() ?? false;
+              setIsChatbotVisible(!isCol);
+              if (isCol) {
+                setIsChatbotExpanded(false);
+              }
+            }}
+            className="bg-white border-l border-slate-200/80 flex flex-col h-full min-w-0 min-h-0 overflow-hidden shadow-xs"
+          >
             {/* Copilot Header */}
-            <div className="p-3 border-b border-slate-200/80 bg-slate-50/60 flex items-center justify-between shrink-0">
+            <div className="p-3 border-b border-slate-200/80 bg-slate-50/80 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
                   <Sparkles className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
@@ -731,9 +876,32 @@ export const ProjectWorkspacePage: React.FC = () => {
                   <div className="text-[10px] text-slate-500 truncate">Read-Only Guardrail Active</div>
                 </div>
               </div>
-              <Badge variant="indigo" size="sm" className="font-mono text-[9px] uppercase shrink-0">
-                Read-Only
-              </Badge>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Badge variant="indigo" size="sm" className="font-mono text-[9px] uppercase hidden sm:inline-flex">
+                  Read-Only
+                </Badge>
+                {/* Expand Width (50%) / Restore (30%) Button */}
+                <button
+                  onClick={handleToggleExpandChatbot}
+                  className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
+                  title={isChatbotExpanded ? "Restore standard width (30%)" : "Expand to wide view (50%)"}
+                >
+                  {isChatbotExpanded ? (
+                    <Minimize2 className="w-3.5 h-3.5" />
+                  ) : (
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  )}
+                </button>
+                {/* Collapse Button */}
+                <button
+                  onClick={handleToggleChatbot}
+                  className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
+                  title="Collapse AI Pair Programmer"
+                >
+                  <PanelRightClose className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             {/* Quick Prompt Suggestion Chips */}
