@@ -8,7 +8,7 @@ from backend.app.core.errors import EntityNotFoundError, AppException
 from backend.app.database.models import CompanyTrack, CompanyProblem, UserCompanyProgress
 from backend.app.tracks.schemas import (
     CompanyTrackSummary, CompanyTrackDetail, CompanyProblemSummary, CompanyProblemDetail,
-    SolveCompanyProblemResponse, PresetSimulationResponse
+    SolveCompanyProblemResponse, PresetSimulationResponse, ToggleProblemSolvedResponse
 )
 from backend.app.tracks.seed_data import TRACKS_SEED_DATA
 from backend.app.tracks.company_registry import CompanyRegistry
@@ -16,15 +16,18 @@ from backend.app.tracks.company_registry import CompanyRegistry
 class CompanyTrackService:
     @classmethod
     async def seed_tracks_if_empty(cls, db: AsyncSession) -> None:
-        result = await db.execute(select(CompanyTrack).limit(1))
-        if result.scalar_one_or_none() is not None:
-            return
+        existing_res = await db.execute(select(CompanyTrack.slug))
+        existing_slugs = {s.lower() for s in existing_res.scalars().all()}
 
+        # 1. Seed TRACKS_SEED_DATA if missing
         for track_data in TRACKS_SEED_DATA:
+            slug = track_data["slug"].lower()
+            if slug in existing_slugs:
+                continue
             problems_data = track_data.get("problems", [])
             track = CompanyTrack(
                 name=track_data["name"],
-                slug=track_data["slug"],
+                slug=slug,
                 tier=track_data.get("tier", "gold"),
                 role_title=track_data.get("role_title", "Software Development Engineer"),
                 description=track_data.get("description", ""),
@@ -35,6 +38,7 @@ class CompanyTrackService:
             )
             db.add(track)
             await db.flush()
+            existing_slugs.add(slug)
 
             for p_data in problems_data:
                 problem = CompanyProblem(
@@ -47,9 +51,47 @@ class CompanyTrackService:
                     topics=p_data.get("topics", []),
                     order_index=int(p_data.get("order_index", 1)),
                     is_initially_unlocked=bool(p_data.get("is_initially_unlocked", False)),
-                    description=p_data.get("description", ""),
+                    description=p_data.get("description", f"Solve on LeetCode: https://leetcode.com/problems/{p_data['slug']}/"),
                     starter_code=p_data.get("starter_code", {}),
                     test_cases=p_data.get("test_cases", [])
+                )
+                db.add(problem)
+
+        # 2. Seed remaining companies from COMPANIES_50
+        for comp in CompanyRegistry.get_all_companies():
+            slug = comp["slug"].lower()
+            if slug in existing_slugs:
+                continue
+            probs = comp.get("problems", [])
+            track = CompanyTrack(
+                name=comp["name"],
+                slug=slug,
+                tier=comp.get("tier", "silver"),
+                role_title=comp.get("role_title", "Software Development Engineer"),
+                description=comp.get("description", ""),
+                community_tips=comp.get("community_tips", []),
+                total_problems=len(probs),
+                initial_unlocked_count=3,
+                logo_icon=comp.get("logo_icon", "Building2")
+            )
+            db.add(track)
+            await db.flush()
+            existing_slugs.add(slug)
+
+            for p_data in probs:
+                problem = CompanyProblem(
+                    company_track_id=track.id,
+                    title=p_data["title"],
+                    slug=p_data["slug"],
+                    difficulty=p_data.get("difficulty", "MEDIUM"),
+                    frequency_score=float(p_data.get("frequency", 90.0)),
+                    acceptance_rate=0.45,
+                    topics=p_data.get("topics", []),
+                    order_index=int(p_data.get("order", 1)),
+                    is_initially_unlocked=bool(p_data.get("is_unlocked", p_data.get("order", 1) <= 3)),
+                    description=f"Solve on LeetCode: https://leetcode.com/problems/{p_data['slug']}/",
+                    starter_code={"python": f"# LeetCode: https://leetcode.com/problems/{p_data['slug']}/\n"},
+                    test_cases=[]
                 )
                 db.add(problem)
 
@@ -165,6 +207,7 @@ class CompanyTrackService:
                         id=f"prob-{comp_reg['slug']}-{p['slug']}",
                         title=p["title"],
                         slug=p["slug"],
+                        leetcode_url=f"https://leetcode.com/problems/{p['slug']}/",
                         difficulty=p.get("difficulty", "MEDIUM"),
                         frequency_score=float(p.get("frequency", 90)),
                         acceptance_rate=0.45,
@@ -206,6 +249,7 @@ class CompanyTrackService:
                     id=p.id,
                     title=p.title,
                     slug=p.slug,
+                    leetcode_url=f"https://leetcode.com/problems/{p.slug}/",
                     difficulty=p.difficulty,
                     frequency_score=p.frequency_score,
                     acceptance_rate=p.acceptance_rate,
@@ -262,6 +306,7 @@ class CompanyTrackService:
             id=problem.id,
             title=problem.title,
             slug=problem.slug,
+            leetcode_url=f"https://leetcode.com/problems/{problem.slug}/",
             difficulty=problem.difficulty,
             frequency_score=problem.frequency_score,
             acceptance_rate=problem.acceptance_rate,
@@ -336,6 +381,73 @@ class CompanyTrackService:
             new_unlocked_problem_title=new_unlocked_title,
             total_unlocked=progress.unlocked_count,
             total_solved=progress.solved_count
+        )
+
+    @classmethod
+    async def toggle_problem_solved(
+        cls, db: AsyncSession, user_id: str, problem_id: str
+    ) -> ToggleProblemSolvedResponse:
+        await cls.seed_tracks_if_empty(db)
+
+        # 1. Fetch problem
+        problem_res = await db.execute(
+            select(CompanyProblem)
+            .options(selectinload(CompanyProblem.track))
+            .where(CompanyProblem.id == problem_id)
+        )
+        problem = problem_res.scalar_one_or_none()
+        if not problem:
+            raise EntityNotFoundError("CompanyProblem", problem_id)
+
+        progress = await cls.get_or_create_user_progress(db, user_id, problem.company_track_id)
+        effective_unlocked = max(problem.track.initial_unlocked_count, progress.unlocked_count)
+        if problem.order_index > effective_unlocked:
+            raise AppException(
+                "Cannot solve a locked problem. Complete earlier problems to unlock.",
+                code="PROBLEM_LOCKED",
+                status_code=403
+            )
+
+        solved_list = list(progress.solved_problem_ids or [])
+        unlocked_new = False
+        new_unlocked_title = None
+
+        if problem.id in solved_list:
+            solved_list.remove(problem.id)
+            progress.solved_problem_ids = solved_list
+            progress.solved_count = len(solved_list)
+            is_now_solved = False
+        else:
+            solved_list.append(problem.id)
+            progress.solved_problem_ids = solved_list
+            progress.solved_count = len(solved_list)
+            is_now_solved = True
+
+            # If this problem order reached current unlocked, unlock next problem
+            track_total = problem.track.total_problems
+            if progress.unlocked_count < track_total:
+                progress.unlocked_count += 1
+                unlocked_new = True
+                next_p_res = await db.execute(
+                    select(CompanyProblem).where(
+                        CompanyProblem.company_track_id == problem.company_track_id,
+                        CompanyProblem.order_index == progress.unlocked_count
+                    )
+                )
+                next_p = next_p_res.scalar_one_or_none()
+                if next_p:
+                    new_unlocked_title = next_p.title
+
+        progress.last_practiced_at = datetime.now(timezone.utc)
+        await db.commit()
+
+        return ToggleProblemSolvedResponse(
+            problem_id=problem.id,
+            is_solved=is_now_solved,
+            unlocked_new_problem=unlocked_new,
+            new_unlocked_problem_title=new_unlocked_title,
+            unlocked_count=progress.unlocked_count,
+            solved_count=progress.solved_count
         )
 
     @classmethod

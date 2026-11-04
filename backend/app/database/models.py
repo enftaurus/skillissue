@@ -378,6 +378,10 @@ class CompanyProblem(Base):
 
     track: Mapped["CompanyTrack"] = relationship("CompanyTrack", back_populates="problems")
 
+    @property
+    def leetcode_url(self) -> str:
+        return f"https://leetcode.com/problems/{self.slug}/"
+
 class UserCompanyProgress(Base):
     __tablename__ = "user_company_progress"
     __table_args__ = (

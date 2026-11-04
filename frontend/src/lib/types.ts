@@ -492,6 +492,7 @@ export interface CompanyProblemSummary {
   id: string;
   title: string;
   slug: string;
+  leetcode_url?: string;
   difficulty: 'EASY' | 'MEDIUM' | 'HARD';
   frequency_score: number;
   acceptance_rate: number;
@@ -499,6 +500,15 @@ export interface CompanyProblemSummary {
   order_index: number;
   is_unlocked: boolean;
   is_solved: boolean;
+}
+
+export interface ToggleProblemSolvedResponse {
+  problem_id: string;
+  is_solved: boolean;
+  unlocked_new_problem: boolean;
+  new_unlocked_problem_title?: string;
+  unlocked_count: number;
+  solved_count: number;
 }
 
 export interface CompanyProblemDetail extends CompanyProblemSummary {

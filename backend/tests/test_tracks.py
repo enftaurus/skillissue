@@ -48,3 +48,29 @@ async def test_company_tracks_day_1_open(client: AsyncClient):
     assert p_data["is_unlocked"] is True
     assert "description" in p_data
     assert "python" in p_data["starter_code"]
+    assert "leetcode_url" in p_data
+    assert p_data["leetcode_url"].startswith("https://leetcode.com/problems/")
+
+    # 3. Verify all problems in Uber track have leetcode_url
+    for prob in uber_detail["problems"]:
+        assert "leetcode_url" in prob
+        assert prob["leetcode_url"] == f"https://leetcode.com/problems/{prob['slug']}/"
+
+    # 4. Toggle problem solved on LeetCode
+    toggle_res = await client.post(f"/api/v1/tracks/problems/{p1['id']}/toggle-solved", headers=headers)
+    assert toggle_res.status_code == 200
+    toggle_data = toggle_res.json()
+    assert toggle_data["is_solved"] is True
+    assert toggle_data["solved_count"] == 1
+    assert toggle_data["unlocked_new_problem"] is True
+    assert toggle_data["unlocked_count"] == 4
+
+    # 5. Verify Uber track detail reflects newly unlocked 4th question
+    updated_uber = (await client.get("/api/v1/tracks/companies/uber", headers=headers)).json()
+    assert updated_uber["solved_count"] == 1
+    assert updated_uber["unlocked_count"] == 4
+    unlocked_after = [p for p in updated_uber["problems"] if p["is_unlocked"]]
+    assert len(unlocked_after) == 4
+    p1_after = next(p for p in updated_uber["problems"] if p["id"] == p1["id"])
+    assert p1_after["is_solved"] is True
+

@@ -1,12 +1,13 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 class CompanyProblemSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     title: str
     slug: str
+    leetcode_url: str = ""
     difficulty: str  # EASY, MEDIUM, HARD
     frequency_score: float
     acceptance_rate: float
@@ -14,6 +15,20 @@ class CompanyProblemSummary(BaseModel):
     order_index: int
     is_unlocked: bool = False
     is_solved: bool = False
+
+    @model_validator(mode="after")
+    def ensure_leetcode_url(self) -> "CompanyProblemSummary":
+        if not self.leetcode_url and self.slug:
+            self.leetcode_url = f"https://leetcode.com/problems/{self.slug}/"
+        return self
+
+class ToggleProblemSolvedResponse(BaseModel):
+    problem_id: str
+    is_solved: bool
+    unlocked_new_problem: bool = False
+    new_unlocked_problem_title: Optional[str] = None
+    unlocked_count: int
+    solved_count: int
 
 class CompanyProblemDetail(CompanyProblemSummary):
     description: str

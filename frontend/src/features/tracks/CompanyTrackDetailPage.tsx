@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../../lib/api';
-import { CompanyTrackDetail } from '../../lib/types';
+import { CompanyTrackDetail, ToggleProblemSolvedResponse } from '../../lib/types';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import {
@@ -12,6 +12,7 @@ import {
   Mic,
   ArrowLeft,
   Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 
 export const CompanyTrackDetailPage: React.FC = () => {
@@ -19,6 +20,8 @@ export const CompanyTrackDetailPage: React.FC = () => {
   const [track, setTrack] = useState<CompanyTrackDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,6 +49,40 @@ export const CompanyTrackDetailPage: React.FC = () => {
       navigate(`/interviews/${res.id}`);
     } catch (err) {
       console.error('Failed to launch company mock interview', err);
+    }
+  };
+
+  const handleToggleSolved = async (problemId: string) => {
+    setTogglingId(problemId);
+    try {
+      const res = await api.post<ToggleProblemSolvedResponse>(`/tracks/problems/${problemId}/toggle-solved`);
+      setTrack((prev) => {
+        if (!prev) return prev;
+        const updatedProblems = prev.problems.map((p) => {
+          if (p.id === problemId) {
+            return { ...p, is_solved: res.is_solved };
+          }
+          if (p.order_index <= res.unlocked_count) {
+            return { ...p, is_unlocked: true };
+          }
+          return p;
+        });
+        return {
+          ...prev,
+          solved_count: res.solved_count,
+          unlocked_count: res.unlocked_count,
+          problems: updatedProblems,
+        };
+      });
+
+      if (res.unlocked_new_problem && res.new_unlocked_problem_title) {
+        setToastMessage(`Question completed! Unlocked: "${res.new_unlocked_problem_title}" on LeetCode.`);
+        setTimeout(() => setToastMessage(null), 5000);
+      }
+    } catch (err) {
+      console.error('Failed to toggle problem status', err);
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -157,6 +194,22 @@ export const CompanyTrackDetailPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-center justify-between shadow-xs animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>{toastMessage}</span>
+          </div>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="text-emerald-700 hover:text-emerald-900 font-bold text-xs"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Problems List */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -229,22 +282,55 @@ export const CompanyTrackDetailPage: React.FC = () => {
                         </>
                       )}
                     </div>
+
+                    {/* Direct LeetCode URL */}
+                    <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                      <span className="text-[11px] font-semibold text-zinc-500">LeetCode Link:</span>
+                      <a
+                        href={problem.leetcode_url || `https://leetcode.com/problems/${problem.slug}/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-mono text-lime-700 hover:text-lime-850 hover:underline"
+                      >
+                        <span>https://leetcode.com/problems/{problem.slug}/</span>
+                        <ExternalLink className="w-2.5 h-2.5 text-lime-600" />
+                      </a>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {problem.is_unlocked ? (
-                      <Button
-                        size="sm"
-                        onClick={() => navigate('/coding')}
-                        className="gap-1.5 text-xs bg-ink text-white hover:bg-ink/90 font-medium"
-                      >
-                        <Code2 className="w-3.5 h-3.5" />
-                        <span>Solve in Arena</span>
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={problem.leetcode_url || `https://leetcode.com/problems/${problem.slug}/`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 text-xs font-semibold shadow-xs transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-lime-400" />
+                          <span>Solve on LeetCode</span>
+                        </a>
+
+                        <Button
+                          size="sm"
+                          disabled={togglingId === problem.id}
+                          onClick={() => handleToggleSolved(problem.id)}
+                          className={`gap-1.5 text-xs font-medium border ${
+                            problem.is_solved
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-white text-zinc-800 border-zinc-200 hover:bg-zinc-50'
+                          }`}
+                        >
+                          <CheckCircle2
+                            className={`w-3.5 h-3.5 ${problem.is_solved ? 'text-emerald-600' : 'text-zinc-400'}`}
+                          />
+                          <span>{problem.is_solved ? 'Solved' : 'Mark Solved'}</span>
+                        </Button>
+                      </div>
                     ) : (
                       <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle text-ink-muted text-xs font-mono border border-surface-border">
                         <Lock className="w-3.5 h-3.5 text-ink-subtle" />
-                        <span>Locked</span>
+                        <span>Locked (Complete #{problem.order_index - 1} to unlock)</span>
                       </div>
                     )}
                   </div>

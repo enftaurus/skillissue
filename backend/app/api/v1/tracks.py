@@ -8,7 +8,7 @@ from backend.app.auth.dependencies import get_current_active_user
 from backend.app.tracks.schemas import (
     CompanyTrackSummary, CompanyTrackDetail, CompanyProblemDetail,
     SolveCompanyProblemRequest, SolveCompanyProblemResponse,
-    PresetSimulationResponse
+    PresetSimulationResponse, ToggleProblemSolvedResponse
 )
 from backend.app.tracks.service import CompanyTrackService
 
@@ -80,3 +80,18 @@ async def solve_and_unlock_problem(
     return await CompanyTrackService.solve_and_unlock(
         db, current_user.id, problem_id, req.code, req.language
     )
+
+@router.post("/problems/{problem_id}/toggle-solved", response_model=ToggleProblemSolvedResponse)
+@router.post("/problems/{problem_id}/mark-solved", response_model=ToggleProblemSolvedResponse)
+async def toggle_problem_solved(
+    problem_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Marks a problem as solved on LeetCode (or toggles solved status) and unlocks the next question in this track.
+    """
+    return await CompanyTrackService.toggle_problem_solved(
+        db, current_user.id, problem_id
+    )
+
