@@ -54,27 +54,11 @@ class InterviewAgentService:
         )
 
         if interview.category == "dsa":
-            prob_title = "our competitive coding challenge"
-            prob_details = ""
-            if interview.coding_problem_id:
-                from backend.app.coding.problems import get_problem
-                prob = get_problem(interview.coding_problem_id)
-                if prob:
-                    prob_title = prob.title
-                    rating_parts = [c for c in getattr(prob, 'constraints', []) if 'Rating' in c]
-                    tag_parts = [c for c in getattr(prob, 'constraints', []) if 'Tag' in c or 'Topic' in c]
-                    extra = []
-                    if rating_parts:
-                        extra.append(rating_parts[0])
-                    if tag_parts:
-                        extra.append(tag_parts[0])
-                    if extra:
-                        prob_details = f" ({' | '.join(extra)})"
             initial_question = (
-                f"Welcome! Today we'll be tackling an algorithmic coding challenge: {prob_title}{prob_details}. "
-                "Take a moment to inspect the problem description, constraints, and standard I/O format in your workspace. "
-                "Before writing code, please walk me through your initial thoughts and the algorithmic approach you plan to take."
+                "Hey man, welcome to the mock interview of Skill Issue! Before we start, "
+                "introduce yourself and tell me about your background and your knowledge or favorite areas in DSA."
             )
+
         else:
             first_q_prompt = (
                 f"The candidate is ready for a {interview.difficulty}-level {interview.category} interview "
@@ -238,6 +222,7 @@ class InterviewAgentService:
                 "turn_count": turn_count,
                 "max_turns": 8,
                 "phase": "active",
+                "coding_problem_id": interview.coding_problem_id,
             }
 
             result_state = await graph.ainvoke(input_state, config=config)

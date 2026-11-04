@@ -284,7 +284,46 @@ async def generate_question_node(
         elif m.get("role") == "assistant":
             prompt_messages.append(AIMessage(content=m.get("content", "")))
 
-    if "Candidate Code Submission" in latest_answer or "Execution Status:" in latest_answer:
+    has_problem_been_presented = any(
+        ("### " in m.get("content", "") or "Here is your question" in m.get("content", ""))
+        for m in recent_messages if m.get("role") == "assistant"
+    )
+
+    if category == "dsa" and not has_problem_been_presented:
+        from backend.app.coding.problems import get_problem
+        prob_id = state.get("coding_problem_id") or "two-sum"
+        prob = get_problem(prob_id)
+        if prob:
+            sample_io_parts = []
+            if getattr(prob, "sample_test_cases", None):
+                for idx, sc in enumerate(prob.sample_test_cases, 1):
+                    sample_io_parts.append(
+                        f"**Sample {idx} Input:**\n```\n{sc.get('stdin', '').strip()}\n```\n"
+                        f"**Sample {idx} Output:**\n```\n{sc.get('expected_stdout', '').strip()}\n```"
+                    )
+            samples_str = "\n\n".join(sample_io_parts)
+            constraints_str = "\n".join(f"- {c}" for c in getattr(prob, "constraints", []))
+
+            prob_spec = (
+                f"### {prob.title}\n\n"
+                f"{prob.description}\n\n"
+                f"**Input Format:**\n{prob.input_format}\n\n"
+                f"**Output Format:**\n{prob.output_format}\n\n"
+                f"**Constraints:**\n{constraints_str}\n\n"
+                f"{samples_str}"
+            )
+        else:
+            prob_spec = "### Algorithmic Challenge\nSolve the given challenge satisfying standard constraints."
+
+        instruction = (
+            f"The candidate just introduced themselves: '{latest_answer}'.\n\n"
+            "Respond in the authentic Skill Issue persona (direct, witty, sharp, Gilfoyle-level engineering precision, zero fake flattery):\n"
+            "1. Briefly acknowledge their introduction and favorite DSA topic with authentic technical wit (e.g. if they mentioned DP, overlapping subproblems, competitive programming, graphs, trees, etc., make a sharp 1-2 sentence remark).\n"
+            "2. Transition: 'Now let\\'s start today\\'s session. Here is your question:'\n"
+            f"3. Present the FULL problem title and detailed problem description:\n\n{prob_spec}\n\n"
+            "4. Ask them: 'Before you start writing code, please walk me through your initial thoughts and the algorithmic approach you plan to follow, your target time and space complexity, and any edge cases you\\'re considering.'"
+        )
+    elif "Candidate Code Submission" in latest_answer or "Execution Status:" in latest_answer:
         instruction = (
             f"The candidate submitted their code solution. Execution details:\n{latest_answer}\n"
             "Analyze their code and test outcomes. If tests passed, ask about time and space complexity (Big-O) or memory trade-offs. "
@@ -313,6 +352,7 @@ async def generate_question_node(
             "Ask exactly ONE concrete engineering question testing system design or implementation trade-offs. "
             "Under 3 sentences. No praise."
         )
+
 
     prompt_messages.append(HumanMessage(content=instruction))
 

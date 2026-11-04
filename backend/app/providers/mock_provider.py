@@ -26,6 +26,7 @@ class MockProvider(BaseProvider):
         # Determine conversational turn context
         history_len = len(conversation_history) if conversation_history else 0
         prompt_lower = prompt.lower()
+        sys_lower = (system_prompt or "").lower()
         last_user_message = ""
         if conversation_history:
             for msg in reversed(conversation_history):
@@ -42,8 +43,45 @@ class MockProvider(BaseProvider):
             text = "Iterate through elements with index: check if target minus current value exists in seen dictionary. If found, return indices. Otherwise store value with current index."
         elif "hint" in prompt_lower:
             text = "Focus on the invariant: what information do you need at each step, and what data structure lets you check or update that in O(1) time?"
+        # DSA Intro / Problem Presentation Turn
+        elif "here is your question" in prompt_lower or "candidate just introduced themselves" in prompt_lower or ("dsa" in sys_lower and "introduce" in prompt_lower):
+            ack = "Nice to meet you. "
+            if "raja" in last_user_message or "raja babu" in last_user_message or "raja" in prompt_lower:
+                ack = "Nice to meet you, Raja Babu. "
+            if "dp" in last_user_message or "dynamic programming" in last_user_message or "overlapping" in last_user_message:
+                ack += "Dynamic programming with overlapping subproblems and memoization gives a great dopamine hit when state transitions align cleanly—until space constraints bite. "
+            elif "competitive" in last_user_message or "cp" in last_user_message:
+                ack += "Competitive programming builds sharp time-complexity intuition under time pressure. "
+            elif "graph" in last_user_message or "tree" in last_user_message:
+                ack += "Graph theory and topological sorting are great—straightforward until you hit cyclic dependencies. "
+            else:
+                ack += "Appreciate the background introduction. "
+
+            if "### " in prompt:
+                prob_part = prompt.split("### ")[1]
+                for stop_word in ["Before you start", "4. Ask them", "\n4. "]:
+                    if stop_word in prob_part:
+                        prob_part = prob_part.split(stop_word)[0].strip()
+                problem_block = f"### {prob_part}".strip().rstrip("'\"")
+            else:
+                problem_block = (
+                    "### Two Sum — Target Pair Index\n\n"
+                    "Given an array of integers `nums` and an integer `target`, return the 0-indexed positions of the two numbers such that they add up to `target`.\n\n"
+                    "Assume each input has exactly one solution, and you may not use the same element twice.\n\n"
+                    "**Input Format:**\nFirst line: integer N. Second line: N space-separated integers. Third line: integer target.\n\n"
+                    "**Output Format:**\nPrint two space-separated indices: i j\n\n"
+                    "**Constraints:**\n- 2 <= N <= 10^4\n- -10^9 <= nums[i] <= 10^9\n- -10^9 <= target <= 10^9\n\n"
+                    "**Sample Input:**\n```\n4\n2 7 11 15\n9\n```\n**Sample Output:**\n```\n0 1\n```"
+                )
+
+            text = (
+                f"{ack}Now let's start today's session. Here is your question:\n\n"
+                f"{problem_block}\n\n"
+                "Before you start writing code, please walk me through your initial thoughts and the algorithmic approach you plan to follow, your target time and space complexity, and any edge cases you're considering."
+            )
         # Adaptive follow-up simulation
         elif "redis" in last_user_message or "redis" in prompt_lower:
+
             text = "You mentioned using Redis for caching. What specific eviction policy did you configure, and how did you verify that memory wouldn't be exhausted under peak throughput?"
         elif "fastapi" in last_user_message or "fastapi" in prompt_lower or "python" in last_user_message:
             text = "FastAPI handles concurrency with async event loops. Did your route handlers perform any blocking I/O or CPU-bound transformations that could block the main event loop thread?"

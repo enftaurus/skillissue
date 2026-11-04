@@ -58,4 +58,5 @@ class InterviewAgentState(TypedDict, total=False):
     generated_question: str
     question_metadata: Dict[str, Any]
     phase: str
+    coding_problem_id: Optional[str]
     last_error: Optional[str]

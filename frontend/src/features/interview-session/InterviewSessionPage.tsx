@@ -47,12 +47,29 @@ export const InterviewSessionPage: React.FC = () => {
   // Speech Recognition & TTS State
   const [isListening, setIsListening] = useState(false);
   const [isSpeechSupported, setIsSpeechSupported] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('skillissue_auto_speak');
+      return saved !== null ? saved === 'true' : true; // Enabled by default
+    }
+    return true;
+  });
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [selectedVoice, setSelectedVoiceState] = useState<string>(getSelectedVoice());
   const [availableVoices, setAvailableVoices] = useState<VoiceOption[]>(DEFAULT_VOICES);
   const speechHandlerRef = useRef<SpeechHandler | null>(null);
+
+  const toggleAutoSpeak = () => {
+    setAutoSpeak((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('skillissue_auto_speak', String(next));
+      }
+      return next;
+    });
+  };
+
 
   // Coding Sandbox Pane (for DSA / coding sessions)
   const [showCodeEditor, setShowCodeEditor] = useState(false);
@@ -94,8 +111,21 @@ export const InterviewSessionPage: React.FC = () => {
     api.get<Interview>(`/interviews/${id}`)
       .then((data) => {
         setInterview(data);
-        setMessages(data.messages || []);
+        const msgs = data.messages || [];
+        setMessages(msgs);
         setHintLevelUsed(data.hint_level_used || 0);
+
+        // Auto-speak opening question by default
+        const savedAutoSpeak = typeof window !== 'undefined' ? localStorage.getItem('skillissue_auto_speak') : null;
+        const willAutoSpeak = savedAutoSpeak !== null ? savedAutoSpeak === 'true' : true;
+        if (willAutoSpeak && msgs.length > 0) {
+          const lastMsg = msgs[msgs.length - 1];
+          if (lastMsg.role === 'assistant' && lastMsg.content) {
+            setTimeout(() => {
+              SpeechHandler.speak(lastMsg.content, undefined, selectedVoice);
+            }, 350);
+          }
+        }
 
         if (data.category === 'dsa') {
           setShowCodeEditor(true);
@@ -414,7 +444,7 @@ export const InterviewSessionPage: React.FC = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setAutoSpeak(!autoSpeak)}
+              onClick={toggleAutoSpeak}
               title={autoSpeak ? 'Mute AI Voice' : 'Enable AI Voice readout'}
               className="text-xs gap-1 h-7 px-2"
             >
@@ -632,7 +662,7 @@ export const InterviewSessionPage: React.FC = () => {
               isListening={isListening}
               isThinking={isSending}
               autoSpeak={autoSpeak}
-              onToggleAutoSpeak={() => setAutoSpeak(!autoSpeak)}
+              onToggleAutoSpeak={toggleAutoSpeak}
               interviewerTitle={`Senior Staff Interviewer (${interview?.target_role || 'Engineering'})`}
               category={interview?.category}
               voicePersonaName={availableVoices.find((v) => v.id === selectedVoice)?.name}
@@ -673,7 +703,7 @@ export const InterviewSessionPage: React.FC = () => {
                 isListening={isListening}
                 isThinking={isSending}
                 autoSpeak={autoSpeak}
-                onToggleAutoSpeak={() => setAutoSpeak(!autoSpeak)}
+                onToggleAutoSpeak={toggleAutoSpeak}
                 interviewerTitle="Senior Staff Interviewer"
                 category={interview?.category}
                 voicePersonaName={availableVoices.find((v) => v.id === selectedVoice)?.name}

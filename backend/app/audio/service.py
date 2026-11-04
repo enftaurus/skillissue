@@ -336,11 +336,17 @@ class AudioService:
                 f.write(audio_bytes)
                 temp_path = f.name
 
-            # Run faster-whisper in a thread pool to not block asyncio event loop
+            # Run faster-whisper in a thread pool with VAD noise filtering and multi-accent support
             def _transcribe():
                 model = _get_whisper_model()
-                segments, info = model.transcribe(temp_path, beam_size=1, language="en")
+                segments, info = model.transcribe(
+                    temp_path,
+                    beam_size=5,
+                    vad_filter=True,
+                    vad_parameters=dict(min_silence_duration_ms=400),
+                )
                 return " ".join([seg.text for seg in segments]).strip()
+
 
             result = await asyncio.to_thread(_transcribe)
             return result

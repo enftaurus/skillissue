@@ -82,6 +82,8 @@ export class SpeechHandler {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private animFrameId: number | null = null;
+  private recognition: any = null;
+  private hasNativeSpeechResult: boolean = false;
 
   constructor(
     private onResult: (text: string, isFinal: boolean) => void,
@@ -90,100 +92,162 @@ export class SpeechHandler {
     private onAudioLevel?: (level: number) => void
   ) {
     if (typeof window !== 'undefined') {
-      this.isSupported = !!(
+      const hasSpeechRec = !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+      const hasMedia = !!(
         navigator.mediaDevices &&
         typeof navigator.mediaDevices.getUserMedia === 'function' &&
         window.MediaRecorder
       );
+      this.isSupported = hasSpeechRec || hasMedia;
     }
   }
 
   async start() {
     if (this.isListening) return;
 
+    this.hasNativeSpeechResult = false;
+    this.audioChunks = [];
+
+    // 1. Initialize Microphone Audio Stream & Audio Level Visualizer
     try {
-      this.audioChunks = [];
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      this.audioStream = stream;
-
-      // Check supported MIME types across browsers (Firefox, Chrome, Safari)
-      let mimeType = 'audio/webm';
-      if (!MediaRecorder.isTypeSupported('audio/webm')) {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = 'audio/mp4';
-        } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-          mimeType = 'audio/ogg';
-        } else {
-          mimeType = '';
-        }
-      }
-
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-      this.mediaRecorder = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          this.audioChunks.push(event.data);
-        }
-      };
-
-      recorder.onstart = () => {
-        this.isListening = true;
-        this.onStateChange(true);
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        this.audioStream = stream;
         this.startAudioMeter(stream);
-      };
 
-      recorder.onstop = async () => {
-        this.stopAudioMeter();
-        this.isListening = false;
-        this.onStateChange(false);
-
-        if (this.audioChunks.length === 0) return;
-
-        const mime = this.mediaRecorder?.mimeType || 'audio/webm';
-        const audioBlob = new Blob(this.audioChunks, { type: mime });
-        this.audioChunks = [];
-
-        try {
-          // Send audio blob to backend STT endpoint
-          const formData = new FormData();
-          const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
-          formData.append('audio', audioBlob, `recording.${ext}`);
-
-          const res = await api.post<{ text: string }>('/audio/stt', formData);
-          if (res.text && res.text.trim()) {
-            this.onResult(res.text.trim(), true);
+        // Fallback recorder if Web Speech API isn't present
+        let mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported('audio/webm')) {
+          if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+          } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+            mimeType = 'audio/ogg';
+          } else {
+            mimeType = '';
           }
-        } catch (err: any) {
-          console.warn('Backend STT failed:', err);
-          this.onError(err.message || 'Speech-to-text processing failed.');
         }
-      };
 
-      recorder.onerror = (e: any) => {
-        console.error('MediaRecorder error:', e);
-        this.onError('Audio recording error');
-        this.stop();
-      };
+        const recorder = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream);
+        this.mediaRecorder = recorder;
 
-      recorder.start(250); // collect in 250ms chunks
-    } catch (err: any) {
-      console.warn('Microphone access rejected or unavailable:', err);
-      this.onError('Microphone access denied or unsupported.');
-      this.isListening = false;
-      this.onStateChange(false);
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            this.audioChunks.push(event.data);
+          }
+        };
+
+        recorder.onstop = async () => {
+          this.stopAudioMeter();
+          // If native web speech already produced results, skip slow backend STT
+          if (this.hasNativeSpeechResult || this.audioChunks.length === 0) {
+            this.audioChunks = [];
+            return;
+          }
+
+          const mime = this.mediaRecorder?.mimeType || 'audio/webm';
+          const audioBlob = new Blob(this.audioChunks, { type: mime });
+          this.audioChunks = [];
+
+          try {
+            const formData = new FormData();
+            const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
+            formData.append('audio', audioBlob, `recording.${ext}`);
+
+            const res = await api.post<{ text: string }>('/audio/stt', formData);
+            if (res.text && res.text.trim()) {
+              this.onResult(res.text.trim(), true);
+            }
+          } catch (err: any) {
+            console.warn('Backend STT notice:', err);
+          }
+        };
+
+        recorder.start(250);
+      }
+    } catch (micErr: any) {
+      console.warn('Microphone permission notice:', micErr);
+      if (this.onError) this.onError(micErr.message || 'Microphone access denied');
     }
+
+    // 2. Initialize Native High-Accuracy Streaming Speech Recognition (Web Speech API)
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRec) {
+      try {
+        const rec = new SpeechRec();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = navigator.language || 'en-US';
+        rec.maxAlternatives = 1;
+
+        rec.onresult = (event: any) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript;
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+
+          if (finalTranscript.trim()) {
+            this.hasNativeSpeechResult = true;
+            this.onResult(finalTranscript.trim(), true);
+          } else if (interimTranscript.trim()) {
+            this.onResult(interimTranscript.trim(), false);
+          }
+        };
+
+        rec.onerror = (e: any) => {
+          if (e.error === 'no-speech') {
+            // Normal silence; do not abort
+            return;
+          }
+          console.warn('Native speech recognition notice:', e.error);
+          if (this.onError) this.onError(e.error);
+        };
+
+        rec.onend = () => {
+          // If still marked as listening, restart recognition (Chrome ends on pauses)
+          if (this.isListening && this.recognition) {
+            try {
+              this.recognition.start();
+            } catch (e) {}
+          }
+        };
+
+        rec.start();
+        this.recognition = rec;
+      } catch (recErr) {
+        console.warn('Web Speech API instantiation notice:', recErr);
+      }
+    }
+
+    this.isListening = true;
+    this.onStateChange(true);
   }
 
   stop() {
+    this.isListening = false;
+    this.onStateChange(false);
+
+    if (this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch (e) {}
+      this.recognition = null;
+    }
+
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       try {
         this.mediaRecorder.stop();
@@ -191,10 +255,12 @@ export class SpeechHandler {
         console.warn('MediaRecorder stop notice:', e);
       }
     }
+
     if (this.audioStream) {
       this.audioStream.getTracks().forEach((track) => track.stop());
       this.audioStream = null;
     }
+
     this.stopAudioMeter();
   }
 
@@ -249,7 +315,7 @@ export class SpeechHandler {
     }
   }
 
-  // --- Cloud Neural TTS Implementation ---
+  // --- Cloud Neural TTS Implementation with Auto-Play Resilience ---
 
   static async speak(text: string, onEnd?: () => void, voice?: string) {
     SpeechHandler.stopSpeaking();
@@ -302,11 +368,25 @@ export class SpeechHandler {
         if (onEnd) onEnd();
       };
 
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (playErr: any) {
+        // If browser blocks unprompted autoplay before user gesture, attach one-time resume handler
+        if (playErr.name === 'NotAllowedError') {
+          const resumeOnFirstTouch = () => {
+            audio.play().catch(() => {});
+            document.removeEventListener('click', resumeOnFirstTouch);
+            document.removeEventListener('keydown', resumeOnFirstTouch);
+          };
+          document.addEventListener('click', resumeOnFirstTouch, { once: true });
+          document.addEventListener('keydown', resumeOnFirstTouch, { once: true });
+        } else {
+          throw playErr;
+        }
+      }
     } catch (err) {
       console.warn('Cloud Neural TTS failed, fallback to native SpeechSynthesis:', err);
 
-      // Graceful offline fallback to native browser SpeechSynthesis if backend unreachable
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);

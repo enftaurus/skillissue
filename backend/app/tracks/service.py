@@ -12,6 +12,8 @@ from backend.app.tracks.schemas import (
 )
 from backend.app.tracks.seed_data import TRACKS_SEED_DATA
 from backend.app.tracks.company_registry import CompanyRegistry
+from backend.app.tracks.csv_loader import load_company_problems_from_csv
+
 
 class CompanyTrackService:
     @classmethod
@@ -138,6 +140,8 @@ class CompanyTrackService:
         for track in tracks:
             existing_slugs.add(track.slug.lower())
             progress = await cls.get_or_create_user_progress(db, user_id, track.id)
+            csv_probs = load_company_problems_from_csv(track.slug)
+            total_cnt = len(csv_probs) if csv_probs else track.total_problems
             unlocked = max(track.initial_unlocked_count, progress.unlocked_count)
             summaries.append(
                 CompanyTrackSummary(
@@ -148,8 +152,8 @@ class CompanyTrackService:
                     role_title=track.role_title,
                     description=track.description,
                     community_tips=track.community_tips or [],
-                    total_problems=track.total_problems,
-                    unlocked_count=min(track.total_problems, unlocked),
+                    total_problems=total_cnt,
+                    unlocked_count=min(total_cnt, unlocked),
                     solved_count=progress.solved_count,
                     logo_icon=track.logo_icon,
                     is_gold_mine=(track.tier == "gold")
@@ -159,8 +163,10 @@ class CompanyTrackService:
         # Merge dynamic 50+ companies from registry
         for comp in CompanyRegistry.get_all_companies():
             if comp["slug"].lower() not in existing_slugs:
-                probs = comp.get("problems", [])
-                unlocked_cnt = len([p for p in probs if p.get("is_unlocked", p.get("order", 1) <= 3)])
+                csv_probs = load_company_problems_from_csv(comp["slug"])
+                probs = csv_probs if csv_probs else comp.get("problems", [])
+                total_cnt = len(probs)
+                unlocked_cnt = min(total_cnt, 3)
                 summaries.append(
                     CompanyTrackSummary(
                         id=f"reg-{comp['slug']}",
@@ -170,7 +176,7 @@ class CompanyTrackService:
                         role_title=comp.get("role_title", "Software Development Engineer"),
                         description=comp.get("description", ""),
                         community_tips=comp.get("community_tips", []),
-                        total_problems=len(probs),
+                        total_problems=total_cnt,
                         unlocked_count=unlocked_cnt,
                         solved_count=0,
                         logo_icon=comp.get("logo_icon", "Building2"),
@@ -193,72 +199,85 @@ class CompanyTrackService:
             .where(CompanyTrack.slug == slug)
         )
         track = result.scalar_one_or_none()
+
+        # If track not in DB yet, auto-create it from registry so progress is persisted
         if not track:
-            # Fallback to dynamic registry
             comp_reg = CompanyRegistry.get_company_by_slug(slug)
-            if not comp_reg:
-                raise EntityNotFoundError("CompanyTrack", slug)
+            name = comp_reg["name"] if comp_reg else slug.replace("-", " ").title()
+            tier = comp_reg.get("tier", "silver") if comp_reg else "silver"
+            role_title = comp_reg.get("role_title", "Software Development Engineer") if comp_reg else "Software Development Engineer"
+            desc = comp_reg.get("description", "") if comp_reg else ""
+            tips = comp_reg.get("community_tips", []) if comp_reg else []
+            logo = comp_reg.get("logo_icon", "Building2") if comp_reg else "Building2"
 
-            probs = comp_reg.get("problems", [])
-            problem_summaries = []
-            for p in probs:
-                problem_summaries.append(
-                    CompanyProblemSummary(
-                        id=f"prob-{comp_reg['slug']}-{p['slug']}",
-                        title=p["title"],
-                        slug=p["slug"],
-                        leetcode_url=f"https://leetcode.com/problems/{p['slug']}/",
-                        difficulty=p.get("difficulty", "MEDIUM"),
-                        frequency_score=float(p.get("frequency", 90)),
-                        acceptance_rate=0.45,
-                        topics=p.get("topics", []),
-                        order_index=p.get("order", 1),
-                        is_unlocked=p.get("is_unlocked", p.get("order", 1) <= 3),
-                        is_solved=False
-                    )
-                )
-
-            return CompanyTrackDetail(
-                id=f"reg-{comp_reg['slug']}",
-                name=comp_reg["name"],
-                slug=comp_reg["slug"],
-                tier=comp_reg.get("tier", "silver"),
-                role_title=comp_reg.get("role_title", "Software Development Engineer"),
-                description=comp_reg.get("description", ""),
-                community_tips=comp_reg.get("community_tips", []),
-                total_problems=len(probs),
-                unlocked_count=len([p for p in probs if p.get("is_unlocked", p.get("order", 1) <= 3)]),
-                solved_count=0,
-                logo_icon=comp_reg.get("logo_icon", "Building2"),
-                is_gold_mine=(comp_reg.get("tier") == "gold"),
-                problems=problem_summaries
+            track = CompanyTrack(
+                name=name,
+                slug=slug,
+                tier=tier,
+                role_title=role_title,
+                description=desc,
+                community_tips=tips,
+                total_problems=100,
+                initial_unlocked_count=3,
+                logo_icon=logo,
             )
+            db.add(track)
+            await db.flush()
 
         progress = await cls.get_or_create_user_progress(db, user_id, track.id)
         effective_unlocked = max(track.initial_unlocked_count, progress.unlocked_count)
         solved_ids = set(progress.solved_problem_ids or [])
 
-        # Sort problems by order_index
-        sorted_problems = sorted(track.problems, key=lambda p: p.order_index)
-        problem_summaries = []
-        for p in sorted_problems:
-            is_unlocked = p.order_index <= effective_unlocked
-            is_solved = p.id in solved_ids
-            problem_summaries.append(
-                CompanyProblemSummary(
-                    id=p.id,
-                    title=p.title,
-                    slug=p.slug,
-                    leetcode_url=f"https://leetcode.com/problems/{p.slug}/",
-                    difficulty=p.difficulty,
-                    frequency_score=p.frequency_score,
-                    acceptance_rate=p.acceptance_rate,
-                    topics=p.topics or [],
-                    order_index=p.order_index,
-                    is_unlocked=is_unlocked,
-                    is_solved=is_solved
+        # Priority: Load real LeetCode questions directly from repository CSV (5. All.csv)
+        csv_probs = load_company_problems_from_csv(slug)
+        if csv_probs:
+            problem_summaries = []
+            for p in csv_probs:
+                p_id = f"p-{slug}-{p['order_index']}"
+                is_unlocked = p["order_index"] <= effective_unlocked
+                is_solved = (p_id in solved_ids) or (p["slug"] in solved_ids)
+                problem_summaries.append(
+                    CompanyProblemSummary(
+                        id=p_id,
+                        title=p["title"],
+                        slug=p["slug"],
+                        leetcode_url=p["leetcode_url"],
+                        difficulty=p["difficulty"],
+                        frequency_score=p["frequency_score"],
+                        acceptance_rate=p["acceptance_rate"],
+                        topics=p["topics"],
+                        order_index=p["order_index"],
+                        is_unlocked=is_unlocked,
+                        is_solved=is_solved
+                    )
                 )
-            )
+            total_cnt = len(csv_probs)
+        else:
+            sorted_problems = sorted(track.problems, key=lambda p: p.order_index)
+            problem_summaries = []
+            for p in sorted_problems:
+                is_unlocked = p.order_index <= effective_unlocked
+                is_solved = p.id in solved_ids
+                problem_summaries.append(
+                    CompanyProblemSummary(
+                        id=p.id,
+                        title=p.title,
+                        slug=p.slug,
+                        leetcode_url=f"https://leetcode.com/problems/{p.slug}/",
+                        difficulty=p.difficulty,
+                        frequency_score=p.frequency_score,
+                        acceptance_rate=p.acceptance_rate,
+                        topics=p.topics or [],
+                        order_index=p.order_index,
+                        is_unlocked=is_unlocked,
+                        is_solved=is_solved
+                    )
+                )
+            total_cnt = track.total_problems
+
+        # Update track.total_problems in DB if count changed
+        if track.total_problems != total_cnt:
+            track.total_problems = total_cnt
 
         await db.commit()
         return CompanyTrackDetail(
@@ -269,18 +288,83 @@ class CompanyTrackService:
             role_title=track.role_title,
             description=track.description,
             community_tips=track.community_tips or [],
-            total_problems=track.total_problems,
-            unlocked_count=min(track.total_problems, effective_unlocked),
-            solved_count=progress.solved_count,
+            total_problems=total_cnt,
+            unlocked_count=min(total_cnt, effective_unlocked),
+            solved_count=len([p for p in problem_summaries if p.is_solved]),
             logo_icon=track.logo_icon,
             is_gold_mine=(track.tier == "gold"),
             problems=problem_summaries
         )
 
+
     @classmethod
     async def get_problem_detail(
         cls, db: AsyncSession, user_id: str, problem_id: str
     ) -> CompanyProblemDetail:
+        # 1. Handle dynamic CSV problem IDs: p-{slug}-{order_index}
+        if problem_id.startswith("p-") or problem_id.startswith("prob-"):
+            parts = problem_id.split("-")
+            if len(parts) >= 3 and parts[-1].isdigit():
+                slug = "-".join(parts[1:-1])
+                order_index = int(parts[-1])
+            else:
+                slug = parts[1]
+                order_index = 1
+
+            track_res = await db.execute(select(CompanyTrack).where(CompanyTrack.slug == slug))
+            track = track_res.scalar_one_or_none()
+            if not track:
+                comp_reg = CompanyRegistry.get_company_by_slug(slug)
+                name = comp_reg["name"] if comp_reg else slug.replace("-", " ").title()
+                track = CompanyTrack(
+                    name=name,
+                    slug=slug,
+                    tier="silver",
+                    role_title="Software Development Engineer",
+                    description="",
+                    community_tips=[],
+                    total_problems=100,
+                    initial_unlocked_count=3,
+                    logo_icon="Building2",
+                )
+                db.add(track)
+                await db.flush()
+
+            progress = await cls.get_or_create_user_progress(db, user_id, track.id)
+            effective_unlocked = max(track.initial_unlocked_count, progress.unlocked_count)
+            is_unlocked = order_index <= effective_unlocked
+            is_solved = problem_id in (progress.solved_problem_ids or [])
+
+            if not is_unlocked:
+                raise AppException(
+                    f"This question is locked in the {track.name} Track. Solve earlier questions to unlock.",
+                    code="PROBLEM_LOCKED",
+                    status_code=403
+                )
+
+            csv_probs = load_company_problems_from_csv(slug)
+            p = next((x for x in csv_probs if x["order_index"] == order_index), None)
+            if not p:
+                raise EntityNotFoundError("CompanyProblem", problem_id)
+
+            return CompanyProblemDetail(
+                id=problem_id,
+                title=p["title"],
+                slug=p["slug"],
+                leetcode_url=p["leetcode_url"],
+                difficulty=p["difficulty"],
+                frequency_score=p["frequency_score"],
+                acceptance_rate=p["acceptance_rate"],
+                topics=p["topics"],
+                order_index=order_index,
+                is_unlocked=True,
+                is_solved=is_solved,
+                description=f"Solve on LeetCode: {p['leetcode_url']}",
+                starter_code={"python": f"# LeetCode: {p['leetcode_url']}\n"},
+                test_cases=[]
+            )
+
+        # 2. Database problem ID
         result = await db.execute(
             select(CompanyProblem)
             .options(selectinload(CompanyProblem.track))
@@ -323,6 +407,58 @@ class CompanyTrackService:
     async def solve_and_unlock(
         cls, db: AsyncSession, user_id: str, problem_id: str, code: str, language: str
     ) -> SolveCompanyProblemResponse:
+        # Check if dynamic CSV problem ID
+        if problem_id.startswith("p-") or problem_id.startswith("prob-"):
+            parts = problem_id.split("-")
+            slug = "-".join(parts[1:-1]) if len(parts) >= 3 and parts[-1].isdigit() else parts[1]
+            order_index = int(parts[-1]) if len(parts) >= 3 and parts[-1].isdigit() else 1
+
+            track_res = await db.execute(select(CompanyTrack).where(CompanyTrack.slug == slug))
+            track = track_res.scalar_one_or_none()
+            if not track:
+                raise EntityNotFoundError("CompanyProblem", problem_id)
+
+            progress = await cls.get_or_create_user_progress(db, user_id, track.id)
+            effective_unlocked = max(track.initial_unlocked_count, progress.unlocked_count)
+            if order_index > effective_unlocked:
+                raise AppException(
+                    "Cannot solve a locked problem.",
+                    code="PROBLEM_LOCKED",
+                    status_code=403
+                )
+
+            solved_list = list(progress.solved_problem_ids or [])
+            if problem_id not in solved_list:
+                solved_list.append(problem_id)
+                progress.solved_problem_ids = solved_list
+                progress.solved_count = len(solved_list)
+
+            csv_probs = load_company_problems_from_csv(slug)
+            track_total = len(csv_probs) if csv_probs else track.total_problems
+            unlocked_new = False
+            new_unlocked_title = None
+            if progress.unlocked_count < track_total:
+                progress.unlocked_count += 1
+                unlocked_new = True
+                next_prob = next((p for p in csv_probs if p["order_index"] == progress.unlocked_count), None)
+                if next_prob:
+                    new_unlocked_title = next_prob["title"]
+
+            progress.last_practiced_at = datetime.now(timezone.utc)
+            await db.commit()
+
+            return SolveCompanyProblemResponse(
+                status="passed",
+                tests_passed=1,
+                tests_total=1,
+                stdout="Submitted on LeetCode",
+                stderr="",
+                unlocked_new_problem=unlocked_new,
+                new_unlocked_problem_title=new_unlocked_title,
+                total_unlocked=progress.unlocked_count,
+                total_solved=progress.solved_count
+            )
+
         problem_res = await db.execute(
             select(CompanyProblem)
             .options(selectinload(CompanyProblem.track))
@@ -353,7 +489,8 @@ class CompanyTrackService:
                 progress.solved_count = len(solved_list)
 
             # Unlock next question if available
-            track_total = problem.track.total_problems
+            csv_probs = load_company_problems_from_csv(problem.track.slug)
+            track_total = len(csv_probs) if csv_probs else problem.track.total_problems
             if progress.unlocked_count < track_total:
                 progress.unlocked_count += 1
                 unlocked_new = True
@@ -367,9 +504,14 @@ class CompanyTrackService:
                 next_p = next_p_res.scalar_one_or_none()
                 if next_p:
                     new_unlocked_title = next_p.title
+                elif csv_probs:
+                    next_csv_p = next((p for p in csv_probs if p["order_index"] == progress.unlocked_count), None)
+                    if next_csv_p:
+                        new_unlocked_title = next_csv_p["title"]
 
             progress.last_practiced_at = datetime.now(timezone.utc)
             await db.commit()
+
 
         return SolveCompanyProblemResponse(
             status=status_str,
@@ -389,7 +531,82 @@ class CompanyTrackService:
     ) -> ToggleProblemSolvedResponse:
         await cls.seed_tracks_if_empty(db)
 
-        # 1. Fetch problem
+        # 1. Handle dynamic CSV problem IDs: p-{slug}-{order_index}
+        if problem_id.startswith("p-") or problem_id.startswith("prob-"):
+            parts = problem_id.split("-")
+            if len(parts) >= 3 and parts[-1].isdigit():
+                slug = "-".join(parts[1:-1])
+                order_index = int(parts[-1])
+            else:
+                slug = parts[1]
+                order_index = 1
+
+            track_res = await db.execute(select(CompanyTrack).where(CompanyTrack.slug == slug))
+            track = track_res.scalar_one_or_none()
+            if not track:
+                comp_reg = CompanyRegistry.get_company_by_slug(slug)
+                name = comp_reg["name"] if comp_reg else slug.replace("-", " ").title()
+                track = CompanyTrack(
+                    name=name,
+                    slug=slug,
+                    tier="silver",
+                    role_title="Software Development Engineer",
+                    description="",
+                    community_tips=[],
+                    total_problems=100,
+                    initial_unlocked_count=3,
+                    logo_icon="Building2",
+                )
+                db.add(track)
+                await db.flush()
+
+            progress = await cls.get_or_create_user_progress(db, user_id, track.id)
+            effective_unlocked = max(track.initial_unlocked_count, progress.unlocked_count)
+            if order_index > effective_unlocked:
+                raise AppException(
+                    "Cannot solve a locked problem. Complete earlier problems to unlock.",
+                    code="PROBLEM_LOCKED",
+                    status_code=403
+                )
+
+            csv_probs = load_company_problems_from_csv(slug)
+            track_total = len(csv_probs) if csv_probs else track.total_problems
+
+            solved_list = list(progress.solved_problem_ids or [])
+            unlocked_new = False
+            new_unlocked_title = None
+
+            if problem_id in solved_list:
+                solved_list.remove(problem_id)
+                progress.solved_problem_ids = solved_list
+                progress.solved_count = len(solved_list)
+                is_now_solved = False
+            else:
+                solved_list.append(problem_id)
+                progress.solved_problem_ids = solved_list
+                progress.solved_count = len(solved_list)
+                is_now_solved = True
+
+                if progress.unlocked_count < track_total:
+                    progress.unlocked_count += 1
+                    unlocked_new = True
+                    next_prob = next((p for p in csv_probs if p["order_index"] == progress.unlocked_count), None)
+                    if next_prob:
+                        new_unlocked_title = next_prob["title"]
+
+            progress.last_practiced_at = datetime.now(timezone.utc)
+            await db.commit()
+
+            return ToggleProblemSolvedResponse(
+                problem_id=problem_id,
+                is_solved=is_now_solved,
+                unlocked_new_problem=unlocked_new,
+                new_unlocked_problem_title=new_unlocked_title,
+                unlocked_count=progress.unlocked_count,
+                solved_count=progress.solved_count
+            )
+
+        # 2. Database problem ID
         problem_res = await db.execute(
             select(CompanyProblem)
             .options(selectinload(CompanyProblem.track))
@@ -424,7 +641,8 @@ class CompanyTrackService:
             is_now_solved = True
 
             # If this problem order reached current unlocked, unlock next problem
-            track_total = problem.track.total_problems
+            csv_probs = load_company_problems_from_csv(problem.track.slug)
+            track_total = len(csv_probs) if csv_probs else problem.track.total_problems
             if progress.unlocked_count < track_total:
                 progress.unlocked_count += 1
                 unlocked_new = True
@@ -437,6 +655,10 @@ class CompanyTrackService:
                 next_p = next_p_res.scalar_one_or_none()
                 if next_p:
                     new_unlocked_title = next_p.title
+                elif csv_probs:
+                    next_csv_p = next((p for p in csv_probs if p["order_index"] == progress.unlocked_count), None)
+                    if next_csv_p:
+                        new_unlocked_title = next_csv_p["title"]
 
         progress.last_practiced_at = datetime.now(timezone.utc)
         await db.commit()

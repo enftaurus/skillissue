@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Sparkles,
   ExternalLink,
+  Search,
 } from 'lucide-react';
 
 export const CompanyTrackDetailPage: React.FC = () => {
@@ -22,11 +23,16 @@ export const CompanyTrackDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterMode, setFilterMode] = useState<'ALL' | 'UNLOCKED' | 'SOLVED' | 'EASY' | 'MEDIUM' | 'HARD'>('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!slug) return;
     setLoading(true);
+    setCurrentPage(1);
     api.get<CompanyTrackDetail>(`/tracks/companies/${slug}`)
       .then(setTrack)
       .catch((err) => {
@@ -210,136 +216,279 @@ export const CompanyTrackDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* Problems List */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-ink flex items-center gap-2">
-            <Code2 className="w-4 h-4 text-lime-600" />
-            <span>High-Frequency Interview Problems</span>
-          </h2>
-          <span className="text-xs text-ink-muted font-mono">
-            First 3 Unlocked on Day-1
-          </span>
-        </div>
+      {/* Filter and Search Bar */}
+      {(() => {
+        const allProblems = track.problems || [];
+        const filteredProblems = allProblems.filter((p) => {
+          const q = searchQuery.trim().toLowerCase();
+          const matchesQuery =
+            !q ||
+            p.title.toLowerCase().includes(q) ||
+            p.slug.toLowerCase().includes(q) ||
+            (p.topics && p.topics.some((t) => t.toLowerCase().includes(q)));
 
-        <div className="space-y-3">
-          {track.problems.map((problem) => {
-            const isDay1 = problem.order_index <= 3;
+          if (!matchesQuery) return false;
+          if (filterMode === 'UNLOCKED') return p.is_unlocked;
+          if (filterMode === 'SOLVED') return p.is_solved;
+          if (filterMode === 'EASY') return p.difficulty === 'EASY';
+          if (filterMode === 'MEDIUM') return p.difficulty === 'MEDIUM';
+          if (filterMode === 'HARD') return p.difficulty === 'HARD';
+          return true;
+        });
 
-            return (
-              <div
-                key={problem.id}
-                className={`p-4 sm:p-5 rounded-xl border transition-all ${
-                  problem.is_unlocked
-                    ? 'bg-white border-surface-border hover:shadow-card hover:border-lime-500/40'
-                    : 'bg-surface-subtle/50 border-surface-border/60 opacity-70'
-                }`}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <span className="text-xs font-mono font-bold text-ink-muted">
-                        #{problem.order_index}
-                      </span>
-                      <h3 className="font-bold text-sm text-ink">
-                        {problem.title}
-                      </h3>
-                      <Badge
-                        variant={
-                          problem.difficulty === 'HARD'
-                            ? 'destructive'
-                            : problem.difficulty === 'MEDIUM'
-                            ? 'warning'
-                            : 'success'
-                        }
-                        className="text-[10px] font-mono"
-                      >
-                        {problem.difficulty}
-                      </Badge>
-                      {isDay1 && (
-                        <span className="px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-800 text-[10px] font-semibold border border-lime-500/20">
-                          Day 1 Open
-                        </span>
-                      )}
-                      {problem.is_solved && (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 text-[10px] font-semibold flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Solved
-                        </span>
-                      )}
-                    </div>
+        const totalPages = Math.ceil(filteredProblems.length / pageSize) || 1;
+        const safePage = Math.min(currentPage, totalPages);
+        const startIndex = (safePage - 1) * pageSize;
+        const currentSlice = filteredProblems.slice(startIndex, startIndex + pageSize);
 
-                    <div className="flex items-center gap-2 flex-wrap text-[11px] text-ink-muted">
-                      <span>Frequency: {Math.round(problem.frequency_score)}%</span>
-                      <span>•</span>
-                      <span>Acceptance: {Math.round(problem.acceptance_rate * 100)}%</span>
-                      {problem.topics && problem.topics.length > 0 && (
-                        <>
-                          <span>•</span>
-                          <span className="text-ink-subtle">
-                            {problem.topics.slice(0, 3).join(', ')}
-                          </span>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Direct LeetCode URL */}
-                    <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
-                      <span className="text-[11px] font-semibold text-zinc-500">LeetCode Link:</span>
-                      <a
-                        href={problem.leetcode_url || `https://leetcode.com/problems/${problem.slug}/`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] font-mono text-lime-700 hover:text-lime-850 hover:underline"
-                      >
-                        <span>https://leetcode.com/problems/{problem.slug}/</span>
-                        <ExternalLink className="w-2.5 h-2.5 text-lime-600" />
-                      </a>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {problem.is_unlocked ? (
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={problem.leetcode_url || `https://leetcode.com/problems/${problem.slug}/`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 text-xs font-semibold shadow-xs transition-colors"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5 text-lime-400" />
-                          <span>Solve on LeetCode</span>
-                        </a>
-
-                        <Button
-                          size="sm"
-                          disabled={togglingId === problem.id}
-                          onClick={() => handleToggleSolved(problem.id)}
-                          className={`gap-1.5 text-xs font-medium border ${
-                            problem.is_solved
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                              : 'bg-white text-zinc-800 border-zinc-200 hover:bg-zinc-50'
-                          }`}
-                        >
-                          <CheckCircle2
-                            className={`w-3.5 h-3.5 ${problem.is_solved ? 'text-emerald-600' : 'text-zinc-400'}`}
-                          />
-                          <span>{problem.is_solved ? 'Solved' : 'Mark Solved'}</span>
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle text-ink-muted text-xs font-mono border border-surface-border">
-                        <Lock className="w-3.5 h-3.5 text-ink-subtle" />
-                        <span>Locked (Complete #{problem.order_index - 1} to unlock)</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+        return (
+          <div className="space-y-4">
+            {/* Search & Filter Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-ink flex items-center gap-2">
+                  <Code2 className="w-4 h-4 text-lime-600" />
+                  <span>High-Frequency Interview Problems ({allProblems.length} Curated)</span>
+                </h2>
+                <p className="text-xs text-ink-muted">
+                  First 3 unlocked on Day 1. Complete unlocked questions to open the next in the sequence.
+                </p>
               </div>
-            );
-          })}
-        </div>
-      </div>
+
+              {/* Search input */}
+              <div className="relative w-full md:w-72">
+                <Search className="w-3.5 h-3.5 text-ink-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Search by title, topic, or slug..."
+                  className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-surface-border bg-white text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-lime-500/20 focus:border-lime-500"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-ink-muted hover:text-ink"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Filter Pills */}
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              {(
+                [
+                  { id: 'ALL', label: `All (${allProblems.length})` },
+                  { id: 'UNLOCKED', label: `Unlocked (${allProblems.filter((p) => p.is_unlocked).length})` },
+                  { id: 'SOLVED', label: `Solved (${track.solved_count})` },
+                  { id: 'EASY', label: 'Easy' },
+                  { id: 'MEDIUM', label: 'Medium' },
+                  { id: 'HARD', label: 'Hard' },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => {
+                    setFilterMode(f.id);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    filterMode === f.id
+                      ? 'bg-ink text-white shadow-xs'
+                      : 'bg-surface-subtle text-ink-muted hover:text-ink border border-surface-border'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Problem count readout */}
+            <div className="flex items-center justify-between text-xs text-ink-muted font-mono pt-1">
+              <span>
+                Showing {filteredProblems.length === 0 ? 0 : startIndex + 1}–
+                {Math.min(startIndex + pageSize, filteredProblems.length)} of {filteredProblems.length} problems
+              </span>
+              <span>
+                Page {safePage} of {totalPages}
+              </span>
+            </div>
+
+            {/* Problems Cards */}
+            <div className="space-y-3">
+              {currentSlice.length === 0 ? (
+                <div className="p-8 text-center rounded-xl border border-surface-border bg-white text-xs text-ink-muted space-y-2">
+                  <p className="font-semibold text-ink">No problems matched your query.</p>
+                  <p>Try clearing your search term or selecting &ldquo;All&rdquo; filter.</p>
+                </div>
+              ) : (
+                currentSlice.map((problem) => {
+                  const isDay1 = problem.order_index <= 3;
+                  const leetcodeLink = problem.leetcode_url || `https://leetcode.com/problems/${problem.slug}/`;
+
+                  return (
+                    <div
+                      key={problem.id}
+                      className={`p-4 sm:p-5 rounded-xl border transition-all ${
+                        problem.is_unlocked
+                          ? 'bg-white border-surface-border hover:shadow-card hover:border-lime-500/40'
+                          : 'bg-surface-subtle/50 border-surface-border/60 opacity-70'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <span className="text-xs font-mono font-bold text-ink-muted">
+                              #{problem.order_index}
+                            </span>
+                            <h3 className="font-bold text-sm text-ink">
+                              {problem.title}
+                            </h3>
+                            <Badge
+                              variant={
+                                problem.difficulty === 'HARD'
+                                  ? 'destructive'
+                                  : problem.difficulty === 'MEDIUM'
+                                  ? 'warning'
+                                  : 'success'
+                              }
+                              className="text-[10px] font-mono"
+                            >
+                              {problem.difficulty}
+                            </Badge>
+                            {isDay1 && (
+                              <span className="px-2 py-0.5 rounded-full bg-lime-500/10 text-lime-800 text-[10px] font-semibold border border-lime-500/20">
+                                Day 1 Open
+                              </span>
+                            )}
+                            {problem.is_solved && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 text-[10px] font-semibold flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Solved
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap text-[11px] text-ink-muted">
+                            <span>Frequency: {Math.round(problem.frequency_score)}%</span>
+                            <span>•</span>
+                            <span>Acceptance: {Math.round(problem.acceptance_rate * 100)}%</span>
+                            {problem.topics && problem.topics.length > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="text-ink-subtle">
+                                  {problem.topics.slice(0, 4).join(', ')}
+                                </span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Direct LeetCode URL */}
+                          <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                            <span className="text-[11px] font-semibold text-zinc-500">LeetCode Link:</span>
+                            <a
+                              href={leetcodeLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-mono text-lime-700 hover:text-lime-850 hover:underline"
+                            >
+                              <span>{leetcodeLink}</span>
+                              <ExternalLink className="w-2.5 h-2.5 text-lime-600" />
+                            </a>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {problem.is_unlocked ? (
+                            <div className="flex items-center gap-2">
+                              <a
+                                href={leetcodeLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 text-xs font-semibold shadow-xs transition-colors"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 text-lime-400" />
+                                <span>Solve on LeetCode</span>
+                              </a>
+
+                              <Button
+                                size="sm"
+                                disabled={togglingId === problem.id}
+                                onClick={() => handleToggleSolved(problem.id)}
+                                className={`gap-1.5 text-xs font-medium border ${
+                                  problem.is_solved
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                                    : 'bg-white text-zinc-800 border-zinc-200 hover:bg-zinc-50'
+                                }`}
+                              >
+                                <CheckCircle2
+                                  className={`w-3.5 h-3.5 ${problem.is_solved ? 'text-emerald-600' : 'text-zinc-400'}`}
+                                />
+                                <span>{problem.is_solved ? 'Solved' : 'Mark Solved'}</span>
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-subtle text-ink-muted text-xs font-mono border border-surface-border">
+                              <Lock className="w-3.5 h-3.5 text-ink-subtle" />
+                              <span>Locked (Complete #{problem.order_index - 1} to unlock)</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4 border-t border-surface-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage <= 1}
+                  onClick={() => {
+                    setCurrentPage((prev) => Math.max(1, prev - 1));
+                    window.scrollTo({ top: 300, behavior: 'smooth' });
+                  }}
+                  className="text-xs"
+                >
+                  Previous Page
+                </Button>
+
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-ink-muted font-mono">
+                    Page {safePage} of {totalPages}
+                  </span>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage >= totalPages}
+                  onClick={() => {
+                    setCurrentPage((prev) => Math.min(totalPages, prev + 1));
+                    window.scrollTo({ top: 300, behavior: 'smooth' });
+                  }}
+                  className="text-xs"
+                >
+                  Next Page
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };
+
