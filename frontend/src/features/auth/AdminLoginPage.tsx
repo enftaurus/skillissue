@@ -54,12 +54,12 @@ export const AdminLoginPage: React.FC = () => {
             )}
 
             <Input
-              label="Admin Email"
-              type="email"
+              label="Admin Email or Username"
+              type="text"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@skillissue.com"
+              placeholder="rajababu or admin@skillissue.com"
             />
 
             <Input

@@ -60,12 +60,12 @@ export const LoginPage: React.FC = () => {
             )}
 
             <Input
-              label="Email address"
-              type="email"
+              label="Email address or username"
+              type="text"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@domain.com"
+              placeholder="rajababu or you@domain.com"
             />
 
             <Input
