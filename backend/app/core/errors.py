@@ -30,3 +30,12 @@ class ProviderError(AppException):
 class SandboxExecutionError(AppException):
     def __init__(self, message: str):
         super().__init__(message=message, code="SANDBOX_ERROR", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class NotFoundError(EntityNotFoundError):
+    def __init__(self, message: str = "Resource not found"):
+        super().__init__(entity_name=message, identifier="")
+
+class ValidationError(AppException):
+    def __init__(self, message: str = "Validation failed"):
+        super().__init__(message=message, code="VALIDATION_ERROR", status_code=status.HTTP_400_BAD_REQUEST)
+

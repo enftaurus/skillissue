@@ -19,7 +19,10 @@ import {
   Sparkles,
   FileText,
   UserCheck,
+  HelpCircle,
 } from 'lucide-react';
+import { useEditorTelemetry } from '../../lib/useEditorTelemetry';
+import { ExplanationCheckModal } from '../coding/ExplanationCheckModal';
 
 export const CandidateAssessmentPage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
@@ -29,6 +32,10 @@ export const CandidateAssessmentPage: React.FC = () => {
   const [windowBlurs, setWindowBlurs] = useState<number>(0);
   const [showBlurWarning, setShowBlurWarning] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [showExplanationModal, setShowExplanationModal] = useState<boolean>(false);
+  const [activeCheckRoundKey, setActiveCheckRoundKey] = useState<string>('0');
+  const [activeCheckTitle, setActiveCheckTitle] = useState<string>('Algorithmic Online Assessment');
+  const [pendingAssessmentUpdate, setPendingAssessmentUpdate] = useState<CandidateAssessment | null>(null);
 
   // Candidate Intake Form State
   const [candidateNameInput, setCandidateNameInput] = useState<string>('');
@@ -105,15 +112,28 @@ export const CandidateAssessmentPage: React.FC = () => {
     }
   };
 
+  const currentRoundIndex = assessment?.current_round_index ?? 0;
+  const currentRound = assessment?.rounds?.[currentRoundIndex];
+  const isCodingRound = currentRound?.round_type === 'oa_dsa' || currentRound?.round_type === 'ai_project';
+
+  const { logContentChange, logKeyDown, logPaste, flushQueue } = useEditorTelemetry({
+    roundKey: String(currentRoundIndex),
+    candidateToken: assessment?.access_token || token,
+    enabled: Boolean(assessment?.access_token && isCodingRound),
+  });
+
   const handleNextRound = async () => {
     if (!token || !assessment) return;
-
-    const currentRound = assessment.rounds[assessment.current_round_index];
-    if (!currentRound) return;
+    const round = assessment.rounds[assessment.current_round_index];
+    if (!round) return;
 
     try {
       setIsSubmitting(true);
-      // Defect D2: Client never computes or submits scores. Only code/answers and proctoring telemetry.
+      // Flush editor telemetry batch before submission
+      if (isCodingRound) {
+        await flushQueue();
+      }
+
       const submissionData: Record<string, any> = {
         code: codeAnswer,
         answer: interviewAnswer,
@@ -121,7 +141,7 @@ export const CandidateAssessmentPage: React.FC = () => {
 
       const payload: Record<string, any> = {
         round_index: assessment.current_round_index,
-        round_type: currentRound.round_type,
+        round_type: round.round_type,
         submission_data: submissionData,
         integrity_events: {
           window_blurs: windowBlurs,
@@ -133,10 +153,13 @@ export const CandidateAssessmentPage: React.FC = () => {
         payload.resume_text = candidateResume.trim();
       }
 
-      if (currentRound.round_type === 'oa_dsa') {
+      if (round.round_type === 'oa_dsa') {
         payload.oa_problem_title = 'Alien Dictionary & Topological Sort';
         payload.oa_submitted_code = codeAnswer;
       }
+
+      const submittedRoundIndex = assessment.current_round_index;
+      const submittedRoundName = round.name;
 
       const subToken = assessment.access_token || token;
       const updated = await api.post<CandidateAssessment>(
@@ -144,13 +167,30 @@ export const CandidateAssessmentPage: React.FC = () => {
         payload
       );
 
-      setAssessment(updated);
-      setInterviewAnswer('');
+      // If it's a coding round, trigger post-code explanation check cross-examination
+      if (round.round_type === 'oa_dsa' || round.round_type === 'ai_project') {
+        setActiveCheckRoundKey(String(submittedRoundIndex));
+        setActiveCheckTitle(submittedRoundName || 'Algorithmic Online Assessment');
+        setPendingAssessmentUpdate(updated);
+        setShowExplanationModal(true);
+      } else {
+        setAssessment(updated);
+        setInterviewAnswer('');
+      }
     } catch (err) {
       console.error('Failed to submit round', err);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleExplanationComplete = () => {
+    setShowExplanationModal(false);
+    if (pendingAssessmentUpdate) {
+      setAssessment(pendingAssessmentUpdate);
+      setPendingAssessmentUpdate(null);
+    }
+    setInterviewAnswer('');
   };
 
   if (loading) {
@@ -178,7 +218,6 @@ export const CandidateAssessmentPage: React.FC = () => {
 
   const isEntryRequired = assessment.status === 'entry_required' || !assessment.access_token;
   const isCompleted = assessment.status === 'completed' || assessment.status === 'flagged';
-  const currentRound = assessment.rounds[assessment.current_round_index];
 
   return (
     <div className="min-h-screen bg-zinc-50/60 flex flex-col font-sans text-zinc-900">
@@ -386,12 +425,32 @@ export const CandidateAssessmentPage: React.FC = () => {
                   </p>
                 </div>
 
+                {/* Pre-Round Explanation Check Notice */}
+                <div className="p-3.5 bg-lime-50/70 border border-lime-200 rounded-xl text-xs text-lime-900 flex items-start gap-2.5">
+                  <HelpCircle className="w-4 h-4 text-lime-700 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 leading-relaxed">
+                    <p className="font-semibold">Post-Code Cross-Examination Notice</p>
+                    <p className="text-lime-800 text-[11px]">
+                      After submitting your solution, you will answer 3 short follow-up questions grounded in your exact implementation. You can answer briefly via text or voice.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-zinc-800">Your Code Implementation:</label>
                   <textarea
                     rows={9}
                     value={codeAnswer}
-                    onChange={(e) => setCodeAnswer(e.target.value)}
+                    onChange={(e) => {
+                      const nextVal = e.target.value;
+                      logContentChange(nextVal, codeAnswer, e.target.selectionStart || 0, 'typing');
+                      setCodeAnswer(nextVal);
+                    }}
+                    onKeyDown={(e) => logKeyDown(e)}
+                    onPaste={(e) => {
+                      const text = e.clipboardData.getData('text');
+                      logPaste(text, e.currentTarget.selectionStart || 0);
+                    }}
                     className="w-full font-mono text-xs p-3 rounded-xl border border-zinc-200 bg-zinc-900 text-lime-400 focus:outline-none focus:ring-1 focus:ring-lime-500"
                   />
                 </div>
@@ -427,7 +486,16 @@ export const CandidateAssessmentPage: React.FC = () => {
                   <textarea
                     rows={8}
                     value={codeAnswer}
-                    onChange={(e) => setCodeAnswer(e.target.value)}
+                    onChange={(e) => {
+                      const nextVal = e.target.value;
+                      logContentChange(nextVal, codeAnswer, e.target.selectionStart || 0, 'typing');
+                      setCodeAnswer(nextVal);
+                    }}
+                    onKeyDown={(e) => logKeyDown(e)}
+                    onPaste={(e) => {
+                      const text = e.clipboardData.getData('text');
+                      logPaste(text, e.currentTarget.selectionStart || 0);
+                    }}
                     placeholder="Enter your implementation code and concurrency handling primitives..."
                     className="w-full font-mono text-xs p-3 rounded-xl border border-zinc-200 bg-zinc-900 text-lime-400 focus:outline-none focus:ring-1 focus:ring-lime-500"
                   />
@@ -500,6 +568,21 @@ export const CandidateAssessmentPage: React.FC = () => {
           </Card>
         )}
         </>
+      )}
+
+      {/* Post-Code Submission Cross-Examination Modal */}
+      {assessment && (
+        <ExplanationCheckModal
+          isOpen={showExplanationModal}
+          mode="assessment"
+          submissionRef={`oa_round_${activeCheckRoundKey}`}
+          roundKey={activeCheckRoundKey}
+          problemTitle={activeCheckTitle}
+          candidateAssessmentId={assessment.id}
+          candidateToken={assessment.access_token || token}
+          onComplete={handleExplanationComplete}
+          onClose={() => setShowExplanationModal(false)}
+        />
       )}
     </main>
     </div>

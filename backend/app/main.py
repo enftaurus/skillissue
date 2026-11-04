@@ -18,6 +18,8 @@ from backend.app.api.v1.projects import router as projects_router
 from backend.app.api.v1.audio import router as audio_router
 from backend.app.api.v1.tracks import router as tracks_router
 from backend.app.api.v1.enterprise import router as enterprise_router
+from backend.app.api.v1.explanation_checks import router as explanation_checks_router
+from backend.app.api.v1.telemetry import router as telemetry_router
 
 def create_application() -> FastAPI:
     is_dev = settings.ENVIRONMENT.lower() in ("development", "test") or settings.DEBUG
@@ -88,6 +90,11 @@ def create_application() -> FastAPI:
     app.include_router(audio_router, prefix="/api/v1")
     app.include_router(tracks_router, prefix="/api/v1")
     app.include_router(enterprise_router, prefix="/api/v1")
+    app.include_router(explanation_checks_router, prefix="/api/v1")
+    app.include_router(telemetry_router, prefix="/api/v1")
+    # Also support direct path without /api/v1 prefix
+    app.include_router(explanation_checks_router)
+    app.include_router(telemetry_router)
 
     return app
 

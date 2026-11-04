@@ -83,8 +83,85 @@ class MockProvider(BaseProvider):
         prompt_lower = prompt.lower()
         sys_lower = (system_prompt or "").lower()
 
+        # Explanation Check: Question Generation
+        if "<candidate_code>" in prompt and ("write follow-up questions" in sys_lower or "one rationale" in prompt_lower or "one mutation" in prompt_lower):
+            code_match = re.search(r"<candidate_code>(.*?)</candidate_code>", prompt, re.DOTALL)
+            code_text = code_match.group(1) if code_match else ""
+            tokens = re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]{2,}\b", code_text)
+            tokens = [t for t in tokens if t not in {"def", "class", "return", "import", "from", "for", "while", "if", "else", "elif", "in", "and", "or", "not"}]
+            ref1 = tokens[0] if tokens else "solve"
+            ref2 = tokens[1] if len(tokens) > 1 else ref1
+            ref3 = tokens[2] if len(tokens) > 2 else ref2
+
+            is_single = bool(re.search(r"write\s+1\s+question", prompt_lower))
+            if is_single:
+                questions = [
+                    {
+                        "type": "rationale",
+                        "text": f"Why did you choose this implementation pattern around '{ref1}' instead of an alternative iterative approach?",
+                        "code_reference": ref1
+                    }
+                ]
+            else:
+                questions = [
+                    {
+                        "type": "rationale",
+                        "text": f"Why did you choose your specific approach and data structure around '{ref1}' rather than a named alternative?",
+                        "code_reference": ref1
+                    },
+                    {
+                        "type": "mutation",
+                        "text": f"If the problem constraints were modified to allow duplicates or streaming input, what exact lines around '{ref2}' would change?",
+                        "code_reference": ref2
+                    },
+                    {
+                        "type": "behaviour",
+                        "text": f"What is the time complexity and result of your logic around '{ref3}' on an empty or single-element input?",
+                        "code_reference": ref3
+                    }
+                ]
+            parsed = {"questions": questions}
+
+        # Explanation Check: Judge Answers
+        elif "question_evaluations" in prompt_lower or "evaluating candidate spoken or written answers against their submitted code" in sys_lower:
+            is_mismatched = any(bad in prompt_lower for bad in [
+                "i don't know", "dont know", "stole this", "copied this", "copied from", "magic", "no idea",
+                "chatgpt", "fabricated", "hallucination", "someone else"
+            ])
+            # Find all Question N occurrences
+            q_matches = re.findall(r"Question\s+(\d+)", prompt)
+            unique_indices = sorted(list(set(int(x) for x in q_matches))) if q_matches else [0, 1, 2]
+            q_evals = []
+            for idx in unique_indices:
+                if is_mismatched:
+                    q_evals.append({
+                        "question_index": idx,
+                        "accuracy": 1,
+                        "consistency": 1,
+                        "depth": 1,
+                        "evidence_quote": "Mismatched candidate explanation",
+                        "code_reference": "solution",
+                        "critique": "Candidate verbal explanation contradicted the algorithm implemented in code."
+                    })
+                else:
+                    q_evals.append({
+                        "question_index": idx,
+                        "accuracy": 4,
+                        "consistency": 4,
+                        "depth": 3,
+                        "evidence_quote": "Valid technical response explaining implementation mechanics",
+                        "code_reference": "solve",
+                        "critique": "Solid explanation matching implementation logic."
+                    })
+
+            parsed = {
+                "question_evaluations": q_evals,
+                "coaching_what_went_well": ["Demonstrated clear grasp of data structures and cycle detection"],
+                "coaching_what_to_revisit": ["Review space complexity on deep recursion trees"]
+            }
+
         # 1. Post-Interview Evaluation
-        if "<untrusted_candidate_transcript>" in prompt or "rubric" in sys_lower or "evaluat" in sys_lower:
+        elif "<untrusted_candidate_transcript>" in prompt or "rubric" in sys_lower or "evaluat" in sys_lower:
             # Extract candidate lines from prompt if present
             candidate_lines = []
             for line in prompt.split("\n"):

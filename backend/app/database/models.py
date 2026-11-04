@@ -54,6 +54,7 @@ class User(Base):
     company_progress: Mapped[List["UserCompanyProgress"]] = relationship("UserCompanyProgress", back_populates="user", cascade="all, delete-orphan")
     retest_sessions: Mapped[List["RetestSession"]] = relationship("RetestSession", back_populates="user", cascade="all, delete-orphan")
     assessment_pipelines: Mapped[List["AssessmentPipeline"]] = relationship("AssessmentPipeline", back_populates="creator", cascade="all, delete-orphan")
+    explanation_checks: Mapped[List["ExplanationCheck"]] = relationship("ExplanationCheck", back_populates="user", cascade="all, delete-orphan")
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
@@ -459,3 +460,43 @@ class CandidateAssessment(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     pipeline: Mapped["AssessmentPipeline"] = relationship("AssessmentPipeline", back_populates="candidates")
+    explanation_checks: Mapped[List["ExplanationCheck"]] = relationship("ExplanationCheck", back_populates="candidate_assessment", cascade="all, delete-orphan")
+    editor_event_batches: Mapped[List["EditorEventBatch"]] = relationship("EditorEventBatch", back_populates="candidate_assessment", cascade="all, delete-orphan")
+
+
+class ExplanationCheck(Base):
+    __tablename__ = "explanation_checks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    candidate_assessment_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("candidate_assessments.id", ondelete="CASCADE"), nullable=True, index=True)
+    round_key: Mapped[str] = mapped_column(String(50), default="oa_dsa")
+    submission_ref: Mapped[str] = mapped_column(String(100), nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), default="practice")  # 'practice', 'assessment'
+    status: Mapped[str] = mapped_column(String(30), default="pending")  # 'pending', 'answered', 'evaluated', 'not_evaluated', 'insufficient_data'
+    questions: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    answers: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
+    evaluation: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    confidence: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # 'low', 'medium', 'high', None
+    discriminative_power: Mapped[str] = mapped_column(String(20), default="normal")  # 'low', 'normal'
+    model_info: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    answered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    evaluated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="explanation_checks")
+    candidate_assessment: Mapped[Optional["CandidateAssessment"]] = relationship("CandidateAssessment", back_populates="explanation_checks")
+
+
+class EditorEventBatch(Base):
+    __tablename__ = "editor_event_batches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    candidate_assessment_id: Mapped[str] = mapped_column(String(36), ForeignKey("candidate_assessments.id", ondelete="CASCADE"), index=True)
+    round_key: Mapped[str] = mapped_column(String(50), nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    candidate_assessment: Mapped["CandidateAssessment"] = relationship("CandidateAssessment", back_populates="editor_event_batches")
+

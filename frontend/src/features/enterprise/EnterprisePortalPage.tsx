@@ -20,7 +20,9 @@ import {
   Boxes,
   FileText,
   Terminal,
+  Activity,
 } from 'lucide-react';
+import { EditorReplayModal } from './EditorReplayModal';
 
 export const EnterprisePortalPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pipelines' | 'leaderboard'>('pipelines');
@@ -30,8 +32,9 @@ export const EnterprisePortalPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Candidate Audit Modal State
+  // Candidate Audit & Telemetry Replay Modal State
   const [selectedCandidateForAudit, setSelectedCandidateForAudit] = useState<CandidateAssessment | null>(null);
+  const [replayCandidate, setReplayCandidate] = useState<CandidateAssessment | null>(null);
 
   // Create Pipeline Modal State
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -442,7 +445,16 @@ export const EnterprisePortalPage: React.FC = () => {
                                 className="text-[11px] gap-1 bg-white border-zinc-200 hover:border-zinc-300"
                               >
                                 <FileText className="w-3 h-3 text-indigo-600" />
-                                <span>Audit &amp; Code</span>
+                                <span>Audit</span>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setReplayCandidate(c)}
+                                className="text-[11px] gap-1 bg-white border-zinc-200 hover:border-zinc-300 text-lime-800"
+                              >
+                                <Activity className="w-3 h-3 text-lime-700" />
+                                <span>Replay</span>
                               </Button>
                               <Button
                                 size="sm"
@@ -511,10 +523,21 @@ export const EnterprisePortalPage: React.FC = () => {
 
             {/* Submitted Round 1 OA Code (Anti-Cheating Cross-Examination) */}
             <div className="space-y-1.5">
-              <h4 className="font-bold text-zinc-900 flex items-center gap-1.5">
-                <Terminal className="w-3.5 h-3.5 text-lime-700" />
-                Submitted Round 1 OA Code: {selectedCandidateForAudit.oa_problem_title || 'Algorithmic Challenge'}
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-zinc-900 flex items-center gap-1.5">
+                  <Terminal className="w-3.5 h-3.5 text-lime-700" />
+                  Submitted Round 1 OA Code: {selectedCandidateForAudit.oa_problem_title || 'Algorithmic Challenge'}
+                </h4>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setReplayCandidate(selectedCandidateForAudit)}
+                  className="text-[11px] gap-1.5 h-7 px-2.5 bg-lime-50 text-lime-900 border-lime-300 hover:bg-lime-100"
+                >
+                  <Activity className="w-3.5 h-3.5 text-lime-700" />
+                  <span>Launch Keystroke Replay</span>
+                </Button>
+              </div>
               <div className="p-3 bg-zinc-900 rounded-xl text-lime-400 font-mono text-xs overflow-x-auto max-h-48">
                 <pre>{selectedCandidateForAudit.oa_submitted_code || selectedCandidateForAudit.round_results?.['0']?.submission?.code || '# No code recorded'}</pre>
               </div>
@@ -759,6 +782,17 @@ export const EnterprisePortalPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Recruiter Editor Telemetry Replay Modal */}
+      {replayCandidate && (
+        <EditorReplayModal
+          isOpen={Boolean(replayCandidate)}
+          onClose={() => setReplayCandidate(null)}
+          candidateAssessmentId={replayCandidate.id}
+          roundKey="0"
+          candidateName={replayCandidate.candidate_name}
+        />
+      )}
     </div>
   );
 };

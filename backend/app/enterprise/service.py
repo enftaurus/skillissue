@@ -537,9 +537,6 @@ class EnterpriseService:
         }
         candidate.round_results = results
 
-        # D3: Integrity Policy - signals are flag-only, no fixed divergence, never alter status or score
-        candidate.integrity_signals = {"status": "not_assessed"}
-
         # Store resume text and submitted OA code for Stage 3 oral cross-exam
         if req.resume_text:
             candidate.resume_text = req.resume_text
@@ -547,6 +544,20 @@ class EnterpriseService:
             candidate.oa_problem_title = req.oa_problem_title
         if req.oa_submitted_code:
             candidate.oa_submitted_code = req.oa_submitted_code
+
+        # Run editor telemetry activity analysis if coding round
+        if req.round_type in {"oa_dsa", "ai_project"}:
+            code_for_telemetry = req.submission_data.get("code") or req.oa_submitted_code or candidate.oa_submitted_code or ""
+            try:
+                from backend.app.integrity.telemetry_service import TelemetryService
+                await TelemetryService.analyze_round_telemetry(
+                    candidate_assessment_id=candidate.id,
+                    round_key=str(req.round_index),
+                    submitted_code=code_for_telemetry,
+                    db=db,
+                )
+            except Exception:
+                pass
 
         # Advance to next round or complete
         candidate.current_round_index = req.round_index + 1

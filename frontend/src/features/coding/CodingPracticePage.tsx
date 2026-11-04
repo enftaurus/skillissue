@@ -9,6 +9,7 @@ import {
   DsaCoachResponse,
   CodingSubmission,
 } from '../../lib/types';
+import { ExplanationCheckModal } from './ExplanationCheckModal';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import {
@@ -60,6 +61,8 @@ export const CodingPracticePage: React.FC = () => {
   const [isCustomCase, setIsCustomCase] = useState<boolean>(false);
   const [customStdin, setCustomStdin] = useState<string>('');
   const [copyCodeSuccess, setCopyCodeSuccess] = useState<boolean>(false);
+  const [showExplanationModal, setShowExplanationModal] = useState<boolean>(false);
+  const [lastSubmissionId, setLastSubmissionId] = useState<string>('');
 
   // AI Coaching Agent state (on-demand Socratic guidance)
   const [coachLevel, setCoachLevel] = useState<number>(1);
@@ -377,6 +380,9 @@ export const CodingPracticePage: React.FC = () => {
       });
       if (res.status === 'passed') {
         setSubmissionSuccess(true);
+      }
+      if (res.id || res.submission_id) {
+        setLastSubmissionId(res.id || res.submission_id);
       }
       setSelectedCaseIndex(0);
       setExecutionError('');
@@ -1197,9 +1203,20 @@ export const CodingPracticePage: React.FC = () => {
                               </span>
                             </div>
 
-                            <span className="text-xs font-mono text-ink-subtle">
-                              Passed {executionResult.total_passed} / {executionResult.total_tests}
-                            </span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-mono text-ink-subtle">
+                                Passed {executionResult.total_passed} / {executionResult.total_tests}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setShowExplanationModal(true)}
+                                className="text-xs gap-1.5 bg-lime-50 text-lime-900 border-lime-300 hover:bg-lime-100 h-7 px-2.5"
+                              >
+                                <Sparkles className="w-3.5 h-3.5 text-lime-700" />
+                                <span>Explanation Check</span>
+                              </Button>
+                            </div>
                           </div>
 
                           {/* Compile error stderr */}
@@ -1332,6 +1349,19 @@ export const CodingPracticePage: React.FC = () => {
           </Panel>
         </PanelGroup>
       </div>
+
+      {/* Explanation Check & Coaching Modal */}
+      {selectedProblem && (
+        <ExplanationCheckModal
+          isOpen={showExplanationModal}
+          mode="practice"
+          submissionRef={lastSubmissionId || selectedProblem.id}
+          roundKey="0"
+          problemTitle={selectedProblem.title}
+          onComplete={() => setShowExplanationModal(false)}
+          onClose={() => setShowExplanationModal(false)}
+        />
+      )}
     </div>
   );
 };
