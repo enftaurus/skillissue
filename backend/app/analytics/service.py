@@ -237,7 +237,7 @@ class AnalyticsService:
         )
 
     @staticmethod
-    async def get_admin_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
+    async def get_admin_analytics(db: AsyncSession, limit: int = 100, offset: int = 0) -> AdminAnalyticsResponse:
         # Real candidates stats (is_test == False)
         real_users = (await db.execute(select(func.count(User.id)).where(User.is_test == False))).scalar_one() or 0
         real_interviews = (await db.execute(select(func.count(Interview.id)).join(User).where(User.is_test == False))).scalar_one() or 0
@@ -259,24 +259,48 @@ class AnalyticsService:
         real_cost = round(real_completed * 0.042, 2)
         test_cost = round(test_completed * 0.005, 2)
 
-        # Tenants breakdown
-        tenants_res = await db.execute(select(Tenant).order_by(Tenant.created_at.asc()))
-        all_tenants = list(tenants_res.scalars().all())
+        # D6: Grouped queries with pagination (capped at 100) to ensure constant query count O(1)
+        limit_clean = min(max(1, limit), 100)
+        offset_clean = max(0, offset)
 
-        tenant_summaries = []
-        for t in all_tenants:
-            u_cnt = (await db.execute(select(func.count(User.id)).where(User.tenant_id == t.id))).scalar_one() or 0
-            i_cnt = (await db.execute(select(func.count(Interview.id)).join(User).where(User.tenant_id == t.id))).scalar_one() or 0
-            tenant_summaries.append(
-                TenantSummary(
-                    id=t.id,
-                    name=t.name,
-                    slug=t.slug,
-                    is_test=t.is_test,
-                    user_count=u_cnt,
-                    interviews_count=i_cnt
-                )
+        total_tenants = (await db.execute(select(func.count(Tenant.id)))).scalar_one() or 0
+
+        tenants_page = list((await db.execute(
+            select(Tenant).order_by(Tenant.created_at.asc()).limit(limit_clean).offset(offset_clean)
+        )).scalars().all())
+
+        page_tenant_ids = [t.id for t in tenants_page]
+
+        user_counts: Dict[str, int] = {}
+        interview_counts: Dict[str, int] = {}
+
+        if page_tenant_ids:
+            u_counts_res = await db.execute(
+                select(User.tenant_id, func.count(User.id))
+                .where(User.tenant_id.in_(page_tenant_ids))
+                .group_by(User.tenant_id)
             )
+            user_counts = dict(u_counts_res.all())
+
+            i_counts_res = await db.execute(
+                select(User.tenant_id, func.count(Interview.id))
+                .join(User, Interview.user_id == User.id)
+                .where(User.tenant_id.in_(page_tenant_ids))
+                .group_by(User.tenant_id)
+            )
+            interview_counts = dict(i_counts_res.all())
+
+        tenant_summaries = [
+            TenantSummary(
+                id=t.id,
+                name=t.name,
+                slug=t.slug,
+                is_test=t.is_test,
+                user_count=user_counts.get(t.id, 0),
+                interviews_count=interview_counts.get(t.id, 0)
+            )
+            for t in tenants_page
+        ]
 
         active_providers = {
             "aws_bedrock": {"status": "healthy", "region": "us-east-1", "models": ["anthropic.claude-3-5-haiku-20241022-v1:0", "amazon.nova-pro-v1:0"]},
@@ -306,7 +330,9 @@ class AnalyticsService:
                 retests_count=test_retests
             ),
             tenants=tenant_summaries,
-            total_tenants=len(tenant_summaries),
+            total_tenants=total_tenants,
+            limit=limit_clean,
+            offset=offset_clean,
             active_providers=active_providers
         )
 

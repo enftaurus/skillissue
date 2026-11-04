@@ -61,7 +61,8 @@ class EvaluationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     interview_id: str
-    overall_score: float
+    overall_score: Optional[float] = None
+    status: str = "completed"
     rubric_dimension_scores: Dict[str, Dict[str, Any]]
     strengths: List[str]
     weaknesses: List[str]
@@ -103,7 +104,7 @@ class QuestionComparison(BaseModel):
 
 class EvaluationComparisonResponse(BaseModel):
     interview_id: str
-    overall_ai_score: float
+    overall_ai_score: Optional[float] = None
     dimensions: List[DimensionComparison]
     question_comparisons: List[QuestionComparison] = []
     self_reflection: str

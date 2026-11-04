@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database.session import get_db
 from backend.app.database.models import User
 from backend.app.auth.schemas import (
-    UserRegister, UserLogin, Token, UserResponse, UserProfileResponse, UserProfileUpdate,
+    UserRegister, RecruiterRegister, UserLogin, Token, UserResponse, UserProfileResponse, UserProfileUpdate,
     RefreshTokenRequest, LogoutResponse
 )
 from backend.app.auth.service import AuthService
@@ -51,6 +51,30 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         is_test=user.is_test,
         is_active=user.is_active,
         onboarding_completed=False,
+        is_provider_connected=False,
+        created_at=user.created_at,
+        profile=user.profile,
+    )
+
+@router.post(
+    "/register-recruiter",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit(max_requests=10, window_seconds=60))]
+)
+async def register_recruiter(data: RecruiterRegister, db: AsyncSession = Depends(get_db)):
+    """
+    Creates a new organisation Tenant and provisions an isolated recruiter account.
+    """
+    user = await AuthService.register_recruiter(db, data)
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        tenant_id=user.tenant_id,
+        is_test=user.is_test,
+        is_active=user.is_active,
+        onboarding_completed=True,
         is_provider_connected=False,
         created_at=user.created_at,
         profile=user.profile,

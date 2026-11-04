@@ -38,11 +38,13 @@ async def get_funnel_telemetry(
 
 @router.get("/admin/stats", response_model=AdminAnalyticsResponse)
 async def get_admin_analytics_stats(
+    limit: int = 100,
+    offset: int = 0,
     current_user: User = Depends(get_current_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Returns admin tenant telemetry with strict isolation between Real Candidate Stats and Test/Sandbox Stats.
     """
-    return await AnalyticsService.get_admin_analytics(db)
+    return await AnalyticsService.get_admin_analytics(db, limit=limit, offset=offset)
 

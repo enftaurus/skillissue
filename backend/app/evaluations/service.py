@@ -93,31 +93,77 @@ class EvaluationService:
             hint_level_used=interview.hint_level_used,
         )
 
+        def validate_evaluation_schema(data: Any) -> bool:
+            if not isinstance(data, dict):
+                return False
+            if "error" in data:
+                return False
+            dim_scores = data.get("dimension_scores")
+            if not isinstance(dim_scores, dict) or not dim_scores:
+                return False
+            if "overall_score" not in data:
+                return False
+            try:
+                float(data["overall_score"])
+            except (ValueError, TypeError):
+                return False
+            return True
+
         provider = await ModelFactory.get_for_user(db, user_id, task_type="evaluation")
         response = await provider.generate_json(prompt=user_prompt, system_prompt=system_prompt)
         parsed = response.parsed_json or {}
 
-        # Strictly reject malformed output; never silently fabricate a 70.0 score
-        if not parsed or "error" in parsed or not parsed.get("dimension_scores"):
-            raise ProviderError(
-                "Model failed to generate structured evaluation. No rubric dimension scores were produced.",
-                code="EVALUATION_PARSING_FAILED"
+        # D7: Validate model output against JSON schema; on failure retry once
+        if not validate_evaluation_schema(parsed):
+            logger.warning(f"Evaluation JSON failed initial schema validation for interview {interview_id}. Retrying once...")
+            retry_system_prompt = system_prompt + (
+                "\n\nCRITICAL RETRY INSTRUCTION: Your previous response violated the JSON schema. "
+                "You MUST return strictly a JSON object conforming to the schema with 'overall_score' (number) and 'dimension_scores' (object)."
             )
+            retry_response = await provider.generate_json(prompt=user_prompt, system_prompt=retry_system_prompt)
+            parsed = retry_response.parsed_json or {}
+            response = retry_response
 
-        if "overall_score" not in parsed:
-            raise ProviderError(
-                "Model evaluation missing overall_score field.",
-                code="EVALUATION_SCHEMA_INVALID"
+        # If retry still fails schema validation, store status="not_evaluated" and score=None
+        if not validate_evaluation_schema(parsed):
+            logger.error(f"Evaluation failed schema validation after retry for interview {interview_id}. Storing status='not_evaluated'.")
+            existing_res = await db.execute(
+                select(Evaluation).where(Evaluation.interview_id == interview_id, Evaluation.user_id == user_id)
             )
+            failed_eval = existing_res.scalar_one_or_none()
+            if failed_eval:
+                failed_eval.overall_score = None
+                failed_eval.status = "not_evaluated"
+                failed_eval.rubric_dimension_scores = {}
+                failed_eval.uncertainty_notes = ["Model evaluation failed JSON schema validation after retry. Stored as not_evaluated."]
+                failed_eval.raw_llm_response = response.text if response else None
+            else:
+                failed_eval = Evaluation(
+                    interview_id=interview_id,
+                    user_id=user_id,
+                    overall_score=None,
+                    status="not_evaluated",
+                    rubric_dimension_scores={},
+                    strengths=[],
+                    weaknesses=[],
+                    missing_concepts=[],
+                    evidence_excerpts=[],
+                    question_feedback=[],
+                    suggested_corrections=[],
+                    uncertainty_notes=["Model evaluation failed JSON schema validation after retry. Stored as not_evaluated."],
+                    weakness_analysis=[],
+                    raw_llm_response=response.text if response else None,
+                    stored_transcript=transcript_text,
+                    tokens_used=response.input_tokens + response.output_tokens if response else 0,
+                    model_identifier=response.model_id if response else getattr(provider, "model_id", "unknown")
+                )
+                db.add(failed_eval)
+            interview.status = "completed"
+            await db.commit()
+            await db.refresh(failed_eval)
+            return failed_eval
 
-        try:
-            overall_score = float(parsed["overall_score"])
-        except (ValueError, TypeError):
-            raise ProviderError(
-                "Model returned non-numeric overall_score.",
-                code="EVALUATION_SCHEMA_INVALID"
-            )
-
+        overall_score = float(parsed["overall_score"])
         dimension_scores = parsed.get("dimension_scores", {})
 
         # Apply hint penalty if candidate used hints
@@ -260,6 +306,7 @@ class EvaluationService:
         )
         evaluation = existing_res.scalar_one_or_none()
         if evaluation:
+            evaluation.status = "completed"
             evaluation.overall_score = overall_score
             evaluation.rubric_dimension_scores = dimension_scores
             evaluation.strengths = strengths
@@ -278,6 +325,7 @@ class EvaluationService:
             evaluation = Evaluation(
                 interview_id=interview_id,
                 user_id=user_id,
+                status="completed",
                 overall_score=overall_score,
                 rubric_dimension_scores=dimension_scores,
                 strengths=strengths,

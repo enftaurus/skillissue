@@ -578,19 +578,23 @@ export interface CandidateAssessment {
   candidate_name: string;
   candidate_email: string;
   access_token: string;
-  status: 'invited' | 'in_progress' | 'completed' | 'flagged';
+  status: 'invited' | 'in_progress' | 'completed' | 'flagged' | 'entry_required';
   resume_text?: string;
   oa_problem_title?: string;
   oa_submitted_code?: string;
   current_round_index: number;
   round_results: Record<string, any>;
-  composite_score: number;
+  composite_score?: number | null;
   integrity_signals: {
-    window_blurs: number;
-    copy_paste_count: number;
-    speech_code_divergence: number;
+    window_blurs?: number;
+    copy_paste_count?: number;
+    speech_code_divergence?: number;
+    status?: string;
+    flags?: any[];
   };
   rounds: RoundConfig[];
+  token_expires_at?: string | null;
+  is_invite_token?: boolean;
   created_at: string;
   completed_at?: string;
 }
@@ -601,7 +605,7 @@ export interface PipelineLeaderboard {
   target_role: string;
   total_candidates: number;
   completed_candidates: number;
-  average_score: number;
+  average_score?: number | null;
   candidates: CandidateAssessment[];
 }
 

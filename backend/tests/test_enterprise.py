@@ -3,15 +3,22 @@ import pytest
 from httpx import AsyncClient
 
 @pytest.mark.asyncio
-async def test_enterprise_pipeline_and_candidate_exam(client: AsyncClient):
-    # Register and login recruiter
+async def test_enterprise_pipeline_candidate_entry_and_scoring(client: AsyncClient):
+    # 1. Register recruiter via dedicated recruiter registration
     email = f"recruiter_{uuid.uuid4().hex[:8]}@acme.corp"
-    await client.post("/api/v1/auth/register", json={"email": email, "password": "Password123!", "role": "recruiter"})
+    reg_res = await client.post(
+        "/api/v1/auth/register-recruiter",
+        json={"organisation_name": "Acme Corp", "email": email, "password": "Password123!"}
+    )
+    assert reg_res.status_code == 201
+    recruiter_data = reg_res.json()
+    tenant_a_id = recruiter_data["tenant_id"]
+
     login_res = await client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 1. Create Assessment Pipeline
+    # 2. Create Assessment Pipeline
     pipeline_payload = {
         "title": "Uber SDE-1 Campus Hiring Assessment 2026",
         "target_role": "Backend Engineer",
@@ -44,79 +51,203 @@ async def test_enterprise_pipeline_and_candidate_exam(client: AsyncClient):
     assert create_res.status_code == 201
     pipe_data = create_res.json()
     assert pipe_data["title"] == "Uber SDE-1 Campus Hiring Assessment 2026"
+    assert pipe_data["tenant_id"] == tenant_a_id
     assert len(pipe_data["rounds"]) == 3
     pipe_id = pipe_data["id"]
     invite_token = pipe_data["invite_token"]
 
-    # 2. Invite Candidate
-    cand_invite_res = await client.post(
-        f"/api/v1/enterprise/pipelines/{pipe_id}/invite",
-        headers=headers,
+    # 3. D4: Viewing invite token directly does NOT create guest user
+    invite_view_res = await client.get(f"/api/v1/enterprise/assessments/{invite_token}")
+    assert invite_view_res.status_code == 200
+    invite_view_data = invite_view_res.json()
+    assert invite_view_data["status"] == "entry_required"
+    assert invite_view_data["access_token"] == ""
+
+    # 4. D4: Candidate enters name & email via entry endpoint
+    entry_res = await client.post(
+        f"/api/v1/enterprise/assessments/entry/{invite_token}",
         json={"candidate_name": "Alice Candidate", "candidate_email": "alice@university.edu"}
     )
-    assert cand_invite_res.status_code == 201
-    cand_data = cand_invite_res.json()
-    access_token = cand_data["access_token"]
-    assert cand_data["status"] == "invited"
+    assert entry_res.status_code == 201
+    entry_data = entry_res.json()
+    access_token = entry_data["access_token"]
+    assert access_token != ""
+    assert entry_data["candidate_name"] == "Alice Candidate"
+    assert entry_data["candidate_email"] == "alice@university.edu"
+    assert entry_data["token_expires_at"] is not None
 
-    # 3. Candidate enters exam room via token
-    exam_res = await client.get(f"/api/v1/enterprise/assessments/{access_token}")
-    assert exam_res.status_code == 200
-    exam_data = exam_res.json()
-    assert exam_data["candidate_name"] == "Alice Candidate"
-    assert exam_data["current_round_index"] == 0
-    assert len(exam_data["rounds"]) == 3
+    # Re-entering with same email returns the same candidate assessment
+    re_entry = await client.post(
+        f"/api/v1/enterprise/assessments/entry/{invite_token}",
+        json={"candidate_name": "Alice Candidate", "candidate_email": "alice@university.edu"}
+    )
+    assert re_entry.status_code == 201
+    assert re_entry.json()["id"] == entry_data["id"]
 
-    # 4. Candidate completes Round 0 (DSA OA)
+    # 5. D2 & D3: Candidate submits round with client-supplied score=100
+    # Client-supplied score must be completely ignored!
     sub1_res = await client.post(
         f"/api/v1/enterprise/assessments/{access_token}/submit-round",
         json={
             "round_index": 0,
             "round_type": "oa_dsa",
-            "submission_data": {"score": 90.0, "tests_passed": 2, "tests_total": 2},
-            "integrity_events": {"window_blurs": 1, "copy_paste_count": 2}
+            "submission_data": {"score": 100.0, "code": "def solve(): return 1"},
+            "integrity_events": {"window_blurs": 5, "copy_paste_count": 10}
         }
     )
     assert sub1_res.status_code == 200
     sub1_data = sub1_res.json()
     assert sub1_data["current_round_index"] == 1
+    # D2: Since no server problem_id was linked to grade this DSA code, score is None and status is submitted_unscored
+    round_0_result = sub1_data["round_results"]["0"]
+    assert round_0_result["score"] is None
+    assert round_0_result["status"] == "submitted_unscored"
+    # D3: Integrity signals must be {"status": "not_assessed"} and candidate status must NOT be flagged
     assert sub1_data["status"] == "in_progress"
+    assert sub1_data["integrity_signals"] == {"status": "not_assessed"}
 
-    # 5. Candidate completes Round 1 (AI Project)
+    # 6. Candidate completes remaining rounds
     sub2_res = await client.post(
         f"/api/v1/enterprise/assessments/{access_token}/submit-round",
         json={
             "round_index": 1,
             "round_type": "ai_project",
-            "submission_data": {"score": 85.0, "prompt_quality_score": 88.0},
-            "integrity_events": {"window_blurs": 0, "copy_paste_count": 0}
+            "submission_data": {"score": 99.0, "code": "print('ok')"},
+            "integrity_events": {}
         }
     )
     assert sub2_res.status_code == 200
-    sub2_data = sub2_res.json()
-    assert sub2_data["current_round_index"] == 2
+    assert sub2_res.json()["round_results"]["1"]["score"] is None
 
-    # 6. Candidate completes Round 2 (Tough Interview) -> Finished!
     sub3_res = await client.post(
         f"/api/v1/enterprise/assessments/{access_token}/submit-round",
         json={
             "round_index": 2,
             "round_type": "tough_interview",
-            "submission_data": {"score": 80.0, "anti_sycophancy_grade": 82.0},
-            "integrity_events": {"window_blurs": 0, "copy_paste_count": 0}
+            "submission_data": {"score": 88.0, "transcript": "..."},
+            "integrity_events": {}
         }
     )
     assert sub3_res.status_code == 200
     sub3_data = sub3_res.json()
     assert sub3_data["status"] == "completed"
-    assert sub3_data["composite_score"] == 85.0
-    assert sub3_data["completed_at"] is not None
+    # Since unscored rounds, composite_score is None, not fabricated 85 or 99
+    assert sub3_data["composite_score"] is None
 
     # 7. Recruiter views leaderboard
     lb_res = await client.get(f"/api/v1/enterprise/pipelines/{pipe_id}/leaderboard", headers=headers)
     assert lb_res.status_code == 200
     lb_data = lb_res.json()
     assert lb_data["total_candidates"] == 1
-    assert lb_data["completed_candidates"] == 1
-    assert lb_data["average_score"] == 85.0
+    assert lb_data["completed_candidates"] == 0  # No scored completed candidates
+    assert lb_data["average_score"] is None
     assert lb_data["candidates"][0]["candidate_name"] == "Alice Candidate"
+
+@pytest.mark.asyncio
+async def test_tenant_isolation_on_pipelines(client: AsyncClient, create_test_user):
+    """
+    D5: Strict tenant isolation tests.
+    - Recruiter in Tenant B cannot read, edit, export, or view leaderboard of Tenant A's pipeline.
+    - Recruiter B cannot see Tenant A's pipeline in the pipeline list.
+    - Recruiter A2 in Tenant A can see and manage Tenant A's pipeline.
+    - Admin can see all pipelines.
+    """
+    # 1. Create Recruiter A in Tenant A
+    rec_a_email = f"rec_a_{uuid.uuid4().hex[:6]}@org-alpha.com"
+    reg_a = await client.post(
+        "/api/v1/auth/register-recruiter",
+        json={"organisation_name": "Org Alpha", "email": rec_a_email, "password": "Password123!"}
+    )
+    assert reg_a.status_code == 201
+    tenant_a_id = reg_a.json()["tenant_id"]
+
+    login_a = await client.post("/api/v1/auth/login", json={"email": rec_a_email, "password": "Password123!"})
+    token_a = login_a.json()["access_token"]
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+
+    # Recruiter A creates a pipeline
+    pipe_res = await client.post(
+        "/api/v1/enterprise/pipelines",
+        headers=headers_a,
+        json={
+            "title": "Alpha Confidential SDE Hiring",
+            "target_role": "Core Systems",
+            "job_description": "Building confidential high-frequency core systems."
+        }
+    )
+    assert pipe_res.status_code == 201
+    pipe_a_id = pipe_res.json()["id"]
+
+    # 2. Create Recruiter B in Tenant B
+    rec_b_email = f"rec_b_{uuid.uuid4().hex[:6]}@org-beta.com"
+    reg_b = await client.post(
+        "/api/v1/auth/register-recruiter",
+        json={"organisation_name": "Org Beta", "email": rec_b_email, "password": "Password123!"}
+    )
+    assert reg_b.status_code == 201
+    tenant_b_id = reg_b.json()["tenant_id"]
+    assert tenant_b_id != tenant_a_id
+
+    login_b = await client.post("/api/v1/auth/login", json={"email": rec_b_email, "password": "Password123!"})
+    token_b = login_b.json()["access_token"]
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    # Recruiter B attempts to view Recruiter A's pipeline -> 403 Forbidden
+    get_res = await client.get(f"/api/v1/enterprise/pipelines/{pipe_a_id}", headers=headers_b)
+    assert get_res.status_code == 403
+
+    # Recruiter B attempts to edit Recruiter A's pipeline -> 403 Forbidden
+    put_res = await client.put(
+        f"/api/v1/enterprise/pipelines/{pipe_a_id}",
+        headers=headers_b,
+        json={"title": "Hacked Pipeline"}
+    )
+    assert put_res.status_code == 403
+
+    # Recruiter B attempts to invite to Recruiter A's pipeline -> 403 Forbidden
+    inv_res = await client.post(
+        f"/api/v1/enterprise/pipelines/{pipe_a_id}/invite",
+        headers=headers_b,
+        json={"candidate_name": "Eve", "candidate_email": "eve@evil.corp"}
+    )
+    assert inv_res.status_code == 403
+
+    # Recruiter B attempts to view leaderboard of Recruiter A's pipeline -> 403 Forbidden
+    lb_res = await client.get(f"/api/v1/enterprise/pipelines/{pipe_a_id}/leaderboard", headers=headers_b)
+    assert lb_res.status_code == 403
+
+    # Recruiter B attempts to export Recruiter A's pipeline -> 403 Forbidden
+    exp_res = await client.get(f"/api/v1/enterprise/pipelines/{pipe_a_id}/export", headers=headers_b)
+    assert exp_res.status_code == 403
+
+    # Recruiter B lists pipelines -> Tenant A's pipeline must NOT be present
+    list_b = await client.get("/api/v1/enterprise/pipelines", headers=headers_b)
+    assert list_b.status_code == 200
+    b_pipe_ids = [p["id"] for p in list_b.json()]
+    assert pipe_a_id not in b_pipe_ids
+
+    # 3. Second recruiter in Tenant A (same tenant) CAN see and access Tenant A's pipeline
+    rec_a2_email = f"rec_a2_{uuid.uuid4().hex[:6]}@org-alpha.com"
+    await create_test_user(email=rec_a2_email, role="recruiter", tenant_id=tenant_a_id)
+    login_a2 = await client.post("/api/v1/auth/login", json={"email": rec_a2_email, "password": "Password123!"})
+    token_a2 = login_a2.json()["access_token"]
+    headers_a2 = {"Authorization": f"Bearer {token_a2}"}
+
+    get_a2 = await client.get(f"/api/v1/enterprise/pipelines/{pipe_a_id}", headers=headers_a2)
+    assert get_a2.status_code == 200
+    assert get_a2.json()["title"] == "Alpha Confidential SDE Hiring"
+
+    list_a2 = await client.get("/api/v1/enterprise/pipelines", headers=headers_a2)
+    assert list_a2.status_code == 200
+    assert pipe_a_id in [p["id"] for p in list_a2.json()]
+
+    # 4. Admin user CAN see and access all pipelines
+    admin_email = f"admin_{uuid.uuid4().hex[:6]}@skillissue.com"
+    await create_test_user(email=admin_email, role="admin", tenant_id="tenant-prod-default")
+    login_adm = await client.post("/api/v1/auth/login", json={"email": admin_email, "password": "Password123!"})
+    token_adm = login_adm.json()["access_token"]
+    headers_adm = {"Authorization": f"Bearer {token_adm}"}
+
+    get_adm = await client.get(f"/api/v1/enterprise/pipelines/{pipe_a_id}", headers=headers_adm)
+    assert get_adm.status_code == 200
+    assert get_adm.json()["title"] == "Alpha Confidential SDE Hiring"

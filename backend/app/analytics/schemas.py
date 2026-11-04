@@ -95,4 +95,6 @@ class AdminAnalyticsResponse(BaseModel):
     test_stats: TenantCohortMetrics
     tenants: List[TenantSummary]
     total_tenants: int
+    limit: int = 100
+    offset: int = 0
     active_providers: Dict[str, Any]

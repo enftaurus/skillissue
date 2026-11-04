@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 class RoundConfig(BaseModel):
     round_type: str = Field(pattern="^(oa_dsa|ai_project|tough_interview|code_comprehension)$")
@@ -16,9 +16,18 @@ class CreatePipelineRequest(BaseModel):
     rounds: List[RoundConfig] = Field(default_factory=list)
     oa_config: Dict[str, Any] = Field(default_factory=lambda: {"mode": "preset", "rating_min": 1200, "rating_max": 1600, "topic_tags": ["dp", "graphs"]})
 
+class UpdatePipelineRequest(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=3, max_length=200)
+    target_role: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    job_description: Optional[str] = Field(default=None, min_length=10)
+    rounds: Optional[List[RoundConfig]] = None
+    oa_config: Optional[Dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
 class AssessmentPipelineResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
+    tenant_id: Optional[str] = None
     title: str
     target_role: str
     job_description: str
@@ -33,7 +42,11 @@ class AssessmentPipelineResponse(BaseModel):
 
 class CandidateInviteRequest(BaseModel):
     candidate_name: str = Field(min_length=2, max_length=150)
-    candidate_email: str = Field(min_length=5, max_length=255)
+    candidate_email: EmailStr
+
+class CandidateEntryRequest(BaseModel):
+    candidate_name: str = Field(min_length=2, max_length=150)
+    candidate_email: EmailStr
 
 class CandidateAssessmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -44,16 +57,18 @@ class CandidateAssessmentResponse(BaseModel):
     candidate_name: str
     candidate_email: str
     access_token: str
-    status: str  # 'invited', 'in_progress', 'completed', 'flagged'
+    token_expires_at: Optional[datetime] = None
+    status: str  # 'invited', 'in_progress', 'completed', 'flagged', 'entry_required', 'submitted_unscored', 'not_evaluated'
     resume_text: Optional[str] = None
     oa_problem_title: Optional[str] = None
     oa_submitted_code: Optional[str] = None
-    current_round_index: int
+    current_round_index: int = 0
     round_results: Dict[str, Any] = {}
-    composite_score: float = 0.0
+    composite_score: Optional[float] = None
     integrity_signals: Dict[str, Any] = {}
     rounds: List[Dict[str, Any]] = []
-    created_at: datetime
+    is_invite_token: bool = False
+    created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
 class CandidateSubmitRoundRequest(BaseModel):
@@ -71,6 +86,6 @@ class PipelineLeaderboardResponse(BaseModel):
     target_role: str
     total_candidates: int
     completed_candidates: int
-    average_score: float
+    average_score: Optional[float] = None
     candidates: List[CandidateAssessmentResponse] = []
 

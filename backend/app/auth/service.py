@@ -7,8 +7,12 @@ from backend.app.core.security import (
     create_access_token, create_refresh_token, decode_access_token
 )
 from backend.app.core.errors import AppException, AuthenticationError, EntityNotFoundError
-from backend.app.database.models import User, UserProfile, ProviderConfig
-from backend.app.auth.schemas import UserRegister, UserLogin, Token, UserProfileUpdate
+import os
+import re
+import uuid
+from backend.app.core.config import settings
+from backend.app.database.models import User, UserProfile, ProviderConfig, Tenant
+from backend.app.auth.schemas import UserRegister, RecruiterRegister, UserLogin, Token, UserProfileUpdate
 
 class AuthService:
     @staticmethod
@@ -18,17 +22,18 @@ class AuthService:
         if result.scalar_one_or_none():
             raise AppException("An account with this email address already exists", code="EMAIL_ALREADY_EXISTS")
 
-        # Determine tenant: test sandbox or default
-        tenant_id = "tenant-test-sandbox" if getattr(data, "is_test", False) else "tenant-prod-default"
-        user_role = getattr(data, "role", "candidate")
+        # Public register always creates role=candidate
+        # is_test is settable only by admin or env flag ALLOW_TEST_USERS=true in non-production
+        allow_test = (os.environ.get("ALLOW_TEST_USERS", "").lower() == "true") and (settings.ENVIRONMENT != "production")
+        is_test = bool(allow_test)
+        tenant_id = "tenant-test-sandbox" if is_test else "tenant-prod-default"
 
-        # Create user
         user = User(
             email=data.email.lower(),
             hashed_password=hash_password(data.password),
-            role=user_role,
+            role="candidate",
             tenant_id=tenant_id,
-            is_test=getattr(data, "is_test", False),
+            is_test=is_test,
             is_active=True,
             onboarding_completed=False,
             token_version=1,
@@ -54,6 +59,61 @@ class AuthService:
             preferred_model=DEFAULT_MODEL_ID,
             default_model=DEFAULT_MODEL_ID,
             is_valid=False,
+        )
+        db.add(config)
+        await db.commit()
+        await db.refresh(user, ["profile", "provider_config"])
+        return user
+
+    @staticmethod
+    async def register_recruiter(db: AsyncSession, data: RecruiterRegister) -> User:
+        # Check if user already exists
+        result = await db.execute(select(User).where(User.email == data.email.lower()))
+        if result.scalar_one_or_none():
+            raise AppException("An account with this email address already exists", code="EMAIL_ALREADY_EXISTS")
+
+        # Generate unique tenant slug from organisation name
+        base_slug = re.sub(r'[^a-z0-9]+', '-', data.organisation_name.lower()).strip('-') or 'org'
+        existing_tenant = await db.execute(select(Tenant).where(Tenant.slug == base_slug))
+        slug = f"{base_slug}-{uuid.uuid4().hex[:6]}" if existing_tenant.scalar_one_or_none() else base_slug
+
+        tenant = Tenant(
+            name=data.organisation_name.strip(),
+            slug=slug,
+            is_test=False,
+        )
+        db.add(tenant)
+        await db.flush()
+
+        user = User(
+            email=data.email.lower(),
+            hashed_password=hash_password(data.password),
+            role="recruiter",
+            tenant_id=tenant.id,
+            is_test=False,
+            is_active=True,
+            onboarding_completed=True,
+            token_version=1,
+        )
+        db.add(user)
+        await db.flush()
+
+        profile = UserProfile(
+            user_id=user.id,
+            target_role="Recruiter / Talent Lead",
+            years_experience=0.0,
+            daily_study_minutes=0,
+        )
+        db.add(profile)
+
+        from backend.app.providers.models_catalog import DEFAULT_MODEL_ID
+        config = ProviderConfig(
+            user_id=user.id,
+            provider_name="mock",
+            aws_region="us-east-1",
+            preferred_model=DEFAULT_MODEL_ID,
+            default_model=DEFAULT_MODEL_ID,
+            is_valid=True,
         )
         db.add(config)
         await db.commit()

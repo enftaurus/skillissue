@@ -362,7 +362,7 @@ export const EnterprisePortalPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="px-3 py-1.5 rounded-xl bg-lime-50 border border-lime-200 text-xs font-mono font-bold text-lime-800">
-                    Cohort Avg: {leaderboard.average_score}%
+                    Cohort Avg: {leaderboard.average_score != null ? `${leaderboard.average_score}%` : 'N/A'}
                   </div>
                 </div>
               </div>
@@ -414,7 +414,7 @@ export const EnterprisePortalPage: React.FC = () => {
                             </td>
                             <td className="py-3 px-4">
                               <span className="text-sm font-bold font-mono text-zinc-950">
-                                {c.composite_score}%
+                                {c.composite_score != null ? `${c.composite_score}%` : 'Not scored'}
                               </span>
                             </td>
                             <td className="py-3 px-4 space-y-1">
@@ -482,7 +482,9 @@ export const EnterprisePortalPage: React.FC = () => {
             <div className="grid grid-cols-3 gap-3 p-3 bg-zinc-50 rounded-xl border border-zinc-200">
               <div>
                 <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold">Composite Score</span>
-                <p className="text-lg font-black text-lime-700">{selectedCandidateForAudit.composite_score}%</p>
+                <p className="text-lg font-black text-lime-700">
+                  {selectedCandidateForAudit.composite_score != null ? `${selectedCandidateForAudit.composite_score}%` : 'Not scored'}
+                </p>
               </div>
               <div>
                 <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold">Assessment Status</span>
@@ -490,7 +492,7 @@ export const EnterprisePortalPage: React.FC = () => {
               </div>
               <div>
                 <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold">Focus Tab Switches</span>
-                <p className={`text-sm font-bold ${selectedCandidateForAudit.integrity_signals?.window_blurs > 2 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                <p className={`text-sm font-bold ${(selectedCandidateForAudit.integrity_signals?.window_blurs ?? 0) > 2 ? 'text-rose-600' : 'text-emerald-600'}`}>
                   {selectedCandidateForAudit.integrity_signals?.window_blurs || 0} Blurs
                 </p>
               </div>
@@ -536,7 +538,7 @@ export const EnterprisePortalPage: React.FC = () => {
                       </p>
                     </div>
                     <span className="font-bold font-mono text-lime-700 text-sm">
-                      {rData.score}%
+                      {rData.score != null ? `${rData.score}%` : 'Unscored'}
                     </span>
                   </div>
                 ))}

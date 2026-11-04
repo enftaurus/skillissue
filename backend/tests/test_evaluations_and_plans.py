@@ -196,11 +196,16 @@ async def test_evaluation_parsing_failure_rejects_fabricated_score(client: httpx
 
     with patch("backend.app.providers.mock_provider.MockProvider.generate_json", return_value=mock_bad_resp):
         eval_call = await client.post(f"/api/v1/evaluations/{interview_id}/generate", headers=headers)
-        # Must fail with an error (502 Bad Gateway from provider parsing error), NOT return 200 with 70.0 fabricated score
-        assert eval_call.status_code == 502
-        assert "EVALUATION_PARSING_FAILED" in eval_call.text or "failed" in eval_call.text.lower()
+        # Per D7: On schema validation failure after retry, stores status="not_evaluated" with overall_score=None
+        assert eval_call.status_code == 200
+        data = eval_call.json()
+        assert data["status"] == "not_evaluated"
+        assert data["overall_score"] is None
 
-    # Verify no bogus evaluation was recorded in database
+    # Verify evaluation is recorded with status="not_evaluated" and no fabricated score
     get_eval = await client.get(f"/api/v1/evaluations/{interview_id}", headers=headers)
-    assert get_eval.status_code == 404
+    assert get_eval.status_code == 200
+    eval_data = get_eval.json()
+    assert eval_data["status"] == "not_evaluated"
+    assert eval_data["overall_score"] is None
 

@@ -204,6 +204,19 @@ backend/venv/bin/python scripts/verify_firefox_audio.py
 cd frontend && npm run build
 ```
 
+### Administrative Account Provisioning
+
+For strict security, **administrator accounts can NEVER be created over HTTP**. Administrators must be provisioned or promoted directly via the secure CLI provisioning tool:
+
+```bash
+# Provision or promote an admin account via CLI arguments
+backend/venv/bin/python3 scripts/create_admin.py --email admin@skillissue.com --password SecurePassword123!
+
+# Or via environment variables
+ADMIN_EMAIL=admin@skillissue.com ADMIN_PASSWORD=SecurePassword123! backend/venv/bin/python3 scripts/create_admin.py
+```
+
+
 ---
 
 ## Architecture Decision Records (ADRs)

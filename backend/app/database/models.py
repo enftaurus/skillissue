@@ -196,7 +196,8 @@ class Evaluation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     interview_id: Mapped[str] = mapped_column(String(36), ForeignKey("interviews.id", ondelete="CASCADE"), unique=True, index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    overall_score: Mapped[float] = mapped_column(Float)  # 0.0 to 100.0
+    overall_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # 0.0 to 100.0 or None
+    status: Mapped[str] = mapped_column(String(30), default="completed")  # 'completed', 'not_evaluated'
     rubric_dimension_scores: Mapped[Dict[str, Dict[str, Any]]] = mapped_column(JSON, default=dict)  # {dim: {score, max, explanation, evidence_quote}}
     strengths: Mapped[List[str]] = mapped_column(JSON, default=list)
     weaknesses: Mapped[List[str]] = mapped_column(JSON, default=list)
@@ -419,6 +420,7 @@ class AssessmentPipeline(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     created_by_user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     target_role: Mapped[str] = mapped_column(String(150), nullable=False)
     job_description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -430,24 +432,29 @@ class AssessmentPipeline(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     creator: Mapped["User"] = relationship("User", back_populates="assessment_pipelines")
+    tenant: Mapped[Optional["Tenant"]] = relationship("Tenant")
     candidates: Mapped[List["CandidateAssessment"]] = relationship("CandidateAssessment", back_populates="pipeline", cascade="all, delete-orphan")
 
 class CandidateAssessment(Base):
     __tablename__ = "candidate_assessments"
+    __table_args__ = (
+        UniqueConstraint("pipeline_id", "candidate_email", name="uq_candidate_assessment_pipeline_email"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     pipeline_id: Mapped[str] = mapped_column(String(36), ForeignKey("assessment_pipelines.id", ondelete="CASCADE"), index=True)
     candidate_name: Mapped[str] = mapped_column(String(150), nullable=False)
     candidate_email: Mapped[str] = mapped_column(String(255), nullable=False)
     access_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="invited")  # 'invited', 'in_progress', 'completed', 'flagged'
     resume_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     oa_problem_title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     oa_submitted_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     current_round_index: Mapped[int] = mapped_column(Integer, default=0)
     round_results: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
-    composite_score: Mapped[float] = mapped_column(Float, default=0.0)
-    integrity_signals: Mapped[Dict[str, Any]] = mapped_column(JSON, default=lambda: {"window_blurs": 0, "copy_paste_count": 0, "speech_code_divergence": 0.0})
+    composite_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=None)
+    integrity_signals: Mapped[Dict[str, Any]] = mapped_column(JSON, default=lambda: {"status": "not_assessed"})
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
