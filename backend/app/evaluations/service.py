@@ -15,6 +15,16 @@ from backend.app.providers.service import ProviderConfigService
 from backend.app.core.errors import EntityNotFoundError, AppException, ProviderError
 from backend.app.core.logging import logger
 
+
+def rubric_score_to_pct(score) -> float:
+    """Map a 1-5 rubric score onto 0-100 so the floor is 0, not 20 (1 -> 0, 3 -> 50, 5 -> 100)."""
+    try:
+        v = float(score)
+    except (TypeError, ValueError):
+        v = 3.0
+    v = max(1.0, min(5.0, v))
+    return (v - 1.0) / 4.0 * 100.0
+
 class EvaluationService:
     @staticmethod
     async def save_self_evaluation(
@@ -182,7 +192,7 @@ class EvaluationService:
         for dim in rubric:
             dim_val = dimension_scores.get(dim.id, {}).get("score", 3)
             weight = getattr(dim, "weight", 1.0)
-            total_weighted_score += (float(dim_val) / 5.0 * 100.0) * weight
+            total_weighted_score += rubric_score_to_pct(dim_val) * weight
             total_weight += weight
         if total_weight > 0:
             overall_score = round(total_weighted_score / total_weight, 1)
@@ -350,7 +360,7 @@ class EvaluationService:
         # Update persistent UserSkill map for each evaluated rubric dimension using EMA
         for dim_id, dim_data in dimension_scores.items():
             dim_score_val = float(dim_data.get("score", 3))
-            normalized_score = round((dim_score_val / 5.0) * 100.0, 1)
+            normalized_score = round(rubric_score_to_pct(dim_score_val), 1)
             await cls._update_user_skill(db, user_id, dim_id, normalized_score, evaluation.id)
 
         await db.commit()
