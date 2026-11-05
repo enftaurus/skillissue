@@ -170,7 +170,7 @@ class ProjectCopilotService:
         db.add(ProjectCopilotTurn(
             user_id=user_id,
             project_id=project_id,
-            prompt=data.message[:4000],
+            prompt=data.message.replace("\x00", "")[:4000],
             response=reply[:8000],
             response_source=source,
             tests_passed=passed if isinstance(passed, int) else None,

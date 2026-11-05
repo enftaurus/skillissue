@@ -32,3 +32,23 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+# Postgres text columns reject NUL bytes ("\x00"); a single pasted NUL used to 500 the request.
+# Strip them from every string column on every model before it reaches the database.
+from sqlalchemy import event, String as _String, Text as _Text  # noqa: E402
+from sqlalchemy.orm import Session as _SyncSession  # noqa: E402
+
+
+@event.listens_for(_SyncSession, "before_flush")
+def _strip_nul_bytes(session, flush_context, instances):  # pragma: no cover - exercised via API tests
+    for obj in list(session.new) + list(session.dirty):
+        mapper = getattr(obj, "__mapper__", None)
+        if mapper is None:
+            continue
+        for col in mapper.columns:
+            if isinstance(col.type, (_String, _Text)):
+                key = mapper.get_property_by_column(col).key
+                value = getattr(obj, key, None)
+                if isinstance(value, str) and "\x00" in value:
+                    setattr(obj, key, value.replace("\x00", ""))

@@ -211,6 +211,11 @@ class InterviewService:
         if interview.status != "in_progress":
             raise AppException("Interview is no longer active", code="INTERVIEW_NOT_ACTIVE")
 
+        # NUL bytes break Postgres text/JSONB (messages and the LangGraph checkpoint).
+        content = (content or "").replace("\x00", "")
+        if not content.strip():
+            raise AppException("Write an answer first.", code="EMPTY_ANSWER")
+
         # 1. Turn idempotency check by client_turn_id
         if client_turn_id:
             existing_user_msg = (
@@ -585,6 +590,8 @@ class InterviewService:
             raise AppException("Interview is no longer active", code="INTERVIEW_NOT_ACTIVE")
 
         problem_id = interview.coding_problem_id or "two-sum"
+        code = (code or "").replace("\x00", "")
+        candidate_notes = candidate_notes.replace("\x00", "") if candidate_notes else candidate_notes
 
         # 1. Execute code via isolated coding service
         from backend.app.coding.service import CodingService

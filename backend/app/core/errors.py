@@ -1,11 +1,15 @@
+from typing import Any, Dict, Optional
+
 from fastapi import HTTPException, status
 
 class AppException(Exception):
-    def __init__(self, message: str, code: str = "APP_ERROR", status_code: int = status.HTTP_400_BAD_REQUEST):
+    def __init__(self, message: str, code: str = "APP_ERROR", status_code: int = status.HTTP_400_BAD_REQUEST,
+                 details: Optional[Dict[str, Any]] = None):
         super().__init__(message)
         self.message = message
         self.code = code
         self.status_code = status_code
+        self.details = details
 
 class EntityNotFoundError(AppException):
     def __init__(self, entity_name: str, identifier: str = ""):

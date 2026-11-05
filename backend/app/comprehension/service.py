@@ -87,7 +87,7 @@ class ComprehensionService:
         q = next((x for x in item.questions if x.id == question_id), None)
         if q is None:
             raise EntityNotFoundError("Question", question_id)
-        text = (answer or "").strip()
+        text = (answer or "").replace("\x00", "").strip()
         if not text:
             raise AppException("Write an answer first.", code="EMPTY_ANSWER")
         if len(text) > MAX_ANSWER_CHARS:

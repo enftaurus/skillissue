@@ -11,6 +11,9 @@ from backend.app.core.errors import EntityNotFoundError, AppException
 def sanitize_test_result_dict(r_dict: Dict[str, Any]) -> Dict[str, Any]:
     """Ensure hidden test inputs, outputs, and stack traces are never leaked."""
     clean = dict(r_dict)
+    # The runner's per-test result has no status field; without this the schema default
+    # labelled every failed test "passed".
+    clean["status"] = clean.get("status") or ("passed" if clean.get("passed") else "failed")
     if clean.get("is_hidden"):
         clean["stdin"] = None
         clean["expected_stdout"] = None

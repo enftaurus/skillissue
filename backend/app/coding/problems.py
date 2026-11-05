@@ -500,7 +500,8 @@ def get_problem(problem_id: str) -> Optional[CodingProblem]:
                 return CodingProblem(**res)
             except Exception:
                 pass
-    return CODING_PROBLEMS.get("two-sum")
+    # Unknown ids must not silently fall back to another problem (code was judged against Two Sum).
+    return None
 
 
 # ---------------------------------------------------------------------------------------------

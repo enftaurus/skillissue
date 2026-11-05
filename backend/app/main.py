@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.app.core.config import settings
 from backend.app.core.errors import AppException
+from backend.app.core.logging import logger
+from fastapi.exceptions import RequestValidationError
 from backend.app.api.v1.health import router as health_router
 from backend.app.api.v1.auth import router as auth_router
 from backend.app.api.v1.providers import router as providers_router
@@ -66,10 +68,26 @@ def create_application() -> FastAPI:
     # Global custom exception handler
     @app.exception_handler(AppException)
     async def app_exception_handler(request: Request, exc: AppException):
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"error": {"code": exc.code, "message": exc.message}},
-        )
+        error: dict = {"code": exc.code, "message": exc.message}
+        if getattr(exc, "details", None):
+            error["details"] = exc.details
+        return JSONResponse(status_code=exc.status_code, content={"error": error})
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        # Don't echo the rejected input back (a 200k-char answer used to come back in the 422 body).
+        errors = [{"loc": list(e.get("loc", [])), "msg": e.get("msg", ""), "type": e.get("type", "")} for e in exc.errors()][:10]
+        first = errors[0] if errors else {"loc": [], "msg": "Invalid request"}
+        field = ".".join(str(p) for p in first["loc"] if p not in ("body", "query", "path"))
+        message = f"{field}: {first['msg']}" if field else first["msg"]
+        return JSONResponse(status_code=422, content={"error": {"code": "VALIDATION_ERROR", "message": message, "details": errors}})
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        # Never leak internals; keep the response JSON so clients can show a sane message.
+        logger.error(f"Unhandled error on {request.method} {request.url.path}: {type(exc).__name__}: {str(exc)[:300]}")
+        return JSONResponse(status_code=500, content={"error": {"code": "INTERNAL_ERROR",
+                                                               "message": "Something went wrong on our side. Try again."}})
 
     # Root health endpoint
     @app.get("/health", tags=["Health"])
