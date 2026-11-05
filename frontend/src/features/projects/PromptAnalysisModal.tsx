@@ -35,6 +35,9 @@ export interface PromptAnalysisData {
   summary: string;
   evaluated_prompts: PromptEvaluationItem[];
   key_takeaways: string[];
+  assessed?: boolean;
+  scoring_method?: string;
+  integrity_flags?: string[];
 }
 
 interface PromptAnalysisModalProps {
@@ -95,8 +98,10 @@ export const PromptAnalysisModal: React.FC<PromptAnalysisModalProps> = ({
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Prompt Score</span>
               <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-extrabold text-indigo-600">{data.overall_score}</span>
-                <span className="text-xs text-slate-400">/ 100</span>
+                <span className="text-3xl font-extrabold text-indigo-600">
+                  {data.assessed === false ? '—' : data.overall_score}
+                </span>
+                {data.assessed !== false && <span className="text-xs text-slate-400">/ 100</span>}
               </div>
               <span className="text-xs font-medium text-slate-700 mt-1">{data.grade}</span>
             </div>
@@ -106,7 +111,7 @@ export const PromptAnalysisModal: React.FC<PromptAnalysisModalProps> = ({
               <div className="flex items-baseline gap-2 mt-2">
                 <span
                   className={`text-3xl font-extrabold ${
-                    testsPassed === totalTests ? 'text-emerald-600' : 'text-amber-600'
+                    totalTests > 0 && testsPassed === totalTests ? 'text-emerald-600' : 'text-amber-600'
                   }`}
                 >
                   {testsPassed}/{totalTests}
@@ -114,7 +119,7 @@ export const PromptAnalysisModal: React.FC<PromptAnalysisModalProps> = ({
                 <span className="text-xs text-slate-400">Passed</span>
               </div>
               <span className="text-xs font-medium text-slate-700 mt-1">
-                {testsPassed === totalTests ? 'All Assertions Satisfied' : 'Some Tests Failed'}
+                {totalTests === 0 ? 'No tests ran' : testsPassed === totalTests ? 'All Assertions Satisfied' : 'Some Tests Failed'}
               </span>
             </div>
 
@@ -149,6 +154,13 @@ export const PromptAnalysisModal: React.FC<PromptAnalysisModalProps> = ({
               <span>Evaluator Synthesis</span>
             </div>
             <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">{data.summary}</p>
+            {data.integrity_flags && data.integrity_flags.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-amber-900">
+                {data.integrity_flags.map((flag) => (
+                  <li key={flag} className="px-2 py-1 rounded-md bg-amber-50 border border-amber-200">{flag}</li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Rubric Breakdown Grid */}
@@ -160,28 +172,28 @@ export const PromptAnalysisModal: React.FC<PromptAnalysisModalProps> = ({
               <div className="p-3 rounded-lg bg-white border border-slate-200/80">
                 <div className="text-[11px] text-slate-500 font-medium">Context & Files</div>
                 <div className="text-lg font-bold text-slate-900 mt-1">
-                  {data.rubric_breakdown.context_specification ?? 18}
+                  {data.rubric_breakdown.context_specification ?? 0}
                   <span className="text-xs text-slate-400 font-normal"> / 25</span>
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-white border border-slate-200/80">
                 <div className="text-[11px] text-slate-500 font-medium">Error Diagnostics</div>
                 <div className="text-lg font-bold text-slate-900 mt-1">
-                  {data.rubric_breakdown.error_diagnostic_inclusion ?? 16}
+                  {data.rubric_breakdown.error_diagnostic_inclusion ?? 0}
                   <span className="text-xs text-slate-400 font-normal"> / 25</span>
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-white border border-slate-200/80">
                 <div className="text-[11px] text-slate-500 font-medium">Decomposition</div>
                 <div className="text-lg font-bold text-slate-900 mt-1">
-                  {data.rubric_breakdown.problem_decomposition ?? 20}
+                  {data.rubric_breakdown.problem_decomposition ?? 0}
                   <span className="text-xs text-slate-400 font-normal"> / 25</span>
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-white border border-slate-200/80">
                 <div className="text-[11px] text-slate-500 font-medium">Autonomy & Logic</div>
                 <div className="text-lg font-bold text-slate-900 mt-1">
-                  {data.rubric_breakdown.engineering_autonomy ?? 17}
+                  {data.rubric_breakdown.engineering_autonomy ?? 0}
                   <span className="text-xs text-slate-400 font-normal"> / 25</span>
                 </div>
               </div>

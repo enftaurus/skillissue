@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +18,7 @@ from backend.app.projects.schemas import (
 )
 from backend.app.projects.repository import list_projects, get_project
 from backend.app.projects.service import ProjectService
-from backend.app.projects.copilot import ProjectCopilotService
+from backend.app.projects.copilot import ProjectCopilotService, load_session_prompts, judge_prompts
 from backend.app.projects.prompt_evaluator import evaluate_candidate_prompts
 from backend.app.core.errors import EntityNotFoundError
 from backend.app.core.rate_limit import rate_limit
@@ -53,7 +54,7 @@ async def run_project_tests(
     current_user: User = Depends(get_current_active_user)
 ):
     """Run automated CI/CD unit & integration tests inside an isolated sandbox."""
-    return ProjectService.run_tests_in_sandbox(project_id, data.files)
+    return await asyncio.to_thread(ProjectService.run_tests_in_sandbox, project_id, data.files)
 
 @router.post(
     "/{project_id}/copilot",
@@ -85,14 +86,14 @@ async def ask_project_copilot(
 async def evaluate_prompts(
     project_id: str,
     data: ProjectSubmissionRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Analyze candidate's prompt engineering quality, detect amateurish prompts, and suggest senior rewrites."""
-    return evaluate_candidate_prompts(
-        project_id=project_id,
-        conversation_history=data.conversation_history,
-        time_spent_seconds=data.time_spent_seconds,
-    )
+    """Analyze the candidate's logged copilot prompts (server-side record; request history is ignored)."""
+    if not get_project(project_id):
+        raise EntityNotFoundError("ProjectChallenge", project_id)
+    history = await load_session_prompts(db, current_user.id, project_id)
+    return await judge_prompts(db, current_user.id, project_id, history, None)
 
 @router.post(
     "/{project_id}/submit",

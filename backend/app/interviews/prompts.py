@@ -55,6 +55,11 @@ def sanitize_untrusted_input(text: Optional[str], max_chars: int = 4000) -> str:
     cleaned = cleaned[:max_chars]
     return cleaned.strip()
 
+def wrap_untrusted_answer(text: Optional[str], max_chars: int = 4000) -> str:
+    """Sanitize a candidate answer and enclose it in the untrusted-data delimiter."""
+    return f"<untrusted_candidate_answer>\n{sanitize_untrusted_input(text, max_chars=max_chars)}\n</untrusted_candidate_answer>"
+
+
 def build_interviewer_system_prompt(
     category: str,
     target_role: str,

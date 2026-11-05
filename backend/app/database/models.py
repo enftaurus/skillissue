@@ -339,6 +339,20 @@ class ProjectSubmission(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="project_submissions")
 
+class ProjectCopilotTurn(Base):
+    """Server-side log of copilot prompts. Prompt-quality scoring reads this, never client-supplied history."""
+    __tablename__ = "project_copilot_turns"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(String(100), index=True)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    response: Mapped[str] = mapped_column(Text, default="")
+    response_source: Mapped[str] = mapped_column(String(20), default="llm")  # 'llm' | 'heuristic'
+    tests_passed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tests_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
 class CompanyTrack(Base):
     __tablename__ = "company_tracks"
 
