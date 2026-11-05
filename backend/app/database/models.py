@@ -164,6 +164,10 @@ class Interview(Base):
     self_evaluation: Mapped[Optional["SelfEvaluation"]] = relationship("SelfEvaluation", back_populates="interview", uselist=False, cascade="all, delete-orphan")
     ai_evaluation: Mapped[Optional["Evaluation"]] = relationship("Evaluation", back_populates="interview", uselist=False, cascade="all, delete-orphan")
 
+def _default_message_kind(context) -> str:
+    return "question" if context.get_current_parameters().get("role") == "assistant" else "answer"
+
+
 class InterviewMessage(Base):
     __tablename__ = "interview_messages"
 
@@ -173,6 +177,9 @@ class InterviewMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     question_index: Mapped[int] = mapped_column(Integer, default=0)
     is_follow_up: Mapped[bool] = mapped_column(Boolean, default=False)
+    # user: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' (repeat/clarify request)
+    # assistant: 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup'
+    kind: Mapped[str] = mapped_column(String(20), default=_default_message_kind, server_default="answer")
     client_turn_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

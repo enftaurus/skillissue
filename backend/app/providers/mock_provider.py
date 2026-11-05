@@ -34,8 +34,15 @@ class MockProvider(BaseProvider):
                     last_user_message = msg.get("content", "").lower()
                     break
 
-        # Socratic Hint Generation
-        if "hint level 1" in prompt_lower or "tier 1" in prompt_lower or ("hint" in prompt_lower and "level 1" in prompt_lower):
+        is_code_turn = (
+            "candidate code submission" in prompt_lower or "execution details" in prompt_lower
+            or "brute force detected" in prompt_lower or "execution status:" in prompt_lower
+        )
+        text = None
+        # Socratic Hint Generation (code turns are handled by the code-execution branch below)
+        if is_code_turn:
+            pass
+        elif "hint level 1" in prompt_lower or "tier 1" in prompt_lower or ("hint" in prompt_lower and "level 1" in prompt_lower):
             text = "Consider what data structure enables constant-time O(1) lookups for previously seen elements instead of scanning the array repeatedly."
         elif "hint level 2" in prompt_lower or "tier 2" in prompt_lower or ("hint" in prompt_lower and "level 2" in prompt_lower):
             text = "Use a Hash Map or Two-Pointer approach. For each element, check if the required complement or state is already present in your map before inserting."
@@ -80,8 +87,10 @@ class MockProvider(BaseProvider):
                 "Before you start writing code, please walk me through your initial thoughts and the algorithmic approach you plan to follow, your target time and space complexity, and any edge cases you're considering."
             )
         # Code execution & Brute-Force vs Optimal analysis
-        elif "candidate code submission" in prompt_lower or "execution details" in prompt_lower or "brute force detected" in prompt_lower or "execution status:" in prompt_lower:
-            if "brute force" in prompt_lower or "nested loop" in prompt_lower or ("for " in prompt_lower and prompt_lower.count("for ") >= 2):
+        if text is not None:
+            pass
+        elif is_code_turn:
+            if "brute force" in prompt_lower or "nested loop" in prompt_lower or "nested iteration" in prompt_lower:
                 text = (
                     "Your brute-force solution passes the sample test cases functionally with O(N^2) quadratic time complexity. "
                     "However, under production scale (N >= 10^5), this nested loop will hit a Time Limit Exceeded (TLE) bottleneck. "

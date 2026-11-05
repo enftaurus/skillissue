@@ -51,6 +51,7 @@ class InterviewMessageResponse(BaseModel):
     content: str
     question_index: int
     is_follow_up: bool
+    kind: Optional[str] = None
     client_turn_id: Optional[str] = None
     created_at: datetime
 

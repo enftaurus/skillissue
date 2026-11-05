@@ -501,3 +501,50 @@ def get_problem(problem_id: str) -> Optional[CodingProblem]:
             except Exception:
                 pass
     return CODING_PROBLEMS.get("two-sum")
+
+
+# ---------------------------------------------------------------------------------------------
+# Interview problem selection (QA audit 2026-11-05): interviews only use problems that have a
+# full statement and real, non-empty test cases. Live Codeforces stubs have neither.
+
+_TOPIC_TO_CATEGORIES = [
+    (("dynamic", "dp", "memo"), ("dp",)),
+    (("binary search",), ("binary_search",)),
+    (("tree",), ("trees",)),
+    (("graph", "bfs", "dfs", "island", "topolog"), ("graphs",)),
+    (("linked",), ("linked_lists",)),
+    (("string", "substring", "sliding"), ("strings",)),
+    (("stack", "parenthes", "queue"), ("stack",)),
+    (("design", "cache", "data structure"), ("design", "stack", "linked_lists")),
+    (("array", "hash", "two pointer", "greedy", "interval", "sort"), ("arrays",)),
+]
+_DIFFICULTY_MAP = {
+    "beginner": ("easy",),
+    "intermediate": ("easy", "medium"),
+    "advanced": ("medium", "hard"),
+    "staff": ("hard", "medium"),
+}
+
+
+def has_runnable_tests(problem: Optional["CodingProblem"]) -> bool:
+    if problem is None:
+        return False
+    cases = list(getattr(problem, "test_cases", None) or []) + list(getattr(problem, "sample_test_cases", None) or [])
+    return any((tc.get("expected_stdout") or "").strip() for tc in cases)
+
+
+def pick_curated_interview_problem(domain_skills: Optional[List[str]], difficulty: Optional[str]) -> str:
+    import random
+    blob = " ".join(domain_skills or []).lower()
+    categories: List[str] = []
+    for keys, cats in _TOPIC_TO_CATEGORIES:
+        if any(k in blob for k in keys):
+            categories.extend(c for c in cats if c not in categories)
+    levels = _DIFFICULTY_MAP.get((difficulty or "intermediate").lower(), ("easy", "medium"))
+    pool = [p for p in CODING_PROBLEMS.values()
+            if has_runnable_tests(p) and (not categories or p.category in categories) and p.difficulty in levels]
+    if not pool:
+        pool = [p for p in CODING_PROBLEMS.values() if has_runnable_tests(p) and p.difficulty in levels]
+    if not pool:
+        return "two-sum"
+    return random.choice(pool).id

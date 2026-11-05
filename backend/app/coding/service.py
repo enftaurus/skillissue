@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database.models import CodingSubmission, Interview, UserSkill, utc_now
 from backend.app.coding.schemas import CodeRunRequest, CodeExecutionResponse, TestCaseResultResponse
-from backend.app.coding.problems import get_problem, list_problems, CodingProblem
+from backend.app.coding.problems import get_problem, list_problems, CodingProblem, has_runnable_tests
 from sandbox.runner import SandboxRunner, TestCase
 from backend.app.core.errors import EntityNotFoundError, AppException
 
@@ -17,6 +17,15 @@ def sanitize_test_result_dict(r_dict: Dict[str, Any]) -> Dict[str, Any]:
         clean["actual_stdout"] = None
         clean["stderr"] = None
     return clean
+
+def _not_judgeable(problem) -> AppException:
+    return AppException(
+        f"'{problem.title}' has no test cases on Skill Issue, so it can't be judged here. "
+        "Submit it on Codeforces, or use Run with custom input to sanity-check your output.",
+        code="PROBLEM_NOT_JUDGEABLE",
+        status_code=422,
+    )
+
 
 class CodingService:
     @classmethod
@@ -33,9 +42,12 @@ class CodingService:
                 TestCase(stdin=data.custom_stdin, expected_stdout="", is_hidden=False)
             ]
         else:
+            if not has_runnable_tests(problem):
+                raise _not_judgeable(problem)
             test_cases = [
                 TestCase(stdin=tc["stdin"], expected_stdout=tc["expected_stdout"], is_hidden=False)
                 for tc in problem.sample_test_cases
+                if (tc.get("expected_stdout") or "").strip()
             ]
 
         result = await SandboxRunner.execute_async(
@@ -78,9 +90,12 @@ class CodingService:
             if not inv_res.scalar_one_or_none():
                 raise EntityNotFoundError("Interview", interview_id)
 
+        if not has_runnable_tests(problem):
+            raise _not_judgeable(problem)
         test_cases = [
             TestCase(stdin=tc["stdin"], expected_stdout=tc["expected_stdout"], is_hidden=tc.get("is_hidden", False))
             for tc in problem.test_cases
+            if (tc.get("expected_stdout") or "").strip()
         ]
 
         result = await SandboxRunner.execute_async(
