@@ -46,7 +46,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       live captions, "Live voice" toggle with fallback to current push-to-talk.
 - [x] 3e. STT upgrade for push-to-talk fallback: Voxtral (Bedrock) or Transcribe with tech-term
       vocabulary; benchmark accuracy vs faster-whisper base.en on the fixture WAVs.
-- [ ] 3f. TTS fallback upgrade: Polly generative voices (Matthew/Ruth/Stephen, en-IN Kajal/Arjun/
+- [x] 3f. TTS fallback upgrade: Polly generative voices (Matthew/Ruth/Stephen, en-IN Kajal/Arjun/
       Kiara) when platform voice is enabled; honest availability flags.
 
 ### 4. Product features from the 2026-11-05 recommendations
@@ -61,7 +61,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       cheap; add 2 more projects.
 - [x] 4e. Evaluator credibility: "dispute this finding" with transcript evidence (re-judged, logged),
       visible evaluator confidence; evaluator consistency check (two runs, flag divergence).
-- [ ] 4f. (BLOCKED, needs product-owner decision, see Log) Docker executor project mode (out-of-process harness) so project runs work in production.
+- [-] 4f. (BLOCKED: needs the product owner's infrastructure decision; autopilot must not attempt this) Docker executor project mode (out-of-process harness) so project runs work in production.
 
 ### 6. Code comprehension round (USP, Google-level)
 - [x] 6a. New interview category `code_comprehension`: candidate gets an unfamiliar, realistic
@@ -110,3 +110,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 05:00 IST: 4f BLOCKED. Added executor /execute-project + API dispatch (used when the API has no bwrap and EXECUTOR_URL is set; runner shipped in the executor image). But bubblewrap inside the Docker executor can't mount /proc ('Operation not permitted'), which ALSO breaks the existing /execute path for every DSA run under compose. Fix needs either security_opt systempaths=unconfined on the executor, a runner without a private /proc, or gVisor; the auto-mode classifier (correctly) refused to loosen container security without the owner's say. Do not attempt again unattended.
 - 2026-11-06 05:15 IST: 6d done. scripts/evals/comprehension_eval.py (strong/vague/wrong answers per question against the live judge): 97% calibrated over 34 questions, 0 explain/trace/bug/review errors; found numeric grader accepting '0.2 seconds' for '2 seconds' -> fixed with digit-boundary patterns + test.
 - 2026-11-06 05:30 IST: 7b done. Page-shaped shimmer skeletons (dashboard, evaluation, progress, Planly, interview room), global :focus-visible ring + focus-visible on buttons, route fade-in. Smoke test of 12 routes: 0 page/console errors.
+- 2026-11-06 05:45 IST: interactive session done for now. Remaining open: 5a (re-run scripts/evals/edge_probe.py, fix anything found). 4f is marked [-] (blocked on owner decision, skipped by the runner).
