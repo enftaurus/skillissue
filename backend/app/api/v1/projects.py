@@ -18,6 +18,7 @@ from backend.app.projects.schemas import (
 )
 from backend.app.projects.repository import list_projects, get_project
 from backend.app.projects.service import ProjectService
+from backend.app.projects.process import log_event, session_timeline, verification_metrics
 from backend.app.projects.copilot import ProjectCopilotService, load_session_prompts, judge_prompts
 from backend.app.projects.prompt_evaluator import evaluate_candidate_prompts
 from backend.app.core.errors import EntityNotFoundError
@@ -51,10 +52,27 @@ async def get_project_details(
 async def run_project_tests(
     project_id: str,
     data: ProjectRunTestsRequest,
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Run automated CI/CD unit & integration tests inside an isolated sandbox."""
-    return await asyncio.to_thread(ProjectService.run_tests_in_sandbox, project_id, data.files)
+    result = await asyncio.to_thread(ProjectService.run_tests_in_sandbox, project_id, data.files)
+    await log_event(db, current_user.id, project_id, "test_run",
+                    {"status": result.status, "passed": result.passed_tests, "total": result.total_tests})
+    return result
+
+
+@router.get("/{project_id}/timeline")
+async def project_timeline(
+    project_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Prompts, test runs and submissions for the current attempt, plus verification metrics."""
+    if not get_project(project_id):
+        raise EntityNotFoundError("ProjectChallenge", project_id)
+    timeline = await session_timeline(db, current_user.id, project_id)
+    return {"timeline": timeline, "verification": verification_metrics(timeline)}
 
 @router.post(
     "/{project_id}/copilot",

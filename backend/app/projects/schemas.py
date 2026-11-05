@@ -109,6 +109,7 @@ class ProjectPromptAnalysisResponse(BaseModel):
     assessed: bool = True
     scoring_method: str = "heuristic"  # 'heuristic' | 'llm+heuristic' | 'none'
     integrity_flags: List[str] = []
+    process: Optional[Dict[str, Any]] = None  # verification behaviour (test runs after assistant replies)
 
 class ProjectSubmissionRequest(BaseModel):
     files: Dict[str, str]

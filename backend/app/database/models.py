@@ -362,6 +362,18 @@ class ProjectCopilotTurn(Base):
     tests_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
+class ProjectEvent(Base):
+    """Server-side process log for AI-assisted projects (test runs, submissions)."""
+    __tablename__ = "project_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(String(100), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # 'test_run' | 'submit'
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
 class ComprehensionSession(Base):
     """A candidate's attempt at one code comprehension item (answers graded against a hidden key)."""
     __tablename__ = "comprehension_sessions"

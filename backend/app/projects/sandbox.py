@@ -241,7 +241,9 @@ def run_project_tests(repository_files: Dict[str, str], editable_files: List[str
 
     # Cross-check the report against the authoritative test list and the exit code.
     integrity: List[str] = []
-    if expected and (len(seen) != len(set(seen)) or set(seen) != expected):
+    # Parametrized tests report as name[param-id]; compare base names, but full ids must be unique.
+    seen_base = {n.split("[", 1)[0] for n in seen}
+    if expected and (len(seen) != len(set(seen)) or seen_base != expected):
         integrity.append("Reported tests do not match the challenge's test suite.")
     if returncode == 0 and failed:
         integrity.append("Exit code reports success but tests failed.")
