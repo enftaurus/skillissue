@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PageSkeleton } from '../../components/ui/Skeleton';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
@@ -105,12 +106,7 @@ export const DashboardPage: React.FC = () => {
     : [];
 
   if (loading) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-        <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm text-ink-muted">Loading your cockpit dashboard...</p>
-      </div>
-    );
+    return <PageSkeleton variant="dashboard" label="Loading your dashboard" />;
   }
 
   return (

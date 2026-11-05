@@ -81,7 +81,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       hero with the tagline, animated interview/feedback demo, USPs (real-interview realism,
       code comprehension, AI-assisted coding, evidence-based feedback), how-it-works loop, CTA.
       Light theme per AGENTS.md, tasteful motion (reduced-motion respected), mobile-first.
-- [ ] 7b. App-wide polish pass: consistent spacing/typography, skeleton loaders, page transitions,
+- [x] 7b. App-wide polish pass: consistent spacing/typography, skeleton loaders, page transitions,
       empty states, accessible focus states.
 
 ### 5. Edge-case bug hunt (repeat after each feature batch)
@@ -109,3 +109,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 04:40 IST: 4e done. Two parallel grading passes (divergence flagged + averaged), evidence verification (quote_verified flag; old code silently substituted unverified quotes), confidence level with reasons, evidence-backed disputes (verbatim quote required, +/-2 cap, 1 per dimension, max 3, logged; migration 0020) + UI.
 - 2026-11-06 05:00 IST: 4f BLOCKED. Added executor /execute-project + API dispatch (used when the API has no bwrap and EXECUTOR_URL is set; runner shipped in the executor image). But bubblewrap inside the Docker executor can't mount /proc ('Operation not permitted'), which ALSO breaks the existing /execute path for every DSA run under compose. Fix needs either security_opt systempaths=unconfined on the executor, a runner without a private /proc, or gVisor; the auto-mode classifier (correctly) refused to loosen container security without the owner's say. Do not attempt again unattended.
 - 2026-11-06 05:15 IST: 6d done. scripts/evals/comprehension_eval.py (strong/vague/wrong answers per question against the live judge): 97% calibrated over 34 questions, 0 explain/trace/bug/review errors; found numeric grader accepting '0.2 seconds' for '2 seconds' -> fixed with digit-boundary patterns + test.
+- 2026-11-06 05:30 IST: 7b done. Page-shaped shimmer skeletons (dashboard, evaluation, progress, Planly, interview room), global :focus-visible ring + focus-visible on buttons, route fade-in. Smoke test of 12 routes: 0 page/console errors.

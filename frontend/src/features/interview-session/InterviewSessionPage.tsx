@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { PageSkeleton } from '../../components/ui/Skeleton';
 import { useNavigate, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { api } from '../../lib/api';
@@ -534,12 +535,7 @@ export const InterviewSessionPage: React.FC = () => {
   const maxAnswers = sessionState?.max_turns ?? 8;
 
   if (loading) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-24 text-center">
-        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-xs text-ink-muted">Connecting to interview room...</p>
-      </div>
-    );
+    return <PageSkeleton variant="workspace" label="Connecting to the interview room" />;
   }
 
   return (

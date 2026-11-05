@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PageSkeleton } from '../../components/ui/Skeleton';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ResponsiveContainer,
@@ -424,12 +425,7 @@ export const EvaluationPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto py-16 text-center">
-        <div className="inline-block animate-spin w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full" />
-        <p className="mt-3 text-sm text-ink-muted">Synthesizing evidence-based evaluation...</p>
-      </div>
-    );
+    return <PageSkeleton variant="report" label="Loading your evaluation" />;
   }
 
   if (error || !evaluation) {

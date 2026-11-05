@@ -157,7 +157,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           isSidebarCollapsed ? 'pl-16' : 'pl-60'
         }`}
       >
-        <main className="flex-1 pb-16">{children}</main>
+        <main key={location.pathname} className="flex-1 pb-16 animate-fade-in">{children}</main>
         <footer className="border-t border-surface-border bg-white py-3.5 px-6">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-ink-muted">
             <div className="flex items-center gap-2">
