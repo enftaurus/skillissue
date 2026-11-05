@@ -109,3 +109,17 @@ async def test_expired_session_rejects_answers(client, db_session):
     await db_session.commit()
     r = await client.post(f"/api/v1/comprehension/sessions/{s['id']}/answer", headers=h, json={"question_id": "q1", "answer": "None 3 3"})
     assert r.json()["error"]["code"] == "SESSION_EXPIRED"
+
+
+@pytest.mark.asyncio
+async def test_numeric_answers_do_not_match_inside_other_numbers():
+    item = ITEMS_BY_ID["async-fanout"]
+    q = next(x for x in item.questions if x.type == "numeric")
+    assert (await grade_answer(item, q, "0.2 seconds")).verdict == "incorrect"  # found by the calibration eval
+    assert (await grade_answer(item, q, "12 seconds")).verdict == "incorrect"
+    assert (await grade_answer(item, q, "about 2 seconds")).verdict == "correct"
+    assert (await grade_answer(item, q, "2.0s total")).verdict == "correct"
+    r = ITEMS_BY_ID["retry-helper"]
+    rq = next(x for x in r.questions if x.type == "numeric")
+    assert (await grade_answer(r, rq, "11.5 seconds")).verdict == "incorrect"
+    assert (await grade_answer(r, rq, "1.5 seconds")).verdict == "correct"

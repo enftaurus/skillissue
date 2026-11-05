@@ -74,7 +74,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       interviewer follows up like a reviewer ("which line?", "what happens if two threads...").
 - [x] 6c. UI: read-only code viewer with file tabs, line numbers, click-to-reference lines in the
       answer, timer; results page with per-question correctness and the reveal.
-- [ ] 6d. Evals: add comprehension personas to `scripts/evals/interview_eval.py`.
+- [x] 6d. Evals: add comprehension personas to `scripts/evals/interview_eval.py`.
 
 ### 7. Landing page & UI/UX polish
 - [x] 7a. Public landing page at `/` for signed-out visitors (dashboard stays for signed-in):
@@ -108,3 +108,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 04:15 IST: 4d done. make_project template + 2 projects (idempotent payments, webhook signatures) with server-side reference solutions verified in tests; project_events log (migration 0019); verification metrics (tests run after assistant replies) in submit analysis + flags; GET /projects/{id}/timeline. Fixed sandbox integrity check rejecting parametrized tests.
 - 2026-11-06 04:40 IST: 4e done. Two parallel grading passes (divergence flagged + averaged), evidence verification (quote_verified flag; old code silently substituted unverified quotes), confidence level with reasons, evidence-backed disputes (verbatim quote required, +/-2 cap, 1 per dimension, max 3, logged; migration 0020) + UI.
 - 2026-11-06 05:00 IST: 4f BLOCKED. Added executor /execute-project + API dispatch (used when the API has no bwrap and EXECUTOR_URL is set; runner shipped in the executor image). But bubblewrap inside the Docker executor can't mount /proc ('Operation not permitted'), which ALSO breaks the existing /execute path for every DSA run under compose. Fix needs either security_opt systempaths=unconfined on the executor, a runner without a private /proc, or gVisor; the auto-mode classifier (correctly) refused to loosen container security without the owner's say. Do not attempt again unattended.
+- 2026-11-06 05:15 IST: 6d done. scripts/evals/comprehension_eval.py (strong/vague/wrong answers per question against the live judge): 97% calibrated over 34 questions, 0 explain/trace/bug/review errors; found numeric grader accepting '0.2 seconds' for '2 seconds' -> fixed with digit-boundary patterns + test.

@@ -242,7 +242,7 @@ print(retry(flaky, attempts=3, sleep=slept.append), len(calls), len(slept))
                       "no overall deadline/budget, so worst-case latency is unbounded by callers' timeouts",
                       "retry storms without a circuit breaker during outages"]),
             Question("q4", "numeric", "Ignoring jitter, what's the total sleep time for attempts=5, base=0.1, cap=5.0 if every call fails (with the bug fixed so it doesn't sleep after the last attempt)?",
-                     accept_patterns=[r"\b1\.5\s*(s|sec|seconds)?\b", r"\b1500\s*ms\b"]),
+                     accept_patterns=[r"(?<![\d.])1\.5\s*(s|sec|seconds)?\b", r"(?<![\d.])1500\s*ms\b"]),
         ]),
     Item(
         id="keyset-pagination", title="Cursor pagination", difficulty="hard", tags=["APIs", "databases"],
@@ -353,7 +353,7 @@ async def fetch_all(user_ids, limit=10):
 '''},
         questions=[
             Question("q1", "numeric", "Roughly how long does `asyncio.run(fetch_all(range(20)))` take? Give a number.",
-                     accept_patterns=[r"\b2(\.0+)?\s*(s|sec|secs|seconds)\b", r"\btwo seconds\b", r"\b2000\s*ms\b", r"~\s*2\b"]),
+                     accept_patterns=[r"(?<![\d.])2(\.0+)?\s*(s|sec|secs|seconds)\b", r"\btwo seconds\b", r"(?<![\d.])2000\s*ms\b", r"~\s*2(?![\d.])"]),
             Question("q2", "bug", "Why that long, and which line is responsible?",
                      ["time.sleep is a blocking call that freezes the event loop",
                       "so the 20 fetches run one after another instead of concurrently",
