@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, text
 from backend.app.database.models import LearningBacklogItem, Evaluation
 from backend.app.learning_backlog.schemas import (
     BacklogItemCreate,
@@ -59,6 +59,14 @@ class LearningBacklogService:
         """
         normalized_topic = data.topic.strip()
 
+        # Serialise concurrent queue requests for the same (user, topic): without this, four parallel
+        # clicks all missed the dedupe SELECT and stored four rows. Released at commit/rollback.
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            await db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:k))"),
+                {"k": f"backlog:{user_id}:{normalized_topic.lower()}"},
+            )
+
         # Check for existing active item with same topic for this user
         existing_res = await db.execute(
             select(LearningBacklogItem).where(
@@ -67,7 +75,8 @@ class LearningBacklogService:
                 LearningBacklogItem.status.in_(["queued", "planned", "in_progress"]),
             )
         )
-        existing = existing_res.scalar_one_or_none()
+        # .first(): rows duplicated before the lock existed must not turn this into a 500.
+        existing = existing_res.scalars().first()
 
         if existing:
             # Topic already queued: preserve existing entry, append context if new notes provided

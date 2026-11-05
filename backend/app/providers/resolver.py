@@ -12,7 +12,7 @@ from backend.app.providers.models_catalog import (
     get_model_metadata
 )
 from backend.app.core.security import decrypt_secret
-from backend.app.core.errors import ProviderError, AppException
+from backend.app.core.errors import ProviderError, AppException, provider_setup_error
 from backend.app.core.logging import logger
 
 @dataclass
@@ -213,7 +213,7 @@ class ModelResolver:
             return metadata
 
         if not config or not config.is_valid:
-            raise ProviderError(
+            raise provider_setup_error(
                 "Model Provider configuration is required for AI features. "
                 "Please configure your Azure OpenAI or AWS Bedrock credentials in Provider Onboarding (/onboarding/bedrock) or Settings.",
                 "BEDROCK_CONFIG_REQUIRED"
@@ -275,7 +275,7 @@ class ModelResolver:
 
         if not config or not config.aws_secret_key_enc:
             provider_label = "Azure OpenAI" if config and config.provider_name == "azure" else "AWS Bedrock"
-            raise ProviderError(
+            raise provider_setup_error(
                 f"Stored {provider_label} credentials could not be decrypted or are incomplete. "
                 "Please configure your credentials in Settings → Model Provider.",
                 "MISSING_CREDENTIALS"
@@ -314,7 +314,7 @@ class ModelResolver:
 
         if provider_name == "azure":
             if not azure_key or not azure_endpoint:
-                raise ProviderError(
+                raise provider_setup_error(
                     "Stored Azure OpenAI credentials could not be decrypted or are incomplete. "
                     "Please re-enter your credentials in Settings → Model Provider.",
                     "MISSING_CREDENTIALS"
@@ -328,7 +328,7 @@ class ModelResolver:
             )
         else:
             if not access_key or not secret_key:
-                raise ProviderError(
+                raise provider_setup_error(
                     "Stored AWS credentials could not be decrypted or are incomplete. "
                     "Please re-enter your credentials in Settings → Model Provider.",
                     "MISSING_CREDENTIALS"

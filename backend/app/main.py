@@ -38,7 +38,13 @@ def create_application() -> FastAPI:
     # Security Headers Middleware
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
-        response = await call_next(request)
+        # A NUL in a path segment or query value reaches Postgres on read paths (writes are stripped
+        # in session.before_flush) and 500s. No legitimate request carries one: reject up front.
+        if "\x00" in request.url.path or b"%00" in request.scope.get("query_string", b"").lower():
+            response = JSONResponse(status_code=400, content={"error": {
+                "code": "INVALID_CHARACTERS", "message": "Request contains a NUL byte."}})
+        else:
+            response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"

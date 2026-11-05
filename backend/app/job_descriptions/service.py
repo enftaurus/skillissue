@@ -33,11 +33,14 @@ class JobDescriptionService:
         response = await provider.generate_json(prompt=prompt, system_prompt=system_prompt)
         parsed = response.parsed_json or {}
 
-        role = parsed.get("role") or data.title
+        # Model output is untrusted: clamp to the column sizes / sane list lengths.
+        role = str(parsed.get("role") or data.title)[:200]
         skills = parsed.get("extracted_skills", [])
+        skills = [str(s)[:200] for s in skills if s][:100] if isinstance(skills, list) else []
         if not skills:
             skills = ["Backend Development", "System Design", "Problem Solving"]
         requirements = parsed.get("extracted_requirements", [])
+        requirements = [str(r)[:1000] for r in requirements if r][:100] if isinstance(requirements, list) else []
 
         jd = JobDescription(
             user_id=user_id,

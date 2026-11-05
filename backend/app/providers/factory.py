@@ -4,7 +4,7 @@ from backend.app.providers.base import BaseProvider
 from backend.app.providers.bedrock import AmazonBedrockProvider
 from backend.app.providers.azure import AzureOpenAIProvider
 from backend.app.providers.models_catalog import DEFAULT_MODEL_ID, DEFAULT_AZURE_MODEL_ID
-from backend.app.core.errors import ProviderError
+from backend.app.core.errors import ProviderError, provider_setup_error
 from backend.app.core.logging import logger
 
 # Explicit trusted provider class mapping (Production BYOC via Bedrock & Azure)
@@ -40,14 +40,14 @@ class ModelFactory:
 
         provider_cls = PROVIDER_REGISTRY.get(provider_name.lower())
         if not provider_cls:
-            raise ProviderError(
+            raise provider_setup_error(
                 f"Unsupported provider: '{provider_name}'. Supported providers: 'azure', 'bedrock'.",
                 "INVALID_PROVIDER"
             )
 
         if provider_name.lower() == "azure":
             if not azure_endpoint or not azure_api_key:
-                raise ProviderError(
+                raise provider_setup_error(
                     "Azure OpenAI credentials (Endpoint URL and API Key) are required.",
                     "MISSING_CREDENTIALS"
                 )
@@ -65,7 +65,7 @@ class ModelFactory:
             )
 
         if not aws_access_key or not aws_secret_key:
-            raise ProviderError(
+            raise provider_setup_error(
                 "AWS credentials (Access Key ID and Secret Access Key) are required for Amazon Bedrock.",
                 "MISSING_CREDENTIALS"
             )

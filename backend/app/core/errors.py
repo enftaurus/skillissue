@@ -27,9 +27,18 @@ class AuthorizationError(AppException):
         super().__init__(message=message, code="FORBIDDEN", status_code=status.HTTP_403_FORBIDDEN)
 
 class ProviderError(AppException):
-    def __init__(self, message: str, provider_code: str = "PROVIDER_ERROR", code: str = None):
+    def __init__(self, message: str, provider_code: str = "PROVIDER_ERROR", code: str = None,
+                 status_code: int = status.HTTP_502_BAD_GATEWAY, details: Optional[Dict[str, Any]] = None):
         c = code or provider_code
-        super().__init__(message=message, code=c, status_code=status.HTTP_502_BAD_GATEWAY)
+        super().__init__(message=message, code=c, status_code=status_code, details=details)
+
+
+# "You haven't set up a provider" is the caller's problem, not a bad gateway: 400 + onboarding link.
+ONBOARDING_DETAILS = {"action": "onboarding_required", "setup_url": "/onboarding/bedrock"}
+
+
+def provider_setup_error(message: str, code: str) -> ProviderError:
+    return ProviderError(message, code, status_code=status.HTTP_400_BAD_REQUEST, details=dict(ONBOARDING_DETAILS))
 
 class SandboxExecutionError(AppException):
     def __init__(self, message: str):

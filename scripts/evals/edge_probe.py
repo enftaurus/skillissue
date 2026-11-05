@@ -168,6 +168,92 @@ async def main():
             except httpx.ConnectError:
                 print("info executor not reachable")
 
+        # --- second sweep (2026-11-06): backlog, JDs, plans, resumes, explanation checks, tracks,
+        #     enterprise, telemetry, analytics, providers. `soft` = only a 5xx is a bug.
+        def soft(name, r):
+            check(name, r, ok_codes=[c for c in range(200, 500)])
+
+        soft("backlog: NUL/RTL topic", await c.post("/learning-backlog", headers=a, json={"topic": "Caching ‮😀\u0000"}))
+        check("backlog: 2 MB notes", await c.post("/learning-backlog", headers=a, json={"topic": "Caching", "notes": "n" * 2_000_000}))
+        r = await c.post("/learning-backlog", headers=a, json={"topic": "Caching"})
+        check("backlog: create", r, ok_codes=[201])
+        bid = r.json().get("id", fake) if r.status_code == 201 else fake
+        check("backlog: other user get", await c.get(f"/learning-backlog/{bid}", headers=b))
+        check("backlog: other user patch", await c.patch(f"/learning-backlog/{bid}", headers=b, json={"status": "completed"}))
+        check("backlog: other user delete", await c.delete(f"/learning-backlog/{bid}", headers=b))
+        check("backlog: non-uuid id", await c.get("/learning-backlog/not-a-uuid", headers=a))
+        soft("backlog: queue-weakness foreign interview", await c.post("/learning-backlog/queue-weakness", headers=a, json={"topic": "x", "interview_id": fake}))
+        dup = await asyncio.gather(*[c.post("/learning-backlog/queue-weakness", headers=a, json={"topic": "Race topic"}) for _ in range(4)])
+        lst = (await c.get("/learning-backlog", headers=a)).json()
+        n_race = sum(1 for x in lst if x["topic"] == "Race topic") if isinstance(lst, list) else -1
+        bad = n_race != 1 or any(d.status_code >= 500 for d in dup)
+        print(f"{'BUG ' if bad else 'ok  '}{[d.status_code for d in dup]} backlog: 4 concurrent queue-weakness -> {n_race} stored")
+        if bad:
+            findings.append(("backlog concurrent queue-weakness", [d.status_code for d in dup], f"{n_race} stored"))
+        soft("backlog: list topic with NUL", await c.get("/learning-backlog", headers=a, params={"topic": "a\u0000b"}))
+
+        r = await c.post("/job-descriptions", headers=a, json={"title": "Backend Eng", "raw_text": "Python FastAPI Postgres " * 10})
+        soft("jd: create", r)
+        jid = r.json().get("id", fake) if r.status_code < 300 else fake
+        check("jd: 3 MB raw_text", await c.post("/job-descriptions", headers=a, json={"title": "Big", "raw_text": "x" * 3_000_000}))
+        soft("jd: NUL raw_text", await c.post("/job-descriptions", headers=a, json={"title": "Nul", "raw_text": "Python \u0000 " * 5}))
+        check("jd: other user get", await c.get(f"/job-descriptions/{jid}", headers=b))
+        check("jd: other user put", await c.put(f"/job-descriptions/{jid}", headers=b, json={"title": "pwn"}))
+        check("jd: other user delete", await c.delete(f"/job-descriptions/{jid}", headers=b))
+        check("jd: 10k extracted skills", await c.put(f"/job-descriptions/{jid}", headers=a, json={"extracted_skills": ["s"] * 10000}))
+        check("jd: non-uuid", await c.get("/job-descriptions/zzz", headers=a))
+
+        soft("plans: active (none)", await c.get("/plans/active", headers=a))
+        check("plans: foreign plan", await c.get(f"/plans/{fake}", headers=a))
+        check("plans: generate from foreign eval", await c.post(f"/plans/generate/{fake}", headers=a))
+        check("plans: toggle foreign task", await c.post(f"/plans/tasks/{fake}/toggle", headers=a))
+        check("plans: bad task status", await c.put(f"/plans/tasks/{fake}/status", headers=a, json={"status": "pwn"}))
+        check("plans: reschedule bad date", await c.put(f"/plans/tasks/{fake}/reschedule", headers=a, json={"date": "9999-99-99"}))
+        check("plans: adapt foreign", await c.post(f"/plans/{fake}/adapt", headers=a, json={}))
+        check("plans: adapt preview foreign", await c.post(f"/plans/{fake}/adapt/preview", headers=a, json={}))
+        check("plans: suggested backlog foreign", await c.get(f"/plans/{fake}/suggested-backlog", headers=a))
+        check("plans: custom empty body", await c.post("/plans/custom", headers=a, json={}))
+
+        check("resume: empty file", await c.post("/resumes/upload", headers=a, files={"file": ("r.pdf", b"", "application/pdf")}))
+        check("resume: garbage pdf", await c.post("/resumes/upload", headers=a, files={"file": ("r.pdf", b"%PDF-1.4 garbage", "application/pdf")}))
+        check("resume: exe", await c.post("/resumes/upload", headers=a, files={"file": ("r.exe", b"MZ\x90", "application/octet-stream")}))
+        check("resume: foreign get", await c.get(f"/resumes/{fake}", headers=a))
+        check("resume: foreign delete", await c.delete(f"/resumes/{fake}", headers=a))
+
+        check("explain: empty body", await c.post("/explanation-checks", headers=a, json={}))
+        check("explain: foreign get", await c.get(f"/explanation-checks/{fake}", headers=a))
+        check("explain: foreign answers", await c.post(f"/explanation-checks/{fake}/answers", headers=a, json={"answers": []}))
+
+        check("tracks: unknown simulation", await c.get("/simulations/nope", headers=a))
+        check("tracks: company traversal", await c.get("/companies/..%2F..%2Fetc", headers=a))
+        check("tracks: unknown problem", await c.get("/problems/nope", headers=a))
+        check("tracks: solve unknown", await c.post("/problems/nope/solve", headers=a, json={}))
+        check("tracks: mark-solved unknown", await c.post("/problems/nope/mark-solved", headers=a))
+
+        check("enterprise: empty pipeline", await c.post("/enterprise/pipelines", headers=a, json={}))
+        check("enterprise: foreign pipeline", await c.get(f"/enterprise/pipelines/{fake}", headers=a))
+        check("enterprise: foreign leaderboard", await c.get(f"/enterprise/pipelines/{fake}/leaderboard", headers=a))
+        check("enterprise: foreign export", await c.get(f"/enterprise/pipelines/{fake}/export", headers=a))
+        check("enterprise: invite to foreign", await c.post(f"/enterprise/pipelines/{fake}/invite", headers=a, json={"emails": ["x@example.com"]}))
+        check("enterprise: bad assessment token", await c.get("/enterprise/assessments/garbage"))
+        check("enterprise: bad token submit", await c.post("/enterprise/assessments/garbage/submit-round", json={}))
+
+        check("telemetry: empty body", await c.post("/telemetry/editor", headers=a, json={}))
+        check("telemetry: foreign get", await c.get(f"/telemetry/editor/{fake}/r1", headers=a))
+        check("telemetry: foreign recompute", await c.post(f"/telemetry/editor/{fake}/r1/recompute", headers=a))
+
+        for p in ["/analytics/dashboard", "/analytics/skills", "/analytics/funnel"]:
+            soft(f"analytics: {p} (empty account)", await c.get(p, headers=a))
+        check("analytics: admin stats as non-admin", await c.get("/analytics/admin/stats", headers=a))
+        soft("providers: config", await c.get("/providers/config", headers=a))
+        check("providers: put garbage", await c.put("/providers/config", headers=a, json={"provider": "../evil", "region": "x" * 5000}))
+        check("providers: test with nothing configured", await c.post("/providers/test", headers=a, json={}))
+        soft("providers: delete creds (none)", await c.delete("/providers/credentials", headers=a))
+        soft("providers: models", await c.get("/providers/models", headers=a))
+        soft("providers: iam policy", await c.get("/providers/iam-policy", headers=a))
+        soft("interviews: list limit -1", await c.get("/interviews", headers=a, params={"limit": -1}))
+        soft("interviews: list limit 1e9 offset -5", await c.get("/interviews", headers=a, params={"limit": 10**9, "offset": -5}))
+
         # --- coding
         check("coding: unknown problem", await c.post("/coding/run", headers=a, json={"problem_id": "nope-123", "language": "python", "code": "print(1)"}))
 

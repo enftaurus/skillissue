@@ -77,3 +77,94 @@ async def test_project_and_copilot_size_limits(client):
     assert r.status_code == 422
     r = await client.post("/api/v1/coding/run", headers=h, json={"problem_id": "nope-123", "language": "python", "code": "print(1)"})
     assert r.status_code == 404
+
+
+# --- second sweep (2026-11-06, E9-E13 in docs/reports/qa-audit-2026-11-05.md)-------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_nul_in_query_or_path_is_400_not_500(client):
+    h = await _login(client)
+    r = await client.get("/api/v1/learning-backlog", headers=h, params={"topic": "a\x00b"})
+    assert r.status_code == 400 and r.json()["error"]["code"] == "INVALID_CHARACTERS"
+    r = await client.get("/api/v1/job-descriptions/a%00b", headers=h)
+    assert r.status_code == 400
+    r = await client.get("/api/v1/learning-backlog", headers=h, params={"topic": "cache"})
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_backlog_and_jd_text_bounds(client):
+    h = await _login(client)
+    for body in ({"topic": "Caching", "notes": "n" * 2_000_000},
+                 {"topic": "Caching", "source_id": "x" * 37},
+                 {"topic": "Caching", "reason": "r" * 5000}):
+        r = await client.post("/api/v1/learning-backlog", headers=h, json=body)
+        assert r.status_code == 422, list(body)
+    r = await client.post("/api/v1/learning-backlog/queue-weakness", headers=h, json={"topic": "x", "interview_id": "i" * 40})
+    assert r.status_code == 422
+    r = await client.post("/api/v1/job-descriptions", headers=h, json={"title": "Big", "raw_text": "x" * 60_000})
+    assert r.status_code == 422
+    r = await client.post("/api/v1/job-descriptions", headers=h, json={"title": "Co", "company": "c" * 201, "raw_text": "Python " * 10})
+    assert r.status_code == 422  # String(200) column: used to be a DataError 500
+    r = await client.post("/api/v1/job-descriptions", headers=h, json={"title": "Backend", "raw_text": "Python FastAPI " * 10})
+    assert r.status_code in (200, 201), r.text
+    jid = r.json()["id"]
+    for body in ({"extracted_skills": ["s"] * 101}, {"title": "t" * 201}, {"extracted_role": "r" * 201}):
+        assert (await client.put(f"/api/v1/job-descriptions/{jid}", headers=h, json=body)).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_jd_model_output_is_clamped(client, monkeypatch):
+    from types import SimpleNamespace
+    from backend.app.providers.factory import ModelFactory
+
+    class _Fake:
+        async def generate_json(self, prompt, system_prompt=None, **kw):
+            return SimpleNamespace(content="{}", parsed_json={"role": "R" * 500, "extracted_skills": ["s" * 300] * 500,
+                                                          "extracted_requirements": "not a list"})
+
+    async def _get(*a, **k):
+        return _Fake()
+
+    monkeypatch.setattr(ModelFactory, "get_for_user", _get)
+    h = await _login(client)
+    r = await client.post("/api/v1/job-descriptions", headers=h, json={"title": "Backend", "raw_text": "Python FastAPI " * 10})
+    assert r.status_code in (200, 201), r.text
+    jd = r.json()
+    assert len(jd["extracted_role"]) == 200 and len(jd["extracted_skills"]) == 100
+    assert all(len(s) <= 200 for s in jd["extracted_skills"]) and jd["extracted_requirements"] == []
+
+
+@pytest.mark.asyncio
+async def test_concurrent_queue_weakness_stores_one_row(db_session):
+    """4 parallel 'queue for later' clicks used to store 4 rows (dedupe SELECT raced)."""
+    import asyncio
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+    from backend.app.core.config import settings
+    from backend.app.database.session import get_db
+
+    engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+    maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _own_session():  # one session per request, like production
+        async with maker() as s:
+            yield s
+            await s.commit()
+
+    app = create_application()
+    app.dependency_overrides[get_db] = _own_session
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            h = await _login(c)
+            rs = await asyncio.gather(*[c.post("/api/v1/learning-backlog/queue-weakness", headers=h,
+                                               json={"topic": "Race topic"}) for _ in range(4)])
+            assert all(r.status_code == 200 for r in rs), [r.text for r in rs]
+            assert len({r.json()["id"] for r in rs}) == 1
+            assert sum(r.json()["is_existing"] for r in rs) == 3
+            # Rows duplicated before the fix must not turn dedupe into a MultipleResultsFound 500.
+            await c.post("/api/v1/learning-backlog", headers=h, json={"topic": "Race topic"})
+            r = await c.post("/api/v1/learning-backlog/queue-weakness", headers=h, json={"topic": "race topic"})
+            assert r.status_code == 200 and r.json()["is_existing"]
+    finally:
+        await engine.dispose()
