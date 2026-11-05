@@ -41,3 +41,16 @@ Spike: `scripts/spikes/nova_sonic_spike.py`.
   `InterviewService.send_message` (same policy, budget, kinds, evaluation) and returns the engine's reply text.
   Sonic speaks it, optionally with a short acknowledgement.
 - The wrap-up, repeat/clarify and closing phases all come from the engine, unchanged.
+
+## STT benchmark for the push-to-talk fallback (2026-11-06)
+
+Same three fixture clips (Indian-accent speech, plus US and Indian TTS of a DSA answer):
+
+| Engine | Accuracy on tech terms | Latency per clip |
+|---|---|---|
+| faster-whisper base.en + domain prompt (current) | best: "Redis", "10x", "O of 1" correct | 0.7–1.0 s |
+| faster-whisper small.en + domain prompt | no better ("twosome", "to some") | 1.5–2.7 s (+45 s cold load) |
+| Amazon Transcribe streaming, en-IN/en-US, no custom vocabulary | worse: "Reddish", "10 eggs", "0 of 1" | 3.7–4.6 s |
+| Nova 2.5 Sonic (live voice) | "redis" correct | streaming |
+
+Decision: keep whisper base.en for push-to-talk. Transcribe stays as an opt-in (`STT_PROVIDER=transcribe`) for when a custom vocabulary is created (needs an AWS resource, so it's the product owner's call). Live voice via Sonic is the accuracy upgrade.

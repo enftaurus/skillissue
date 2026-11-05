@@ -44,7 +44,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       `InterviewService.send_message`, transcripts persisted as normal messages.
 - [x] 3d. Frontend: AudioWorklet mic capture (16 kHz PCM), streamed playback (24 kHz), barge-in,
       live captions, "Live voice" toggle with fallback to current push-to-talk.
-- [ ] 3e. STT upgrade for push-to-talk fallback: Voxtral (Bedrock) or Transcribe with tech-term
+- [x] 3e. STT upgrade for push-to-talk fallback: Voxtral (Bedrock) or Transcribe with tech-term
       vocabulary; benchmark accuracy vs faster-whisper base.en on the fixture WAVs.
 - [ ] 3f. TTS fallback upgrade: Polly generative voices (Matthew/Ruth/Stephen, en-IN Kajal/Arjun/
       Kiara) when platform voice is enabled; honest availability flags.
@@ -102,3 +102,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 02:20 IST: 7a done. Public landing at / for signed-out visitors (and /welcome): animated live-interview hero, rounds marquee, 4 USPs, interactive code-reading demo, loop, real-eval proof, CTA; scroll reveal, reduced motion, no h-scroll at 390 px; signed-in / still shows the dashboard; 401 redirect skips public pages.
 - 2026-11-06 02:30 IST: 4a done. /api/v1/analytics/self-awareness (per-dimension self-vs-evidence gap, bias, trend, index over last 3 sessions, headline) + dashboard card.
 - 2026-11-06 02:45 IST: 5a first pass: scripts/evals/edge_probe.py; fixed E1-E6 (see QA report Round 3), incl. 500 for every user without a provider. Re-run the probe after each feature batch (keep 5a unchecked for that).
+- 2026-11-06 03:20 IST: 3e done. Benchmarked whisper base.en vs small.en vs Transcribe (see docs/product/nova-sonic-notes.md): kept base.en + prompt; Transcribe opt-in via STT_PROVIDER. Verified platform Polly voices live.

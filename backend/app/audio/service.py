@@ -439,7 +439,17 @@ class AudioService:
             except Exception as e:
                 logger.warning(f"Vaani STT API failed: {e}")
 
-        # 3. High-Speed Local Faster-Whisper with Domain Vocabulary Prompting
+        # 3. Opt-in platform Transcribe (benchmarked worse than whisper without a custom vocabulary)
+        if settings.STT_PROVIDER == "transcribe" and platform_aws_available():
+            try:
+                from backend.app.audio.transcribe_aws import transcribe_with_aws
+                text = await transcribe_with_aws(audio_bytes)
+                if text:
+                    return text
+            except Exception:
+                pass
+
+        # 4. High-Speed Local Faster-Whisper with Domain Vocabulary Prompting
         ext = ".webm"
         if "wav" in content_type or filename.endswith(".wav"):
             ext = ".wav"
