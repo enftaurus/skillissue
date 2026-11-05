@@ -11,6 +11,7 @@ import {
   HintResponse,
 } from '../../lib/types';
 import { SimpleMarkdown } from '../../components/ui/SimpleMarkdown';
+import { LiveVoiceClient, LiveVoiceState, liveVoiceSupported } from '../../lib/liveVoice';
 import { SpeechHandler, VoiceOption, DEFAULT_VOICES, DEFAULT_VOICE_ID, getSelectedVoice, setSelectedVoice } from '../../lib/speech';
 import { useEditorTelemetry } from '../../lib/useEditorTelemetry';
 import { Button } from '../../components/ui/Button';
@@ -32,6 +33,7 @@ import {
   Terminal,
   Volume2,
   VolumeX,
+  Radio,
 } from 'lucide-react';
 
 export const InterviewSessionPage: React.FC = () => {
@@ -65,6 +67,11 @@ export const InterviewSessionPage: React.FC = () => {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const spokenMessageIdsRef = useRef<Set<string>>(new Set());
   const interviewLiveRef = useRef(false);
+  const liveClientRef = useRef<LiveVoiceClient | null>(null);
+  const [liveState, setLiveState] = useState<LiveVoiceState>('idle');
+  const [liveCaptions, setLiveCaptions] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
+  const [liveLevel, setLiveLevel] = useState(0);
+  const liveActive = liveState === 'connecting' || liveState === 'listening' || liveState === 'interviewer';
 
   const toggleAutoSpeak = () => {
     const next = !autoSpeak;
@@ -389,6 +396,55 @@ export const InterviewSessionPage: React.FC = () => {
     }
   };
 
+  const refreshInterview = async () => {
+    if (!id) return;
+    try {
+      const updated = await api.get<Interview>(`/interviews/${id}`);
+      setInterview(updated);
+      setMessages(updated.messages || []);
+      api.get<any>(`/interviews/${id}/state`).then(setSessionState).catch(() => {});
+    } catch {
+      /* transient; next turn refreshes again */
+    }
+  };
+
+  const startLiveVoice = async () => {
+    if (!id || liveActive) return;
+    SpeechHandler.stopSpeaking();
+    setIsSpeaking(false);
+    if (isListening) speechHandlerRef.current?.stop();
+    setMicNotice('');
+    setLiveCaptions([]);
+    let token: string | null = null;
+    try {
+      token = localStorage.getItem('skillissue_token');
+    } catch {
+      token = null;
+    }
+    if (!token) {
+      setMicNotice('Your session expired. Sign in again to use live voice.');
+      return;
+    }
+    const client = new LiveVoiceClient(id, {
+      onState: setLiveState,
+      onLevel: setLiveLevel,
+      onCaption: (role, text) => setLiveCaptions((prev) => [...prev.slice(-5), { role, text }]),
+      onTurn: () => refreshInterview(),
+      onCompleted: () => refreshInterview(),
+      onError: (_code, message) => setMicNotice(`${message} Push-to-talk and typing still work.`),
+    });
+    liveClientRef.current = client;
+    await client.start(token);
+  };
+
+  const stopLiveVoice = () => {
+    liveClientRef.current?.stop();
+    liveClientRef.current = null;
+    refreshInterview();
+  };
+
+  useEffect(() => () => liveClientRef.current?.stop(), []);
+
   const toggleSpeechRecognition = () => {
     if (!speechHandlerRef.current || !isSpeechSupported) return;
 
@@ -557,6 +613,19 @@ export const InterviewSessionPage: React.FC = () => {
               </select>
             )}
           </div>
+
+          {isLive && liveVoiceSupported() && (
+            <Button
+              variant={liveActive ? 'danger' : 'secondary'}
+              size="sm"
+              onClick={liveActive ? stopLiveVoice : startLiveVoice}
+              className="text-xs gap-1.5"
+              title={liveActive ? 'End the live voice call' : 'Talk to the interviewer like a real call (beta)'}
+            >
+              <Radio className={`w-4 h-4 ${liveActive ? 'animate-pulse' : ''}`} />
+              {liveActive ? 'End live voice' : 'Live voice'}
+            </Button>
+          )}
 
           {/* Coding Editor Toggle (for DSA or technical rounds) */}
           <Button
@@ -888,6 +957,30 @@ export const InterviewSessionPage: React.FC = () => {
             </div>
           )}
 
+          {liveActive && (
+            <div className="p-3.5 rounded-xl border border-indigo-200/80 bg-indigo-50/70 space-y-2" aria-live="polite">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-900">
+                  <span className={`w-2.5 h-2.5 rounded-full ${liveState === 'interviewer' ? 'bg-emerald-500 animate-pulse' : liveState === 'listening' ? 'bg-indigo-600 animate-ping' : 'bg-slate-400'}`} />
+                  {liveState === 'connecting' ? 'Connecting the call…' : liveState === 'interviewer' ? 'Interviewer speaking. Just talk to interrupt.' : 'Listening. Answer out loud.'}
+                </div>
+                <div className="h-1.5 w-24 rounded-full bg-indigo-100 overflow-hidden">
+                  <div className="h-full bg-indigo-600 transition-all duration-75" style={{ width: `${Math.round(liveLevel * 100)}%` }} />
+                </div>
+              </div>
+              {liveCaptions.length > 0 && (
+                <div className="space-y-1 text-xs text-slate-700">
+                  {liveCaptions.map((c, i) => (
+                    <p key={i}>
+                      <span className="font-semibold">{c.role === 'user' ? 'You' : 'Interviewer'}:</span> {c.text}
+                    </p>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-slate-500">Headphones work best. Audio isn't recorded; only the transcript is saved.</p>
+            </div>
+          )}
+
           {(isTranscribing || micNotice) && !isListening && (
             <div
               role="status"
@@ -911,7 +1004,7 @@ export const InterviewSessionPage: React.FC = () => {
                 }}
                 placeholder={isLive ? 'State your technical answer directly. Cite metrics or trade-offs (Press Enter to submit, or use mic below)...' : 'This round is over. Self-evaluate to see your report.'}
                 className="w-full p-4 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none resize-none font-sans disabled:bg-slate-50"
-                disabled={isSending || !isLive}
+                disabled={isSending || !isLive || liveActive}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -922,7 +1015,7 @@ export const InterviewSessionPage: React.FC = () => {
 
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-100">
                 <div className="flex items-center gap-2.5">
-                  {isSpeechSupported && isLive && (
+                  {isSpeechSupported && isLive && !liveActive && (
                     <Button
                       type="button"
                       variant={isListening ? 'danger' : 'secondary'}
