@@ -360,6 +360,21 @@ class ProjectCopilotTurn(Base):
     tests_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
+class ComprehensionSession(Base):
+    """A candidate's attempt at one code comprehension item (answers graded against a hidden key)."""
+    __tablename__ = "comprehension_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="in_progress")
+    answers: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    time_limit_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class CompanyTrack(Base):
     __tablename__ = "company_tracks"
 

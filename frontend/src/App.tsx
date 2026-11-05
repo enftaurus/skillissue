@@ -13,6 +13,7 @@ import { EvaluationPage } from './features/evaluation/EvaluationPage';
 import { PlanlyPage } from './features/improvement-plan/PlanlyPage';
 import { ProgressAnalyticsPage } from './features/progress/ProgressAnalyticsPage';
 import { CodingPracticePage } from './features/coding/CodingPracticePage';
+import { CodeComprehensionPage } from './features/comprehension/CodeComprehensionPage';
 import { ProjectCatalogPage } from './features/projects/ProjectCatalogPage';
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage';
 import { CompanyTracksPage } from './features/tracks/CompanyTracksPage';
@@ -223,6 +224,22 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <ProgressAnalyticsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/comprehension"
+              element={
+                <ProtectedRoute>
+                  <CodeComprehensionPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/comprehension/:sessionId"
+              element={
+                <ProtectedRoute>
+                  <CodeComprehensionPage />
                 </ProtectedRoute>
               }
             />

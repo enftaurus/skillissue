@@ -17,6 +17,7 @@ from backend.app.api.v1.learning_backlog import router as learning_backlog_route
 from backend.app.api.v1.projects import router as projects_router
 from backend.app.api.v1.audio import router as audio_router
 from backend.app.api.v1.voice import router as voice_router
+from backend.app.api.v1.comprehension import router as comprehension_router
 from backend.app.api.v1.tracks import router as tracks_router
 from backend.app.api.v1.enterprise import router as enterprise_router
 from backend.app.api.v1.explanation_checks import router as explanation_checks_router
@@ -78,6 +79,7 @@ def create_application() -> FastAPI:
     # Mount API routers
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(voice_router, prefix="/api/v1")
+    app.include_router(comprehension_router, prefix="/api/v1")
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(providers_router, prefix="/api/v1")
     app.include_router(resumes_router, prefix="/api/v1")

@@ -64,20 +64,20 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - [ ] 4f. Docker executor project mode (out-of-process harness) so project runs work in production.
 
 ### 6. Code comprehension round (USP, Google-level)
-- [ ] 6a. New interview category `code_comprehension`: candidate gets an unfamiliar, realistic
+- [x] 6a. New interview category `code_comprehension`: candidate gets an unfamiliar, realistic
       multi-file snippet (concurrency, caching, parsers, distributed retries, ...) and must explain
       it, trace outputs for given inputs, find the planted bug(s), predict behaviour at scale and
       propose a review comment. Curated bank of >= 8 Google-level items with hidden answer keys,
       bug locations and grading rubric; difficulty tiers.
-- [ ] 6b. Grounded grading: answers checked against the answer key (bug line, traced output,
+- [x] 6b. Grounded grading: answers checked against the answer key (bug line, traced output,
       complexity) deterministically where possible, LLM judge for explanations with evidence quotes;
       interviewer follows up like a reviewer ("which line?", "what happens if two threads...").
-- [ ] 6c. UI: read-only code viewer with file tabs, line numbers, click-to-reference lines in the
+- [x] 6c. UI: read-only code viewer with file tabs, line numbers, click-to-reference lines in the
       answer, timer; results page with per-question correctness and the reveal.
 - [ ] 6d. Evals: add comprehension personas to `scripts/evals/interview_eval.py`.
 
 ### 7. Landing page & UI/UX polish
-- [ ] 7a. Public landing page at `/` for signed-out visitors (dashboard stays for signed-in):
+- [~] 7a. Public landing page at `/` for signed-out visitors (dashboard stays for signed-in):
       hero with the tagline, animated interview/feedback demo, USPs (real-interview realism,
       code comprehension, AI-assisted coding, evidence-based feedback), how-it-works loop, CTA.
       Light theme per AGENTS.md, tasteful motion (reduced-motion respected), mobile-first.
@@ -97,3 +97,5 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 01:05 IST: 3a spike works (Sonic transcribes, calls get_next_question, speaks our question; first audio <1.5 s; needs aws_sdk_bedrock_runtime + awscrt). Notes in docs/product/nova-sonic-notes.md. 3b ADR 0025 written. Interactive session claimed 3c.
 - 2026-11-06 01:25 IST: 3c done. /api/v1/voice/ws/{id} relay (first-message auth, ownership/status checks, one session per user, daily quota, 30-min cap), turn settling + duplicate tool-call suppression for Sonic's eager endpointing, every turn through InterviewService.send_message. Live test: opener spoken, answer -> engine question spoken (3.5 s), turn persisted. Interactive session claimed 3d.
 - 2026-11-06 01:35 IST: 3d done. Browser live voice: AudioWorklet 16 kHz capture, gapless 24 kHz playback with instant barge-in stop, captions, state + level UI, typing/push-to-talk paused during the call; Vite proxy ws enabled. Playwright (fake mic): call connected, 4 engine turns in 45 s.
+- 2026-11-06 01:45 IST: interactive session claimed 6a-6c (code comprehension). Autopilot runner now waits while an interactive session is actively writing in this repo.
+- 2026-11-06 02:10 IST: 6a-6c done. 9 Google-style items (TTL/LRU cache, token bucket, quota race, retry, keyset pagination, consistent hashing, async fan-out, closures/defaults, build order) x 3-4 questions; trace keys verified by execution in tests; deterministic trace/location/numeric grading + LLM judge with non-revealing reviewer follow-ups; /comprehension UI with clickable line refs, timer, reveal. Tailwind animations defined (were no-ops). Interactive session claimed 7a.
