@@ -49,6 +49,7 @@ class Settings(BaseSettings):
 
     # Live voice (Nova Sonic, platform credentials via the default AWS chain; ADR 0025)
     VOICE_LIVE_ENABLED: bool = True
+    PLATFORM_VOICE_ENABLED: bool = True  # Polly TTS via the server's own AWS credentials
     SONIC_MODEL_ID: str = "amazon.nova-2-5-sonic"
     SONIC_REGION: str = "us-east-1"
     SONIC_DEFAULT_VOICE: str = "matthew"

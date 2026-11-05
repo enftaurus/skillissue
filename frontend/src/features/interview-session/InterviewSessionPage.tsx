@@ -12,7 +12,7 @@ import {
 } from '../../lib/types';
 import { SimpleMarkdown } from '../../components/ui/SimpleMarkdown';
 import { LiveVoiceClient, LiveVoiceState, liveVoiceSupported } from '../../lib/liveVoice';
-import { SpeechHandler, VoiceOption, DEFAULT_VOICES, DEFAULT_VOICE_ID, getSelectedVoice, setSelectedVoice } from '../../lib/speech';
+import { SpeechHandler, VoiceOption, DEFAULT_VOICES, DEFAULT_VOICE_ID, getSelectedVoice, getServerDefaultVoice, setSelectedVoice } from '../../lib/speech';
 import { useEditorTelemetry } from '../../lib/useEditorTelemetry';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -192,9 +192,17 @@ export const InterviewSessionPage: React.FC = () => {
       if (v && v.length > 0) {
         setAvailableVoices(v);
         const current = v.find((voice) => voice.id === getSelectedVoice());
-        if (!current || current.available === false) {
-          setSelectedVoiceState(DEFAULT_VOICE_ID);
-          setSelectedVoice(DEFAULT_VOICE_ID);
+        let stored: string | null = null;
+        try {
+          stored = localStorage.getItem('skillissue_voice_id');
+        } catch {
+          stored = null;
+        }
+        // Unavailable voice, or the user never picked one: use the server's recommendation.
+        if (!current || current.available === false || !stored) {
+          const fallback = getServerDefaultVoice() || DEFAULT_VOICE_ID;
+          setSelectedVoiceState(fallback);
+          if (current?.available === false || !current) setSelectedVoice(fallback);
         }
       }
     }).catch(() => {});

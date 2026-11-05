@@ -31,7 +31,8 @@ async def list_voices(
     """List voices, marking cloud voices the caller has no credentials for as unavailable."""
     user = actor[0]
     voices = await AudioService.get_voices_for_user(user.id if user else None, db)
-    return VoiceListResponse(voices=voices, default_voice="en-US-ChristopherNeural")
+    polly_ok = any(v.id == "aws-polly-matthew" and v.available for v in voices)
+    return VoiceListResponse(voices=voices, default_voice="aws-polly-matthew" if polly_ok else "en-US-ChristopherNeural")
 
 @router.post("/tts")
 async def text_to_speech(

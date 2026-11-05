@@ -94,6 +94,11 @@ export const DEFAULT_VOICES: VoiceOption[] = [
 const SELECTED_VOICE_KEY = 'skillissue_voice_id';
 
 export const DEFAULT_VOICE_ID = 'en-US-ChristopherNeural';
+let serverDefaultVoice = DEFAULT_VOICE_ID;
+/** The server's recommended voice (a Polly generative voice when platform voice is available). */
+export function getServerDefaultVoice(): string {
+  return serverDefaultVoice;
+}
 
 export function getSelectedVoice(): string {
   if (typeof window === 'undefined') return DEFAULT_VOICE_ID;
@@ -484,6 +489,7 @@ export class SpeechHandler {
   static async fetchVoices(): Promise<VoiceOption[]> {
     try {
       const res = await api.get<{ voices: VoiceOption[]; default_voice: string }>('/audio/voices');
+      if (res.default_voice) serverDefaultVoice = res.default_voice;
       return res.voices || DEFAULT_VOICES.filter((v) => v.provider !== 'aws-polly');
     } catch (e) {
       return DEFAULT_VOICES.filter((v) => v.provider !== 'aws-polly');
