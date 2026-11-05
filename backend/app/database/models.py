@@ -218,6 +218,8 @@ class Evaluation(Base):
     uncertainty_notes: Mapped[List[str]] = mapped_column(JSON, default=list)
     weakness_analysis: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     raw_llm_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Consistency check, evidence verification and confidence (QA 2026-11-06)
+    credibility: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     stored_transcript: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     model_identifier: Mapped[str] = mapped_column(String(100), default="")
@@ -372,6 +374,23 @@ class ProjectEvent(Base):
     kind: Mapped[str] = mapped_column(String(20))  # 'test_run' | 'submit'
     payload: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
+class EvaluationDispute(Base):
+    """A candidate's evidence-backed challenge to one evaluation finding, and the re-judgement."""
+    __tablename__ = "evaluation_disputes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    evaluation_id: Mapped[str] = mapped_column(String(36), ForeignKey("evaluations.id", ondelete="CASCADE"), index=True)
+    dimension_id: Mapped[str] = mapped_column(String(80))
+    argument: Mapped[str] = mapped_column(Text)
+    quote: Mapped[str] = mapped_column(Text)
+    decision: Mapped[str] = mapped_column(String(20))  # 'upheld' | 'revised'
+    old_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    new_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class ComprehensionSession(Base):

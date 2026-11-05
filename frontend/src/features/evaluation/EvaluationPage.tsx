@@ -169,6 +169,82 @@ const ReplayDiff: React.FC<{ retestId: string }> = ({ retestId }) => {
   );
 };
 
+
+interface DisputeRow {
+  id: string;
+  dimension_id: string;
+  decision: 'upheld' | 'revised';
+  old_score: number | null;
+  new_score: number | null;
+  reason: string;
+}
+
+const DisputePanel: React.FC<{ interviewId: string; evaluation: Evaluation; onRevised: (e: Evaluation) => void }> = ({
+  interviewId,
+  evaluation,
+  onRevised,
+}) => {
+  const [rows, setRows] = useState<DisputeRow[]>([]);
+  const [dim, setDim] = useState('');
+  const [quote, setQuote] = useState('');
+  const [argument, setArgument] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    api.get<DisputeRow[]>(`/evaluations/${interviewId}/disputes`).then(setRows).catch(() => {});
+  }, [interviewId]);
+  const dims = Object.entries(evaluation.rubric_dimension_scores || {}).filter(([d]) => !rows.some((r) => r.dimension_id === d));
+  const submit = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      const r = await api.post<DisputeRow>(`/evaluations/${interviewId}/disputes`, { dimension_id: dim, quote, argument });
+      setRows((x) => [...x, r]);
+      setQuote('');
+      setArgument('');
+      setDim('');
+      if (r.decision === 'revised') onRevised(await api.get<Evaluation>(`/evaluations/${interviewId}`));
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card className="p-5 space-y-3">
+      <div>
+        <h3 className="text-sm font-bold text-slate-900">Think a score is wrong? Dispute it with evidence.</h3>
+        <p className="text-xs text-slate-500">Quote your own words exactly as they appear in the transcript. A re-judge can move one score by up to 2 points. Up to 3 disputes per evaluation, all logged.</p>
+      </div>
+      {rows.map((r) => (
+        <div key={r.id} className={`text-xs rounded-lg border p-2.5 ${r.decision === 'revised' ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+          <b>{r.dimension_id.replace(/_/g, ' ')}</b>: {r.decision === 'revised' ? `revised ${r.old_score} → ${r.new_score}` : 'score upheld'}. {r.reason}
+        </div>
+      ))}
+      {rows.length < 3 && dims.length > 0 && (
+        <div className="space-y-2">
+          <select value={dim} onChange={(e) => setDim(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg p-2">
+            <option value="">Choose a dimension…</option>
+            {dims.map(([d, v]) => (
+              <option key={d} value={d}>{d.replace(/_/g, ' ')} (currently {v.score}/5)</option>
+            ))}
+          </select>
+          <textarea value={quote} onChange={(e) => setQuote(e.target.value)} rows={2} placeholder="Exact quote from your answer"
+            className="w-full text-sm border border-slate-200 rounded-lg p-2 font-mono" />
+          <textarea value={argument} onChange={(e) => setArgument(e.target.value)} rows={2} placeholder="Why this quote shows a higher level"
+            className="w-full text-sm border border-slate-200 rounded-lg p-2" />
+          {err && <p className="text-xs text-rose-700">{err}</p>}
+          <div className="flex justify-end">
+            <Button size="sm" variant="primary" isLoading={busy} disabled={!dim || quote.trim().length < 12 || argument.trim().length < 10} onClick={submit}>
+              Submit dispute
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+};
+
 export const EvaluationPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -459,6 +535,24 @@ export const EvaluationPage: React.FC = () => {
               </span>
             </div>
           </div>
+          {evaluation.credibility?.confidence && (
+            <div className="mt-4 text-xs space-y-1" title={evaluation.credibility.confidence.reasons.join(' ')}>
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-semibold ${
+                  evaluation.credibility.confidence.level === 'high'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : evaluation.credibility.confidence.level === 'medium'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}
+              >
+                Evaluator confidence: {evaluation.credibility.confidence.level}
+              </span>
+              <ul className="text-slate-500 space-y-0.5">
+                {evaluation.credibility.confidence.reasons.map((r) => <li key={r}>{r}</li>)}
+              </ul>
+            </div>
+          )}
           <div className="pt-6 border-t border-slate-200/60 text-xs text-slate-500 leading-relaxed">
             Calculated across system trade-offs, technical depth, and communication grounding.
           </div>
@@ -658,6 +752,8 @@ export const EvaluationPage: React.FC = () => {
       </div>
 
       {/* CLOSED-LOOP RETEST DELTAS & VERIFIED PROGRESS */}
+      {id && <DisputePanel interviewId={id} evaluation={evaluation} onRevised={setEvaluation} />}
+
       {id && <DeliveryCard interviewId={id} />}
 
       {retests && retests.length > 0 && (
@@ -1038,7 +1134,7 @@ export const EvaluationPage: React.FC = () => {
                         <div className="p-3.5 bg-white rounded-xl border border-indigo-200/80 space-y-1.5">
                           <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-800">
                             <Quote className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Verbatim Candidate Quote Highlighted</span>
+                            <span>{qf.quote_verified === false ? 'Closest line from your answer (model quote not found verbatim)' : 'Verbatim Candidate Quote Highlighted'}</span>
                           </div>
                           <p className="italic text-slate-800 font-mono text-xs sm:text-sm pl-4 border-l-2 border-indigo-500 leading-relaxed">
                             &ldquo;{qf.verbatim_quote}&rdquo;

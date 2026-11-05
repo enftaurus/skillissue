@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 import json
 from typing import Any, Dict, List, Optional
@@ -9,6 +10,7 @@ from backend.app.evaluations.schemas import (
     SelfEvaluationCreate, EvaluationComparisonResponse, DimensionComparison, QuestionComparison
 )
 from backend.app.evaluations.prompts import build_evaluation_prompt
+from backend.app.core.config import settings
 from backend.app.interviews.rubrics import get_rubric_for_category
 from backend.app.providers.factory import ModelFactory
 from backend.app.providers.service import ProviderConfigService
@@ -24,6 +26,9 @@ def rubric_score_to_pct(score) -> float:
         v = 3.0
     v = max(1.0, min(5.0, v))
     return (v - 1.0) / 4.0 * 100.0
+
+from backend.app.evaluations.credibility import candidate_text_of, confidence, evidence_check, merge_passes
+
 
 class EvaluationService:
     @staticmethod
@@ -120,7 +125,25 @@ class EvaluationService:
             return True
 
         provider = await ModelFactory.get_for_user(db, user_id, task_type="evaluation")
-        response = await provider.generate_json(prompt=user_prompt, system_prompt=system_prompt)
+        second_pass: Optional[Dict[str, Any]] = None
+        second_tokens = 0
+        if settings.EVAL_CONSISTENCY_CHECK:
+            # Two independent passes in parallel; disagreements are flagged and averaged.
+            first_res, second_res = await asyncio.gather(
+                provider.generate_json(prompt=user_prompt, system_prompt=system_prompt),
+                provider.generate_json(prompt=user_prompt, system_prompt=system_prompt),
+                return_exceptions=True,
+            )
+            if isinstance(first_res, Exception):
+                raise first_res
+            response = first_res
+            if not isinstance(second_res, Exception):
+                second_tokens = (second_res.input_tokens or 0) + (second_res.output_tokens or 0)
+                sp = second_res.parsed_json or {}
+                if isinstance(sp, dict) and isinstance(sp.get("dimension_scores"), dict):
+                    second_pass = sp["dimension_scores"]
+        else:
+            response = await provider.generate_json(prompt=user_prompt, system_prompt=system_prompt)
         parsed = response.parsed_json or {}
 
         # D7: Validate model output against JSON schema; on failure retry once
@@ -174,7 +197,7 @@ class EvaluationService:
             return failed_eval
 
         overall_score = float(parsed["overall_score"])
-        dimension_scores = parsed.get("dimension_scores", {})
+        dimension_scores, consistency = merge_passes(parsed.get("dimension_scores", {}), second_pass)
 
         # Apply hint penalty if candidate used hints
         if interview.hint_level_used > 0 and "problem_solving_rigor" in dimension_scores:
@@ -233,9 +256,11 @@ class EvaluationService:
             turn_cand_text = turn.get("candidate_answer", "").strip() if turn else ""
 
             actual_quote: Optional[str] = None
+            quote_verified = False
             if turn_cand_text:
                 if vq and vq.lower() in turn_cand_text.lower():
                     actual_quote = vq
+                    quote_verified = True
                 else:
                     # Ground against actual candidate sentences in this specific turn
                     substantive_sentences = [
@@ -254,6 +279,8 @@ class EvaluationService:
                 "interviewer_question": iq or (turn.get("interviewer_question") if turn else f"Question {q_idx}"),
                 "candidate_answer": ca or turn_cand_text,
                 "verbatim_quote": actual_quote,
+                # False when the model's quote wasn't in the transcript and a sentence of the answer was substituted.
+                "quote_verified": quote_verified,
                 "critique": critique,
                 "strong_answer_guide": guide,
                 "targeted_resource": res,
@@ -315,8 +342,24 @@ class EvaluationService:
             select(Evaluation).where(Evaluation.interview_id == interview_id, Evaluation.user_id == user_id)
         )
         evaluation = existing_res.scalar_one_or_none()
+        cand_text = candidate_text_of(interview)
+        answers = [m for m in interview.messages if m.role == "user" and getattr(m, "kind", "answer") in ("answer", "code_submit")]
+        credibility = {
+            "consistency": consistency,
+            "evidence": evidence_check(evidence_excerpts, cand_text),
+            "question_quotes": {"total": len(verified_question_feedback),
+                                "verified": sum(1 for q in verified_question_feedback if q.get("quote_verified"))},
+        }
+        credibility["confidence"] = confidence(
+            len(answers), len(cand_text.split()), credibility["evidence"],
+            credibility["question_quotes"]["verified"], credibility["question_quotes"]["total"], consistency)
+        if consistency.get("divergent_dimensions"):
+            uncertainty_notes = list(uncertainty_notes) + [
+                f"Two independent grading passes disagreed on: {', '.join(consistency['divergent_dimensions'])}. Scores were averaged."]
+
         if evaluation:
             evaluation.status = "completed"
+            evaluation.credibility = credibility
             evaluation.overall_score = overall_score
             evaluation.rubric_dimension_scores = dimension_scores
             evaluation.strengths = strengths
@@ -329,7 +372,7 @@ class EvaluationService:
             evaluation.uncertainty_notes = uncertainty_notes
             evaluation.raw_llm_response = response.text
             evaluation.stored_transcript = transcript_text
-            evaluation.tokens_used = response.input_tokens + response.output_tokens
+            evaluation.tokens_used = response.input_tokens + response.output_tokens + second_tokens
             evaluation.model_identifier = response.model_id
         else:
             evaluation = Evaluation(
@@ -346,9 +389,10 @@ class EvaluationService:
                 weakness_analysis=verified_weakness_analysis,
                 suggested_corrections=suggested_corrections,
                 uncertainty_notes=uncertainty_notes,
+                credibility=credibility,
                 raw_llm_response=response.text,
                 stored_transcript=transcript_text,
-                tokens_used=response.input_tokens + response.output_tokens,
+                tokens_used=response.input_tokens + response.output_tokens + second_tokens,
                 model_identifier=response.model_id,
             )
             db.add(evaluation)
@@ -368,7 +412,8 @@ class EvaluationService:
 
         # Record tokens
         await ProviderConfigService.record_usage(
-            db, user_id, response.input_tokens + response.output_tokens, response.estimated_cost_usd
+            db, user_id, response.input_tokens + response.output_tokens + second_tokens,
+            response.estimated_cost_usd * (2 if second_tokens else 1)
         )
 
         return evaluation

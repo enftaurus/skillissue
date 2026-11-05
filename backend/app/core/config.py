@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     # Audio endpoints
     AUDIO_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
 
+    # Evaluator credibility: run two independent grading passes in parallel and flag disagreement
+    EVAL_CONSISTENCY_CHECK: bool = True
+
     # Live voice (Nova Sonic, platform credentials via the default AWS chain; ADR 0025)
     VOICE_LIVE_ENABLED: bool = True
     PLATFORM_VOICE_ENABLED: bool = True  # Polly TTS / Transcribe STT via the server's own AWS credentials

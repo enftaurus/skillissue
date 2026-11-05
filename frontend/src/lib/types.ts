@@ -210,6 +210,7 @@ export interface EvaluationComparison {
 }
 
 export interface QuestionFeedback {
+  quote_verified?: boolean;
   question_index: number;
   interviewer_question: string;
   candidate_answer: string;
@@ -242,6 +243,12 @@ export interface Evaluation {
   created_at: string;
   stored_transcript?: string;
   transcript_turns?: QuestionTurn[];
+  credibility?: {
+    consistency?: { passes: number; divergent_dimensions?: string[]; max_gap?: number };
+    evidence?: { quotes: number; verified: number };
+    question_quotes?: { total: number; verified: number };
+    confidence?: { level: 'high' | 'medium' | 'low'; reasons: string[] };
+  } | null;
 }
 
 export interface CodeforcesProblem {

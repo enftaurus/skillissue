@@ -6,10 +6,12 @@ from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
 from backend.app.evaluations.schemas import (
     SelfEvaluationCreate, SelfEvaluationResponse, EvaluationResponse, EvaluationComparisonResponse,
-    RetestInitiateRequest, RetestSessionResponse
+    RetestInitiateRequest, RetestSessionResponse, DisputeCreate, DisputeResponse
 )
 from backend.app.evaluations.service import EvaluationService
 from backend.app.evaluations.replay_diff import build_replay_diff
+from backend.app.evaluations.credibility import resolve_dispute
+from backend.app.core.rate_limit import rate_limit
 from backend.app.providers.factory import ModelFactory
 
 router = APIRouter(prefix="/evaluations", tags=["Evaluations"])
@@ -95,3 +97,37 @@ async def retest_replay_diff(
     except Exception:
         provider = None
     return await build_replay_diff(db, current_user.id, retest_id, provider)
+
+
+@router.post("/{interview_id}/disputes", response_model=DisputeResponse, status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(rate_limit(max_requests=5, window_seconds=60))])
+async def dispute_finding(
+    interview_id: str,
+    data: DisputeCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Challenge one rubric score with a verbatim quote from your answers; it's re-judged and logged."""
+    try:
+        provider = await ModelFactory.get_for_user(db, current_user.id, task_type="evaluation")
+    except Exception:
+        provider = None
+    return await resolve_dispute(db, current_user.id, interview_id, data.dimension_id, data.argument, data.quote, provider)
+
+
+@router.get("/{interview_id}/disputes", response_model=List[DisputeResponse])
+async def list_disputes(
+    interview_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select
+    from backend.app.database.models import Evaluation, EvaluationDispute
+    ev = (await db.execute(select(Evaluation).where(Evaluation.interview_id == interview_id,
+                                                    Evaluation.user_id == current_user.id))).scalar_one_or_none()
+    if ev is None:
+        return []
+    rows = await db.execute(select(EvaluationDispute).where(EvaluationDispute.evaluation_id == ev.id,
+                                                            EvaluationDispute.user_id == current_user.id)
+                            .order_by(EvaluationDispute.created_at))
+    return list(rows.scalars().all())
