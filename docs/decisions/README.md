@@ -30,6 +30,7 @@ This directory contains records of all architectural, infrastructural, and secur
 | [0022](0022-explanation-checks-editor-telemetry-and-recruiter-replay.md) | Post-Code Explanation Checks, Editor Activity Telemetry & Recruiter Replay View | 2026-11-04 | Accepted | Grounded post-code cross-examination, sanitized keystroke telemetry with monotonic sequence ingestion, document delta reconstruction, 8 pure activity features, multi-family correlation flags, and recruiter replay view with product honesty notice. |
 | [0023](0023-project-sandbox-hardening-and-server-side-prompt-log.md) | Project Test Sandbox Hardening & Server-Side Copilot Prompt Log | 2026-11-05 | Accepted | No host root mount, cleared env, JUnit-verified results against authoritative test names, static tamper scan, fail-closed without bubblewrap, editable-only overlay, and prompt scoring from a server-side copilot log. |
 | [0024](0024-interview-turn-accounting-and-adaptive-policy.md) | Interview Turn Accounting & Deterministic Adaptive Policy | 2026-11-05 | Accepted | Message `kind` column, duration-based budget, follow-up cap and topic rotation enforced in code, intent handling, full prompt every turn, honest wrap-up, curated DSA problems, typed LLM errors. |
+| [0025](0025-platform-voice-nova-sonic-hybrid.md) | Platform-Provided Voice: Nova 2.5 Sonic Hybrid | 2026-11-06 | Accepted (prototype) | Live voice via Bedrock bidirectional stream relay; engine decides every question through a tool; platform IAM role (no root keys); quotas; audio never stored; push-to-talk fallback. |
 
 ---
 
