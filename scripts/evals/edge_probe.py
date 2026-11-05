@@ -128,6 +128,46 @@ async def main():
             check("message after end", await c.post(f"/interviews/{iid}/message", headers=m, json={"content": "hello?"}))
             check("hint after end", await c.post(f"/interviews/{iid}/hint", headers=m, json={"level": 1}))
 
+        # --- features added 2026-11-06
+        check("dispute: foreign evaluation", await c.post(f"/evaluations/{fake}/disputes", headers=a,
+                                                          json={"dimension_id": "technical_depth", "quote": "x" * 20, "argument": "y" * 20}))
+        check("dispute: short quote", await c.post(f"/evaluations/{fake}/disputes", headers=a,
+                                                   json={"dimension_id": "technical_depth", "quote": "x", "argument": "y" * 20}))
+        check("replay diff: unknown retest", await c.get(f"/evaluations/retests/{fake}/diff", headers=a))
+        check("delivery: foreign interview", await c.get(f"/interviews/{fake}/delivery", headers=a))
+        check("timeline: unknown project", await c.get("/projects/nope/timeline", headers=a))
+        check("self-awareness empty", await c.get("/analytics/self-awareness", headers=a), ok_codes=[200])
+        check("voice status", await c.get("/voice/status"), ok_codes=[200])
+        if os.environ.get("SKILLISSUE_EVAL_EMAIL"):
+            tok2 = (await c.post("/auth/login", json={"email": os.environ["SKILLISSUE_EVAL_EMAIL"],
+                                                      "password": os.environ["SKILLISSUE_EVAL_PASSWORD"]})).json()["access_token"]
+            m2 = {"Authorization": f"Bearer {tok2}"}
+            for _ in range(10):
+                rr = await c.post("/interviews/domain", headers=m2, json={"category": "technical", "domain_skills": ["Python"]})
+                if rr.status_code != 429:
+                    break
+                await asyncio.sleep(10)
+            iid2 = rr.json()["id"]
+            check("delivery: absurd numbers clamped", await c.post(f"/interviews/{iid2}/message", headers=m2, json={
+                "content": "We used Redis.", "client_turn_id": str(uuid.uuid4()),
+                "delivery": [{"words": 10**12, "duration_s": -1, "fillers": {"um": 10**9, "x" * 100: 5}}]}), ok_codes=[200])
+            d = (await c.get(f"/interviews/{iid2}/delivery", headers=m2)).json()["summary"]
+            ok = d is None or (d.get("top_fillers") and d["top_fillers"][0][1] <= 500)
+            print(f"{'ok  ' if ok else 'BUG '}delivery summary clamped -> {d}")
+            if not ok:
+                findings.append(("delivery clamp", d, ""))
+            check("delivery: other user reads", await c.get(f"/interviews/{iid2}/delivery", headers=b))
+            check("delivery: 11 parts rejected", await c.post(f"/interviews/{iid2}/message", headers=m2, json={
+                "content": "More.", "delivery": [{"words": 1}] * 11}))
+
+        # --- executor endpoint requires its secret
+        async with httpx.AsyncClient(timeout=10) as ex:
+            try:
+                r = await ex.post("http://127.0.0.1:8001/execute-project", json={"repository_files": {}, "editable_files": [], "candidate_files": {}})
+                check("executor /execute-project without secret", r)
+            except httpx.ConnectError:
+                print("info executor not reachable")
+
         # --- coding
         check("coding: unknown problem", await c.post("/coding/run", headers=a, json={"problem_id": "nope-123", "language": "python", "code": "print(1)"}))
 
