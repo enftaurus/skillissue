@@ -14,6 +14,7 @@ import { PlanlyPage } from './features/improvement-plan/PlanlyPage';
 import { ProgressAnalyticsPage } from './features/progress/ProgressAnalyticsPage';
 import { CodingPracticePage } from './features/coding/CodingPracticePage';
 import { CodeComprehensionPage } from './features/comprehension/CodeComprehensionPage';
+import { LandingPage } from './features/landing/LandingPage';
 import { ProjectCatalogPage } from './features/projects/ProjectCatalogPage';
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage';
 import { CompanyTracksPage } from './features/tracks/CompanyTracksPage';
@@ -79,6 +80,24 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
   return <>{children}</>;
 };
 
+// Signed-out visitors get the landing page; signed-in users get their dashboard.
+const HomeRoute: React.FC = () => {
+  const { user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+  if (!user) return <LandingPage />;
+  return (
+    <ProtectedRoute>
+      <DashboardPage />
+    </ProtectedRoute>
+  );
+};
+
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const location = useLocation();
@@ -100,6 +119,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     location.pathname === '/enterprise/login' ||
     location.pathname === '/admin/login' ||
     location.pathname === '/register' ||
+    location.pathname === '/welcome' ||
     location.pathname === '/onboarding/bedrock';
 
   const isInterviewSession =
@@ -179,14 +199,8 @@ export const App: React.FC = () => {
             <Route path="/register" element={<RegisterPage />} />
 
             {/* Protected Core Application Routes */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <DashboardPage />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/welcome" element={<LandingPage />} />
+            <Route path="/" element={<HomeRoute />} />
             <Route
               path="/interviews/new"
               element={

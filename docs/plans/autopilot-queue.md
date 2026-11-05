@@ -77,7 +77,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - [ ] 6d. Evals: add comprehension personas to `scripts/evals/interview_eval.py`.
 
 ### 7. Landing page & UI/UX polish
-- [~] 7a. Public landing page at `/` for signed-out visitors (dashboard stays for signed-in):
+- [x] 7a. Public landing page at `/` for signed-out visitors (dashboard stays for signed-in):
       hero with the tagline, animated interview/feedback demo, USPs (real-interview realism,
       code comprehension, AI-assisted coding, evidence-based feedback), how-it-works loop, CTA.
       Light theme per AGENTS.md, tasteful motion (reduced-motion respected), mobile-first.
@@ -99,3 +99,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 01:35 IST: 3d done. Browser live voice: AudioWorklet 16 kHz capture, gapless 24 kHz playback with instant barge-in stop, captions, state + level UI, typing/push-to-talk paused during the call; Vite proxy ws enabled. Playwright (fake mic): call connected, 4 engine turns in 45 s.
 - 2026-11-06 01:45 IST: interactive session claimed 6a-6c (code comprehension). Autopilot runner now waits while an interactive session is actively writing in this repo.
 - 2026-11-06 02:10 IST: 6a-6c done. 9 Google-style items (TTL/LRU cache, token bucket, quota race, retry, keyset pagination, consistent hashing, async fan-out, closures/defaults, build order) x 3-4 questions; trace keys verified by execution in tests; deterministic trace/location/numeric grading + LLM judge with non-revealing reviewer follow-ups; /comprehension UI with clickable line refs, timer, reveal. Tailwind animations defined (were no-ops). Interactive session claimed 7a.
+- 2026-11-06 02:20 IST: 7a done. Public landing at / for signed-out visitors (and /welcome): animated live-interview hero, rounds marquee, 4 USPs, interactive code-reading demo, loop, real-eval proof, CTA; scroll reveal, reduced motion, no h-scroll at 390 px; signed-in / still shows the dashboard; 401 redirect skips public pages.
