@@ -39,10 +39,10 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       (SDK, event schema, voices, latency) in `docs/product/nova-sonic-notes.md`.
 - [x] 3b. ADR 0025: platform-provided voice (not BYOC), least-privilege IAM role for prod, per-user
       voice-minute quota, audio never stored, Sonic speaks; our engine decides questions via tool.
-- [~] 3c. Backend: `/api/v1/voice/ws/{interview_id}` WebSocket relay (auth, per-user quota,
+- [x] 3c. Backend: `/api/v1/voice/ws/{interview_id}` WebSocket relay (auth, per-user quota,
       interview ownership), Bedrock stream manager, `get_next_question` tool → existing
       `InterviewService.send_message`, transcripts persisted as normal messages.
-- [ ] 3d. Frontend: AudioWorklet mic capture (16 kHz PCM), streamed playback (24 kHz), barge-in,
+- [~] 3d. Frontend: AudioWorklet mic capture (16 kHz PCM), streamed playback (24 kHz), barge-in,
       live captions, "Live voice" toggle with fallback to current push-to-talk.
 - [ ] 3e. STT upgrade for push-to-talk fallback: Voxtral (Bedrock) or Transcribe with tech-term
       vocabulary; benchmark accuracy vs faster-whisper base.en on the fixture WAVs.
@@ -95,3 +95,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 00:30 IST: eval suite done (scripts/evals/interview_eval.py). Baseline (10 runs): checks pass 100%; realism 3.11, adaptivity 3.33, no-slop 3.89, rigor 3.44. Weak: templated wrap-ups, ramblers not redirected, definitional questions for stuck candidates, boasts not challenged. Interactive session claimed item 2.
 - 2026-11-06 00:55 IST: item 2 done. Persona + agenda opener, 'any questions for me?' closing phase (not counted), in-persona honest close, rambling interrupts, scenario-based simplification, one-time switch offer then early close, natural topic bridges, deeper follow-ups for strong answers, slop stripping; eval now simulates strong/overconfident/rambler candidates with an LLM. Eval (10 runs): realism 4.1, adaptivity 4.2, no-slop 4.5, rigor 4.1 (baseline 3.1/3.3/3.9/3.4). Weak spot: managerial/clueless adaptivity 2. Interactive session claimed 3a.
 - 2026-11-06 01:05 IST: 3a spike works (Sonic transcribes, calls get_next_question, speaks our question; first audio <1.5 s; needs aws_sdk_bedrock_runtime + awscrt). Notes in docs/product/nova-sonic-notes.md. 3b ADR 0025 written. Interactive session claimed 3c.
+- 2026-11-06 01:25 IST: 3c done. /api/v1/voice/ws/{id} relay (first-message auth, ownership/status checks, one session per user, daily quota, 30-min cap), turn settling + duplicate tool-call suppression for Sonic's eager endpointing, every turn through InterviewService.send_message. Live test: opener spoken, answer -> engine question spoken (3.5 s), turn persisted. Interactive session claimed 3d.

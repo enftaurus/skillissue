@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     # Audio endpoints
     AUDIO_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
 
+    # Live voice (Nova Sonic, platform credentials via the default AWS chain; ADR 0025)
+    VOICE_LIVE_ENABLED: bool = True
+    SONIC_MODEL_ID: str = "amazon.nova-2-5-sonic"
+    SONIC_REGION: str = "us-east-1"
+    SONIC_DEFAULT_VOICE: str = "matthew"
+    VOICE_DAILY_MINUTES: int = 60
+    VOICE_SESSION_MAX_MINUTES: int = 30
+
     # Codeforces API
     CF_API_KEY: str = ""
     CF_API_SECRET: str = ""
