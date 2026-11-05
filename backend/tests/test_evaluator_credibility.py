@@ -65,3 +65,10 @@ async def test_dispute_flow(client, monkeypatch):
                               json={"dimension_id": dim, "quote": "PgBouncer in transaction mode because connection count", "argument": "Again please."})
     assert again.json()["error"]["code"] == "ALREADY_DISPUTED"
     assert len((await client.get(f"/api/v1/evaluations/{iid}/disputes", headers=h)).json()) == 1
+
+
+def test_quote_verified_survives_response_schema():
+    from backend.app.evaluations.schemas import QuestionFeedback
+    q = QuestionFeedback(question_index=1, interviewer_question="q", candidate_answer="a", critique="c",
+                         strong_answer_guide="g", quote_verified=False)
+    assert q.model_dump()["quote_verified"] is False

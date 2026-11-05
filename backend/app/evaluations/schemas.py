@@ -42,6 +42,7 @@ class QuestionFeedback(BaseModel):
     interviewer_question: str
     candidate_answer: str
     verbatim_quote: Optional[str] = None
+    quote_verified: Optional[bool] = None
     critique: str
     strong_answer_guide: str
     targeted_resource: Optional[str] = None
