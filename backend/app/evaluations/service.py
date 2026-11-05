@@ -140,7 +140,10 @@ class EvaluationService:
             if not isinstance(second_res, Exception):
                 second_tokens = (second_res.input_tokens or 0) + (second_res.output_tokens or 0)
                 sp = second_res.parsed_json or {}
-                if isinstance(sp, dict) and isinstance(sp.get("dimension_scores"), dict):
+                if not validate_evaluation_schema(response.parsed_json or {}) and validate_evaluation_schema(sp):
+                    # First pass malformed, second valid: use it instead of spending a retry.
+                    response, second_tokens = second_res, (first_res.input_tokens or 0) + (first_res.output_tokens or 0)
+                elif isinstance(sp, dict) and isinstance(sp.get("dimension_scores"), dict):
                     second_pass = sp["dimension_scores"]
         else:
             response = await provider.generate_json(prompt=user_prompt, system_prompt=system_prompt)
