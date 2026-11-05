@@ -43,6 +43,7 @@ class ProjectTestRunResponse(BaseModel):
     duration_ms: int
     test_results: List[ProjectTestCaseResult] = []
     raw_output: str = ""
+    integrity_flags: List[str] = []
 
 class ProjectCopilotRequest(BaseModel):
     files: Dict[str, str]
@@ -73,6 +74,9 @@ class ProjectPromptAnalysisResponse(BaseModel):
     summary: str
     evaluated_prompts: List[PromptEvaluationItem]
     key_takeaways: List[str]
+    assessed: bool = True
+    scoring_method: str = "heuristic"  # 'heuristic' | 'llm+heuristic' | 'none'
+    integrity_flags: List[str] = []
 
 class ProjectSubmissionRequest(BaseModel):
     files: Dict[str, str]

@@ -1,3 +1,4 @@
+import re
 from typing import List
 from backend.app.interviews.rubrics import RubricDimension
 
@@ -80,6 +81,11 @@ Return a JSON object conforming strictly to this format:
 }}
 """
 
+def _escape_transcript_tags(text: str) -> str:
+    """Neutralise attempts to close the untrusted-transcript delimiter from inside an answer."""
+    return re.sub(r"<\s*/?\s*untrusted_candidate_transcript\s*>", lambda m: m.group(0).replace("<", "&lt;").replace(">", "&gt;"), text or "", flags=re.I)
+
+
 def build_evaluation_prompt(
     category: str,
     target_role: str,
@@ -110,7 +116,7 @@ def build_evaluation_prompt(
         f"INTERVIEW ROLE: {target_role}\n"
         f"CATEGORY: {category.upper()}\n\n"
         "<untrusted_candidate_transcript>\n"
-        f"{transcript_text}\n"
+        f"{_escape_transcript_tags(transcript_text)}\n"
         "</untrusted_candidate_transcript>\n\n"
         "Evaluate the candidate transcript within the <untrusted_candidate_transcript> tags strictly against the rubric dimensions and output the structured JSON evaluation including question_feedback."
     )

@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     SANDBOX_RUNTIME: str = "runc"           # 'runc', 'runsc', 'kata'
     SANDBOX_EXECUTOR_URL: str = "http://127.0.0.1:8001"
     SANDBOX_EXECUTOR_SECRET: str = "skillissue-executor-internal-secret-2026"
+    # Multi-file project test runs require bubblewrap. Never run candidate code on the
+    # host without it unless a developer explicitly opts in (never in production).
+    ALLOW_UNSANDBOXED_PROJECT_TESTS: bool = False
+
+    # Audio endpoints
+    AUDIO_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
 
     # Codeforces API
     CF_API_KEY: str = ""

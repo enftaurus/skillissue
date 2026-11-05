@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +10,62 @@ from backend.app.interviews.agent.checkpoint import get_interview_checkpointer
 from backend.app.interviews.agent.state import InterviewAgentState
 from backend.app.interviews.prompts import build_interviewer_system_prompt
 from backend.app.providers.model_client_factory import ModelClientFactory
-from backend.app.core.errors import AppException, EntityNotFoundError
+from backend.app.core.errors import AppException, EntityNotFoundError, translate_model_error
 from backend.app.core.logging import logger
+from backend.app.interviews.constants import max_turns_for_duration, count_candidate_answers
+
+_COMPANIES = ["google", "uber", "openai", "meta", "amazon", "apple", "netflix", "microsoft", "stripe"]
+
+
+def detect_company(interview: Interview, jd: Optional[JobDescription] = None) -> Optional[str]:
+    """Company calibration source: JD company first, then whole-word matches in title/role/skills."""
+    if jd is not None and getattr(jd, "company", None):
+        for comp in _COMPANIES:
+            if re.search(rf"\b{comp}\b", jd.company.lower()):
+                return comp.capitalize()
+    blob = f"{interview.title or ''} {interview.target_role or ''} {' '.join(interview.domain_skills or [])}".lower()
+    for comp in _COMPANIES:
+        if re.search(rf"\b{comp}\b", blob):
+            return comp.capitalize()
+    return None
+
+
+def build_full_system_prompt(
+    interview: Interview,
+    domain_skills: List[str],
+    resume: Optional[Resume],
+    jd: Optional[JobDescription],
+    comp_name: Optional[str],
+) -> str:
+    return build_interviewer_system_prompt(
+        category=interview.category,
+        target_role=interview.target_role,
+        difficulty=interview.difficulty,
+        domain_skills=domain_skills,
+        jd_role=jd.extracted_role if jd else None,
+        jd_skills=jd.extracted_skills if jd else None,
+        jd_requirements=jd.extracted_requirements if jd else None,
+        resume_skills=resume.extracted_skills if resume else None,
+        resume_projects=resume.projects_context if resume else None,
+        resume_text=resume.extracted_text if resume else None,
+        company_name=comp_name,
+    )
+
+
+def _problem_already_presented(interview: Interview) -> bool:
+    return any(
+        m.role == "assistant" and ("Here is your question" in (m.content or "") or "\n### " in f"\n{m.content or ''}")
+        for m in interview.messages
+    )
+
+
+async def _invoke_model(model, messages):
+    try:
+        return await model.ainvoke(messages)
+    except Exception as e:
+        logger.warning(f"Interview opening question failed: {type(e).__name__}: {str(e)[:300]}")
+        raise translate_model_error(e) from e
+
 
 class InterviewAgentService:
     """
@@ -41,31 +96,13 @@ class InterviewAgentService:
             for skill in domain_skills
         }
 
-        # Extract potential company name from interview title, role, or domain skills
-        comp_name = None
-        search_blob = f"{interview.title or ''} {interview.target_role or ''} {' '.join(domain_skills)}".lower()
-        for comp in ["google", "uber", "openai", "meta", "amazon", "apple", "netflix", "microsoft", "stripe"]:
-            if comp in search_blob:
-                comp_name = comp.capitalize()
-                break
-
-        system_prompt = build_interviewer_system_prompt(
-            category=interview.category,
-            target_role=interview.target_role,
-            difficulty=interview.difficulty,
-            domain_skills=domain_skills,
-            jd_role=jd.extracted_role if jd else None,
-            jd_skills=jd.extracted_skills if jd else None,
-            jd_requirements=jd.extracted_requirements if jd else None,
-            resume_skills=resume.extracted_skills if resume else None,
-            resume_projects=resume.projects_context if resume else None,
-            company_name=comp_name,
-        )
+        comp_name = detect_company(interview, jd)
+        system_prompt = build_full_system_prompt(interview, domain_skills, resume, jd, comp_name)
 
         if interview.category == "dsa":
             initial_question = (
-                "Hey man, welcome to the mock interview of Skill Issue! Before we start, "
-                "introduce yourself and tell me about your background and your knowledge or favorite areas in DSA."
+                "Welcome to the DSA round. Before the problem: introduce yourself in a few sentences, "
+                "and tell me which DSA topics you're strongest and weakest at."
             )
         elif interview.category == "behavioral":
             comp_label = f" for {comp_name}" if comp_name else ""
@@ -79,7 +116,7 @@ class InterviewAgentService:
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=first_q_prompt),
             ]
-            response = await model.ainvoke(prompt_messages)
+            response = await _invoke_model(model, prompt_messages)
             raw_content = response.content
             initial_question = ("".join(b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text").strip() or str(raw_content)).strip() if isinstance(raw_content, list) else str(raw_content).strip()
         elif interview.category == "managerial":
@@ -94,7 +131,7 @@ class InterviewAgentService:
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=first_q_prompt),
             ]
-            response = await model.ainvoke(prompt_messages)
+            response = await _invoke_model(model, prompt_messages)
             raw_content = response.content
             initial_question = ("".join(b.get("text", "") for b in raw_content if isinstance(b, dict) and b.get("type") == "text").strip() or str(raw_content)).strip() if isinstance(raw_content, list) else str(raw_content).strip()
         else:
@@ -111,7 +148,7 @@ class InterviewAgentService:
                 HumanMessage(content=first_q_prompt),
             ]
 
-            response = await model.ainvoke(prompt_messages)
+            response = await _invoke_model(model, prompt_messages)
             raw_content = response.content
             if isinstance(raw_content, list):
                 initial_question = "".join(
@@ -168,9 +205,15 @@ class InterviewAgentService:
                 "recent_messages": [{"role": "assistant", "content": initial_question}],
                 "candidate_evidence": [],
                 "turn_count": 0,
-                "max_turns": 8,
+                "max_turns": max_turns_for_duration(interview.target_duration_minutes),
                 "next_action": "next_topic",
                 "phase": "active",
+                "system_prompt": system_prompt,
+                "topic_follow_ups": {current_topic: 0},
+                "topic_struggles": {},
+                "topic_questions": {current_topic: 1},
+                "answer_log": [],
+                "problem_presented": False,
             }
             # Save checkpoint state via graph update
             try:
@@ -212,8 +255,13 @@ class InterviewAgentService:
         config = {"configurable": {"thread_id": thread_id, "model": model}}
 
         # Load recent conversational history from database
-        history_dicts = [{"role": m.role, "content": m.content} for m in interview.messages]
-        candidate_turns = len([m for m in interview.messages if m.role == "user"])
+        # Repeat/clarify exchanges are noise for the model; everything else is context.
+        history_dicts = [
+            {"role": m.role, "content": m.content}
+            for m in interview.messages
+            if getattr(m, "kind", "answer") not in ("meta", "repeat")
+        ]
+        candidate_turns = count_candidate_answers(interview.messages)
 
         async with get_interview_checkpointer() as checkpointer:
             graph = create_interview_graph(checkpointer=checkpointer)
@@ -259,12 +307,32 @@ class InterviewAgentService:
                 "latest_candidate_message_id": candidate_message_id,
                 "client_turn_id": client_turn_id,
                 "turn_count": turn_count,
-                "max_turns": 8,
+                "max_turns": max_turns_for_duration(interview.target_duration_minutes),
                 "phase": "active",
                 "coding_problem_id": interview.coding_problem_id,
+                # Older checkpoints predate these keys: rebuild instead of silently dropping context.
+                "system_prompt": prior_state.get("system_prompt")
+                or build_full_system_prompt(interview, domain_skills, resume, jd, detect_company(interview, jd)),
+                "topic_follow_ups": prior_state.get("topic_follow_ups") or {},
+                "topic_struggles": prior_state.get("topic_struggles") or {},
+                "topic_questions": prior_state.get("topic_questions") or {},
+                "answer_log": prior_state.get("answer_log") or [],
+                "problem_presented": bool(prior_state.get("problem_presented")) or _problem_already_presented(interview),
             }
 
-            result_state = await graph.ainvoke(input_state, config=config)
+            try:
+                result_state = await graph.ainvoke(input_state, config=config)
+            except Exception as e:
+                # Nodes checkpoint as they complete, so a failure in generate_question would
+                # leave assessment state (evidence, topic statuses) for a message the DB is about
+                # to roll back. Restore the pre-turn snapshot to keep checkpoint and DB consistent.
+                if prior_state:
+                    try:
+                        await graph.aupdate_state(config, dict(prior_state))
+                    except Exception as restore_err:
+                        logger.warning(f"Checkpoint restore after failed turn failed: {restore_err}")
+                logger.warning(f"Interview turn failed for {interview.id}: {type(e).__name__}: {str(e)[:300]}")
+                raise translate_model_error(e) from e
 
         # Update interview model with summary, topics, and lifecycle statuses
         interview.current_summary = result_state.get("running_summary", "")
@@ -302,7 +370,7 @@ class InterviewAgentService:
         thread_id = f"interview_{interview.id}"
         config = {"configurable": {"thread_id": thread_id}}
 
-        candidate_turns = len([m for m in interview.messages if m.role == "user"])
+        candidate_turns = count_candidate_answers(interview.messages)
         snapshot_values: Dict[str, Any] = {}
 
         try:
@@ -330,5 +398,5 @@ class InterviewAgentService:
             "running_summary": running_summary,
             "candidate_evidence": candidate_evidence,
             "turn_count": candidate_turns,
-            "max_turns": 8,
+            "max_turns": max_turns_for_duration(interview.target_duration_minutes),
         }

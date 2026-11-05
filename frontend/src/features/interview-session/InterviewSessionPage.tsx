@@ -10,7 +10,8 @@ import {
   CodingProblem,
   HintResponse,
 } from '../../lib/types';
-import { SpeechHandler, VoiceOption, DEFAULT_VOICES, getSelectedVoice, setSelectedVoice } from '../../lib/speech';
+import { SimpleMarkdown } from '../../components/ui/SimpleMarkdown';
+import { SpeechHandler, VoiceOption, DEFAULT_VOICES, DEFAULT_VOICE_ID, getSelectedVoice, setSelectedVoice } from '../../lib/speech';
 import { useEditorTelemetry } from '../../lib/useEditorTelemetry';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -60,15 +61,24 @@ export const InterviewSessionPage: React.FC = () => {
   const [selectedVoice, setSelectedVoiceState] = useState<string>(getSelectedVoice());
   const [availableVoices, setAvailableVoices] = useState<VoiceOption[]>(DEFAULT_VOICES);
   const speechHandlerRef = useRef<SpeechHandler | null>(null);
+  const [micNotice, setMicNotice] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const spokenMessageIdsRef = useRef<Set<string>>(new Set());
+  const interviewLiveRef = useRef(false);
 
   const toggleAutoSpeak = () => {
-    setAutoSpeak((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('skillissue_auto_speak', String(next));
-      }
-      return next;
-    });
+    const next = !autoSpeak;
+    if (!next) {
+      // Muting must silence what's playing now and anything still being fetched.
+      SpeechHandler.stopSpeaking();
+      setIsSpeaking(false);
+    }
+    try {
+      localStorage.setItem('skillissue_auto_speak', String(next));
+    } catch {
+      /* storage unavailable: preference stays in memory */
+    }
+    setAutoSpeak(next);
   };
 
 
@@ -108,6 +118,7 @@ export const InterviewSessionPage: React.FC = () => {
     topic_statuses?: Record<string, string>;
     running_summary?: string;
     turn_count?: number;
+    max_turns?: number;
   } | null>(null);
 
   // Elapsed Timer
@@ -129,15 +140,20 @@ export const InterviewSessionPage: React.FC = () => {
         setMessages(msgs);
         setHintLevelUsed(data.hint_level_used || 0);
 
-        // Auto-speak opening question by default
-        const savedAutoSpeak = typeof window !== 'undefined' ? localStorage.getItem('skillissue_auto_speak') : null;
+        // Auto-speak the pending question once (only for live sessions; StrictMode runs effects twice).
+        let savedAutoSpeak: string | null = null;
+        try {
+          savedAutoSpeak = localStorage.getItem('skillissue_auto_speak');
+        } catch {
+          savedAutoSpeak = null;
+        }
         const willAutoSpeak = savedAutoSpeak !== null ? savedAutoSpeak === 'true' : true;
-        if (willAutoSpeak && msgs.length > 0) {
+        if (willAutoSpeak && data.status === 'in_progress' && msgs.length > 0) {
           const lastMsg = msgs[msgs.length - 1];
-          if (lastMsg.role === 'assistant' && lastMsg.content) {
-            setTimeout(() => {
-              SpeechHandler.speak(lastMsg.content, undefined, selectedVoice);
-            }, 350);
+          if (lastMsg.role === 'assistant' && lastMsg.content && !spokenMessageIdsRef.current.has(lastMsg.id)) {
+            spokenMessageIdsRef.current.add(lastMsg.id);
+            setIsSpeaking(true);
+            SpeechHandler.speak(lastMsg.content, () => setIsSpeaking(false), getSelectedVoice());
           }
         }
 
@@ -166,7 +182,14 @@ export const InterviewSessionPage: React.FC = () => {
 
     // Fetch Neural Voice catalog
     SpeechHandler.fetchVoices().then((v) => {
-      if (v && v.length > 0) setAvailableVoices(v);
+      if (v && v.length > 0) {
+        setAvailableVoices(v);
+        const current = v.find((voice) => voice.id === getSelectedVoice());
+        if (!current || current.available === false) {
+          setSelectedVoiceState(DEFAULT_VOICE_ID);
+          setSelectedVoice(DEFAULT_VOICE_ID);
+        }
+      }
     }).catch(() => {});
 
     // Initialize Cross-Browser Cloud Neural Speech Handler
@@ -181,9 +204,14 @@ export const InterviewSessionPage: React.FC = () => {
           setInputText(live);
         }
       },
-      (err) => console.warn('Speech recognition notice:', err),
-      (listening) => setIsListening(listening),
-      (level) => setAudioLevel(level)
+      (err) => setMicNotice(err),
+      (listening) => {
+        setIsListening(listening);
+        if (listening) setMicNotice('');
+      },
+      (level) => setAudioLevel(level),
+      undefined,
+      (busy) => setIsTranscribing(busy)
     );
     speechHandlerRef.current = handler;
     setIsSpeechSupported(handler.isSupported);
@@ -194,15 +222,22 @@ export const InterviewSessionPage: React.FC = () => {
     };
   }, [id]);
 
-  // Elapsed Timer effect
+  // Elapsed timer derived from server timestamps, so a reload doesn't reset it.
   useEffect(() => {
-    if (interview?.status !== 'in_progress') return;
-
-    const timer = setInterval(() => {
-      setSecondsElapsed((prev) => prev + 1);
-    }, 1000);
-
+    if (!interview?.created_at) return;
+    const start = Date.parse(interview.created_at);
+    const compute = () => {
+      const end = interview.status === 'in_progress' || !interview.completed_at ? Date.now() : Date.parse(interview.completed_at);
+      setSecondsElapsed(Math.max(0, Math.floor((end - start) / 1000)));
+    };
+    compute();
+    if (interview.status !== 'in_progress') return;
+    const timer = setInterval(compute, 1000);
     return () => clearInterval(timer);
+  }, [interview?.status, interview?.created_at, interview?.completed_at]);
+
+  useEffect(() => {
+    interviewLiveRef.current = interview?.status === 'in_progress';
   }, [interview?.status]);
 
   // Prevent accidental tab close during live interview
@@ -225,7 +260,7 @@ export const InterviewSessionPage: React.FC = () => {
   // Spacebar Push-To-Talk
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && e.target === document.body && !isListening && isSpeechSupported) {
+      if (e.code === 'Space' && e.target === document.body && !isListening && isSpeechSupported && interviewLiveRef.current) {
         e.preventDefault();
         toggleSpeechRecognition();
       }
@@ -297,6 +332,9 @@ export const InterviewSessionPage: React.FC = () => {
       setInputText('');
       baseInputTextRef.current = '';
       pendingTurnIdRef.current = null;
+      if (assistantMsg.kind === 'wrapup') {
+        setInterview((prev) => (prev ? { ...prev, status: 'completed', completed_at: new Date().toISOString() } : prev));
+      }
 
       // Update state snapshot
       api.get<any>(`/interviews/${id}/state`).then(setSessionState).catch(() => {});
@@ -407,6 +445,8 @@ export const InterviewSessionPage: React.FC = () => {
       }
       const updated = await api.get<Interview>(`/interviews/${id}`);
       setMessages(updated.messages || []);
+      setInterview(updated);
+      api.get<any>(`/interviews/${id}/state`).then(setSessionState).catch(() => {});
     } catch (err: any) {
       setCodeExecutionError(err.message || 'Execution failed. Review syntax or memory constraints.');
     } finally {
@@ -421,6 +461,9 @@ export const InterviewSessionPage: React.FC = () => {
   };
 
   const assistantCount = messages.filter((m) => m.role === 'assistant').length;
+  const isLive = interview?.status === 'in_progress';
+  const answersGiven = sessionState?.turn_count ?? Math.max(0, assistantCount - 1);
+  const maxAnswers = sessionState?.max_turns ?? 8;
 
   if (loading) {
     return (
@@ -440,15 +483,20 @@ export const InterviewSessionPage: React.FC = () => {
       <div className="bg-white border border-surface-border rounded-xl px-4 py-3 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* Left: Live status & title */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
-            </span>
-            <span className="text-xs font-bold uppercase tracking-wider text-rose-700">
-              Live Interview
-            </span>
-          </div>
+          {isLive ? (
+            <div className="flex items-center gap-2">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+              </span>
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-700">Live Interview</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-400" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Completed</span>
+            </div>
+          )}
 
           <span className="text-ink-subtle">•</span>
 
@@ -460,7 +508,7 @@ export const InterviewSessionPage: React.FC = () => {
               </Badge>
             </div>
             <div className="text-[11px] text-ink-muted">
-              Turn {Math.min(8, assistantCount)} of ~8 · {interview?.target_role} ({interview?.difficulty})
+              Answer {Math.min(maxAnswers, answersGiven)} of {maxAnswers} · {interview?.target_role} ({interview?.difficulty})
             </div>
           </div>
         </div>
@@ -502,8 +550,8 @@ export const InterviewSessionPage: React.FC = () => {
                 title="Select Interviewer Voice Persona"
               >
                 {availableVoices.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
+                  <option key={v.id} value={v.id} disabled={v.available === false} title={v.unavailable_reason || ''}>
+                    {v.name}{v.available === false ? ' (unavailable)' : ''}
                   </option>
                 ))}
               </select>
@@ -522,7 +570,7 @@ export const InterviewSessionPage: React.FC = () => {
           </Button>
 
           {/* Socratic Hint Ladder Menu */}
-          <div className="relative">
+          <div className={`relative ${isLive ? '' : 'hidden'}`}>
             <Button
               variant="secondary"
               size="sm"
@@ -590,7 +638,7 @@ export const InterviewSessionPage: React.FC = () => {
             onClick={() => setShowSelfEvalModal(true)}
             className="text-xs font-semibold"
           >
-            End & Self-Evaluate
+            {isLive ? 'End & Self-Evaluate' : 'Self-Evaluate & See Report'}
           </Button>
 
           {/* Exit Interview Button (Focus Mode exit confirmation) */}
@@ -776,7 +824,7 @@ export const InterviewSessionPage: React.FC = () => {
                         : 'bg-indigo-600 text-white shadow-sm'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{m.content}</p>
+                    {isAssistant ? <SimpleMarkdown text={m.content} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
                     {isAssistant && (
                       <button
                         onClick={() => speakWithMicSuppression(m.content)}
@@ -840,6 +888,17 @@ export const InterviewSessionPage: React.FC = () => {
             </div>
           )}
 
+          {(isTranscribing || micNotice) && !isListening && (
+            <div
+              role="status"
+              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm border ${
+                isTranscribing ? 'bg-slate-50 border-slate-200 text-slate-700' : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}
+            >
+              {isTranscribing ? 'Transcribing your answer…' : micNotice}
+            </div>
+          )}
+
           {/* Input Box & Speech Controls */}
           <form onSubmit={handleSendMessage} className="space-y-2">
             <div className="relative rounded-2xl border border-slate-200/80 bg-white shadow-xs focus-within:ring-2 focus-within:ring-indigo-500/25 focus-within:border-indigo-500 overflow-hidden transition-all">
@@ -850,9 +909,9 @@ export const InterviewSessionPage: React.FC = () => {
                   setInputText(e.target.value);
                   baseInputTextRef.current = e.target.value;
                 }}
-                placeholder="State your technical answer directly. Cite metrics or trade-offs (Press Enter to submit, or use mic below)..."
-                className="w-full p-4 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none resize-none font-sans"
-                disabled={isSending}
+                placeholder={isLive ? 'State your technical answer directly. Cite metrics or trade-offs (Press Enter to submit, or use mic below)...' : 'This round is over. Self-evaluate to see your report.'}
+                className="w-full p-4 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none resize-none font-sans disabled:bg-slate-50"
+                disabled={isSending || !isLive}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -863,7 +922,7 @@ export const InterviewSessionPage: React.FC = () => {
 
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-100">
                 <div className="flex items-center gap-2.5">
-                  {isSpeechSupported && (
+                  {isSpeechSupported && isLive && (
                     <Button
                       type="button"
                       variant={isListening ? 'danger' : 'secondary'}
@@ -895,7 +954,7 @@ export const InterviewSessionPage: React.FC = () => {
                   variant="primary"
                   size="sm"
                   isLoading={isSending}
-                  disabled={!inputText.trim()}
+                  disabled={!inputText.trim() || !isLive}
                   className="gap-1.5 text-xs font-semibold px-4"
                 >
                   <Send className="w-3.5 h-3.5" />

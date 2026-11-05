@@ -241,8 +241,13 @@ export const DashboardPage: React.FC = () => {
               {analytics?.reassessments && analytics.reassessments.length > 0 ? (
                 <span>
                   Latest reassessment delta:{' '}
-                  <strong className="text-emerald-700 font-semibold">
-                    +{analytics.reassessments[0].score_delta} points
+                  <strong
+                    className={`font-semibold ${
+                      analytics.reassessments[0].score_delta >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                    }`}
+                  >
+                    {analytics.reassessments[0].score_delta > 0 ? '+' : ''}
+                    {analytics.reassessments[0].score_delta} points
                   </strong>{' '}
                   on identical rubrics.
                 </span>

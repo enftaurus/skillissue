@@ -26,6 +26,7 @@ class AdaptiveDecision(BaseModel):
     suggested_topic: Optional[str] = Field(default=None, description="Topic to pivot to if changing topics")
     identified_evidence: Optional[str] = Field(default=None, description="Evidence or claim extracted from candidate answer")
     topic_status: Optional[str] = Field(default=None, description="Status update for current topic: 'assessed' | 'needs_follow_up' | 'in_progress'")
+    answer_quality: Optional[str] = Field(default=None, description="'strong' | 'adequate' | 'weak' | 'non_answer'")
 
 class InterviewAgentState(TypedDict, total=False):
     """
@@ -60,3 +61,12 @@ class InterviewAgentState(TypedDict, total=False):
     phase: str
     coding_problem_id: Optional[str]
     last_error: Optional[str]
+    # Policy bookkeeping (QA audit 2026-11-05)
+    system_prompt: Optional[str]
+    topic_follow_ups: Dict[str, int]
+    topic_struggles: Dict[str, int]
+    topic_questions: Dict[str, int]
+    answer_log: List[Dict[str, Any]]
+    last_intent: str
+    last_quality: str
+    problem_presented: bool

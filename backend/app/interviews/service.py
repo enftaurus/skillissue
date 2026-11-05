@@ -10,7 +10,7 @@ from backend.app.interviews.schemas import (
 from backend.app.interviews.prompts import build_interviewer_system_prompt
 from backend.app.providers.factory import ModelFactory
 from backend.app.providers.service import ProviderConfigService
-from backend.app.core.errors import EntityNotFoundError, AppException
+from backend.app.core.errors import EntityNotFoundError, AppException, translate_model_error
 from backend.app.core.logging import logger
 
 class InterviewService:
@@ -48,17 +48,10 @@ class InterviewService:
         title = f"{data.category.capitalize()} Interview: {', '.join(data.domain_skills[:3])}"
         coding_prob_id = data.coding_problem_id
         if data.category == "dsa" and not coding_prob_id:
-            try:
-                from backend.app.coding.codeforces import CodeforcesClient
-                cf_recs = await CodeforcesClient.get_recommended_for_interview(
-                    difficulty=data.difficulty or "intermediate",
-                    domain_skills=data.domain_skills,
-                    limit=1,
-                )
-                if cf_recs:
-                    coding_prob_id = cf_recs[0]["id"]
-            except Exception as e:
-                logger.warning(f"Could not auto-fetch Codeforces problem for domain interview: {e}")
+            # Only curated problems have a full statement and real test cases. Live Codeforces
+            # stubs have neither, so the interviewer can't discuss them and empty code "passes".
+            from backend.app.coding.problems import pick_curated_interview_problem
+            coding_prob_id = pick_curated_interview_problem(data.domain_skills, data.difficulty)
 
         interview = Interview(
             user_id=user_id,
@@ -144,17 +137,10 @@ class InterviewService:
 
         coding_prob_id = data.coding_problem_id
         if data.category == "dsa" and not coding_prob_id:
-            try:
-                from backend.app.coding.codeforces import CodeforcesClient
-                cf_recs = await CodeforcesClient.get_recommended_for_interview(
-                    difficulty=data.difficulty or "intermediate",
-                    domain_skills=jd.extracted_skills,
-                    limit=1,
-                )
-                if cf_recs:
-                    coding_prob_id = cf_recs[0]["id"]
-            except Exception as e:
-                logger.warning(f"Could not auto-fetch Codeforces problem for JD interview: {e}")
+            # Only curated problems have a full statement and real test cases. Live Codeforces
+            # stubs have neither, so the interviewer can't discuss them and empty code "passes".
+            from backend.app.coding.problems import pick_curated_interview_problem
+            coding_prob_id = pick_curated_interview_problem(jd.extracted_skills, data.difficulty)
 
         interview = Interview(
             user_id=user_id,
@@ -249,7 +235,11 @@ class InterviewService:
             logger.info("Duplicate user message in active turn detected. Reusing existing message.")
             user_msg = last_msg
         else:
-            # Save user message
+            from backend.app.interviews.agent.policy import classify_intent
+            intent = classify_intent(content)
+            if intent in ("repeat_question", "clarify"):
+                return await cls._answer_meta_request(db, user_id, interview, content, client_turn_id, intent)
+
             user_msg = InterviewMessage(
                 interview_id=interview.id,
                 role="user",
@@ -257,30 +247,12 @@ class InterviewService:
                 client_turn_id=client_turn_id,
                 question_index=len([m for m in interview.messages if m.role == "assistant"]),
                 is_follow_up=False,
+                kind="answer",
             )
-            db.add(user_msg)
+            # Append to the loaded collection (not just db.add) so the turn count and the
+            # agent's conversation history both include this answer.
+            interview.messages.append(user_msg)
             await db.flush()
-
-        # Check turn limit (auto-wrapup at 8 turns)
-        candidate_turns = len([m for m in interview.messages if m.role == "user"])
-        if candidate_turns >= 8:
-            wrapup_text = (
-                "That concludes our interview session. Thank you for your concrete explanations and trade-off walkthroughs. "
-                "We now have enough diagnostic data to assess your engineering readiness across all rubric dimensions."
-            )
-            assistant_msg = InterviewMessage(
-                interview_id=interview.id,
-                role="assistant",
-                content=wrapup_text,
-                question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
-                is_follow_up=False,
-            )
-            interview.status = "completed"
-            interview.completed_at = datetime.now(timezone.utc)
-            db.add(assistant_msg)
-            await db.commit()
-            await db.refresh(assistant_msg)
-            return assistant_msg
 
         # Load context for agent
         jd = None
@@ -295,16 +267,21 @@ class InterviewService:
 
         # Process turn through LangGraph agent
         from backend.app.interviews.agent.service import InterviewAgentService
-        agent_result = await InterviewAgentService.process_turn(
-            db=db,
-            user_id=user_id,
-            interview=interview,
-            candidate_content=content,
-            candidate_message_id=user_msg.id,
-            client_turn_id=client_turn_id,
-            resume=resume,
-            jd=jd,
-        )
+        try:
+            agent_result = await InterviewAgentService.process_turn(
+                db=db,
+                user_id=user_id,
+                interview=interview,
+                candidate_content=content,
+                candidate_message_id=user_msg.id,
+                client_turn_id=client_turn_id,
+                resume=resume,
+                jd=jd,
+            )
+        except Exception:
+            # Drop the unanswered candidate message so the client can resend the same draft.
+            await db.rollback()
+            raise
 
         assistant_text = agent_result["assistant_content"]
         is_follow_up = (agent_result.get("next_action") == "ask_follow_up")
@@ -314,31 +291,91 @@ class InterviewService:
             content=assistant_text,
             question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
             is_follow_up=is_follow_up,
+            kind="wrapup" if agent_result.get("is_completed") else "question",
         )
-        db.add(assistant_msg)
+        interview.messages.append(assistant_msg)
         await db.commit()
         await db.refresh(assistant_msg)
 
         return assistant_msg
 
+    @classmethod
+    async def _answer_meta_request(
+        cls,
+        db: AsyncSession,
+        user_id: str,
+        interview: Interview,
+        content: str,
+        client_turn_id: Optional[str],
+        intent: str,
+    ) -> InterviewMessage:
+        """'Repeat the question' / 'what do you mean?' never consume a turn or reach the grader."""
+        last_q = next(
+            (m.content for m in reversed(interview.messages)
+             if m.role == "assistant" and getattr(m, "kind", "question") in ("question", "code_feedback")),
+            None,
+        )
+        if not last_q:
+            last_q = next((m.content for m in reversed(interview.messages) if m.role == "assistant"), "")
+
+        if intent == "repeat_question" or not last_q:
+            reply = f"Sure. Here it is again:\n\n{last_q}" if last_q else "There's no question on the table yet."
+        else:
+            from langchain_core.messages import HumanMessage, SystemMessage
+            from backend.app.providers.model_client_factory import ModelClientFactory
+            from backend.app.interviews.prompts import sanitize_untrusted_input
+            model = await ModelClientFactory.get_chat_model(db, user_id, task_type="interviewer")
+            try:
+                resp = await model.ainvoke([
+                    SystemMessage(content="You are a senior engineering interviewer. Direct, no praise, no filler."),
+                    HumanMessage(content=(
+                        "The candidate asked you to clarify your last question. Rephrase it in plain words, keep the same "
+                        "intent, and add one short example of what a good answer would touch on. Don't give the answer. "
+                        "Two sentences max. End with the rephrased question.\n\nYour last question:\n"
+                        + sanitize_untrusted_input(last_q, max_chars=3000)
+                    )),
+                ])
+            except Exception as e:
+                raise translate_model_error(e) from e
+            raw = resp.content
+            reply = (raw if isinstance(raw, str) else str(raw)).strip() or f"Put differently:\n\n{last_q}"
+
+        assistant_idx = len([m for m in interview.messages if m.role == "assistant"])
+        interview.messages.append(InterviewMessage(
+            interview_id=interview.id, role="user", content=content, client_turn_id=client_turn_id,
+            question_index=assistant_idx, is_follow_up=False, kind="meta",
+        ))
+        assistant_msg = InterviewMessage(
+            interview_id=interview.id, role="assistant", content=reply,
+            question_index=assistant_idx + 1, is_follow_up=False, kind="repeat",
+        )
+        interview.messages.append(assistant_msg)
+        await db.commit()
+        await db.refresh(assistant_msg)
+        return assistant_msg
+
+    # Exchanges that are not interview questions/answers (kept in the raw transcript, not paired).
+    _UNPAIRED_KINDS = {"meta", "repeat", "hint_request", "hint"}
+
     @staticmethod
     def compute_grouped_transcript(messages: List[InterviewMessage]) -> List[dict]:
+        """Pair each interviewer question with the candidate reply that follows it, in true
+        chronological order. Hint and repeat/clarify exchanges are not paired."""
         turns: List[dict] = []
-        sorted_msgs = sorted(
-            messages,
-            key=lambda m: (m.question_index or 0, 0 if m.role == "assistant" else 1, m.created_at or datetime.min)
-        )
-
         current_turn: Optional[dict] = None
         q_idx = 1
 
-        for msg in sorted_msgs:
+        for msg in messages:  # relationship is ordered by created_at; appends keep chronology
+            kind = getattr(msg, "kind", None)
+            content = msg.content or ""
+            if kind in InterviewService._UNPAIRED_KINDS or content.startswith(("[Requested Level", "[Level ")):
+                continue
             if msg.role == "assistant":
                 if current_turn:
                     turns.append(current_turn)
                 current_turn = {
                     "question_index": q_idx,
-                    "interviewer_question": msg.content,
+                    "interviewer_question": content,
                     "candidate_answer": "",
                     "is_follow_up": bool(msg.is_follow_up),
                     "assistant_message_id": msg.id,
@@ -346,7 +383,7 @@ class InterviewService:
                 }
                 q_idx += 1
             elif msg.role == "user" and current_turn:
-                current_turn["candidate_answer"] = msg.content
+                current_turn["candidate_answer"] = content
                 current_turn["user_message_id"] = msg.id
                 turns.append(current_turn)
                 current_turn = None
@@ -446,27 +483,33 @@ class InterviewService:
         system_prompt = "You are a senior technical interviewer providing calibrated Socratic guidance to an engineering candidate."
 
         provider = await ModelFactory.get_for_user(db, user_id, task_type="coding")
-        response = await provider.generate_text(prompt=prompt, system_prompt=system_prompt)
+        try:
+            response = await provider.generate_text(prompt=prompt, system_prompt=system_prompt)
+        except Exception as e:
+            raise translate_model_error(e) from e
         hint_text = response.text.strip()
 
         prob_name = problem.title if problem else "Problem"
+        assistant_idx = len([m for m in interview.messages if m.role == "assistant"])
         user_msg = InterviewMessage(
             interview_id=interview.id,
             role="user",
             content=f"[Requested Level {level} Hint for {prob_name}]",
-            question_index=len(interview.messages) + 1,
+            question_index=assistant_idx,
             is_follow_up=False,
+            kind="hint_request",
         )
-        db.add(user_msg)
+        interview.messages.append(user_msg)
 
         assistant_msg = InterviewMessage(
             interview_id=interview.id,
             role="assistant",
             content=f"[Level {level} Hint]: {hint_text}",
-            question_index=len(interview.messages) + 2,
+            question_index=assistant_idx,
             is_follow_up=False,
+            kind="hint",
         )
-        db.add(assistant_msg)
+        interview.messages.append(assistant_msg)
 
         interview.hint_level_used = max(interview.hint_level_used, level)
         if target_prob_id and not interview.coding_problem_id:
@@ -592,20 +635,26 @@ class InterviewService:
             client_turn_id=client_turn_id,
             question_index=len([m for m in interview.messages if m.role == "assistant"]),
             is_follow_up=False,
+            # Sample runs don't consume the answer budget; submissions do.
+            kind="code_submit" if run_mode == "submit" else "code_run",
         )
-        db.add(user_msg)
+        interview.messages.append(user_msg)
         await db.flush()
 
         # 3. Invoke LangGraph agent with structured execution context
         from backend.app.interviews.agent.service import InterviewAgentService
-        turn_result = await InterviewAgentService.process_turn(
-            db=db,
-            user_id=user_id,
-            interview=interview,
-            candidate_content=message_content,
-            candidate_message_id=user_msg.id,
-            client_turn_id=client_turn_id,
-        )
+        try:
+            turn_result = await InterviewAgentService.process_turn(
+                db=db,
+                user_id=user_id,
+                interview=interview,
+                candidate_content=message_content,
+                candidate_message_id=user_msg.id,
+                client_turn_id=client_turn_id,
+            )
+        except Exception:
+            await db.rollback()
+            raise
 
         assistant_content = turn_result["assistant_content"]
         assistant_msg = InterviewMessage(
@@ -613,9 +662,10 @@ class InterviewService:
             role="assistant",
             content=assistant_content,
             question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
-            is_follow_up=turn_result.get("is_follow_up", False),
+            is_follow_up=bool((turn_result.get("question_metadata") or {}).get("is_follow_up", False)),
+            kind="wrapup" if turn_result.get("is_completed") else "code_feedback",
         )
-        db.add(assistant_msg)
+        interview.messages.append(assistant_msg)
         await db.commit()
         await db.refresh(assistant_msg)
 
