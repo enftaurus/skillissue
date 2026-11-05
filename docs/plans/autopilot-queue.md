@@ -13,23 +13,23 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 ## Queue
 
 ### 1. Interview eval suite (real LLM)
-- [~] 1a. `scripts/evals/interview_eval.py`: scripted candidates (clueless, overconfident-claims,
+- [x] 1a. `scripts/evals/interview_eval.py`: scripted candidates (clueless, overconfident-claims,
       strong, prompt-injector, rambler) × rounds (technical, behavioral, managerial, dsa) against
       the live API; save transcripts to `artifacts_e2e/evals/<timestamp>/`.
-- [~] 1b. Deterministic checks per transcript: topic coverage, single question per turn, no praise
+- [x] 1b. Deterministic checks per transcript: topic coverage, single question per turn, no praise
       phrases, no repeated questions, wrap-up honesty, turn budget respected.
-- [~] 1c. LLM judge (evaluation model) scoring **realism vs AI slop** (1–5) with quoted evidence:
+- [x] 1c. LLM judge (evaluation model) scoring **realism vs AI slop** (1–5) with quoted evidence:
       sounds like a human senior interviewer, natural acknowledgements, references earlier
       answers, no generic filler. Output a markdown scorecard + JSON; record a baseline.
 
 ### 2. Interview realism (measure with the suite before/after)
-- [ ] 2a. Interviewer persona: name, role, team, company context; natural opener (small talk,
+- [~] 2a. Interviewer persona: name, role, team, company context; natural opener (small talk,
       agenda for the round), consistent voice across turns.
-- [ ] 2b. Realistic structure: intro → warm-up → core → deep dive → "any questions for me?" →
+- [~] 2b. Realistic structure: intro → warm-up → core → deep dive → "any questions for me?" →
       close. Candidate questions answered in persona; not counted as answers.
-- [ ] 2c. Natural acknowledgements without praise ("Okay.", "Got it, so you…"), occasional
+- [~] 2c. Natural acknowledgements without praise ("Okay.", "Got it, so you…"), occasional
       callbacks to earlier answers, short thinking beats; ban list of slop phrases enforced in code.
-- [ ] 2d. Rambling handling: if an answer is very long and off-point, interviewer politely
+- [~] 2d. Rambling handling: if an answer is very long and off-point, interviewer politely
       interrupts/redirects next turn.
 
 ### 3. Voice: Nova 2.5 Sonic hybrid (Bedrock) — see ADR 0025 once written
@@ -63,6 +63,27 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       visible evaluator confidence; evaluator consistency check (two runs, flag divergence).
 - [ ] 4f. Docker executor project mode (out-of-process harness) so project runs work in production.
 
+### 6. Code comprehension round (USP, Google-level)
+- [ ] 6a. New interview category `code_comprehension`: candidate gets an unfamiliar, realistic
+      multi-file snippet (concurrency, caching, parsers, distributed retries, ...) and must explain
+      it, trace outputs for given inputs, find the planted bug(s), predict behaviour at scale and
+      propose a review comment. Curated bank of >= 8 Google-level items with hidden answer keys,
+      bug locations and grading rubric; difficulty tiers.
+- [ ] 6b. Grounded grading: answers checked against the answer key (bug line, traced output,
+      complexity) deterministically where possible, LLM judge for explanations with evidence quotes;
+      interviewer follows up like a reviewer ("which line?", "what happens if two threads...").
+- [ ] 6c. UI: read-only code viewer with file tabs, line numbers, click-to-reference lines in the
+      answer, timer; results page with per-question correctness and the reveal.
+- [ ] 6d. Evals: add comprehension personas to `scripts/evals/interview_eval.py`.
+
+### 7. Landing page & UI/UX polish
+- [ ] 7a. Public landing page at `/` for signed-out visitors (dashboard stays for signed-in):
+      hero with the tagline, animated interview/feedback demo, USPs (real-interview realism,
+      code comprehension, AI-assisted coding, evidence-based feedback), how-it-works loop, CTA.
+      Light theme per AGENTS.md, tasteful motion (reduced-motion respected), mobile-first.
+- [ ] 7b. App-wide polish pass: consistent spacing/typography, skeleton loaders, page transitions,
+      empty states, accessible focus states.
+
 ### 5. Edge-case bug hunt (repeat after each feature batch)
 - [ ] 5a. Probe every interview/evaluation/coding/projects/audio endpoint with edge cases (empty,
       huge, unicode/RTL, concurrent double-submit, other user's IDs, completed/expired sessions,
@@ -71,3 +92,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 ## Log
 - 2026-11-06 00:20 IST: queue created; branch cut from `qa/audit-fixes-2026-11-05`; autopilot timer installed (03:12 IST).
 - 2026-11-06 00:25 IST: interactive session claimed item 1 ([~]).
+- 2026-11-06 00:30 IST: eval suite done (scripts/evals/interview_eval.py). Baseline (10 runs): checks pass 100%; realism 3.11, adaptivity 3.33, no-slop 3.89, rigor 3.44. Weak: templated wrap-ups, ramblers not redirected, definitional questions for stuck candidates, boasts not challenged. Interactive session claimed item 2.
