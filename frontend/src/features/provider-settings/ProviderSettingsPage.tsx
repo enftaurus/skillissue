@@ -279,9 +279,8 @@ export const ProviderSettingsPage: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-ink-subtle mt-1">
-              {providerName === 'azure'
-                ? 'Using GPT-4o Mini ($0.15 / $0.60 per 1M tokens), a $100 student credit covers 1,000+ full interviews.'
-                : 'Using Qwen3 32B ($0.1545 / $0.618 per 1M tokens), a $20 budget allows ~500+ full interviews.'}
+              {`Interviewer model: ${(config as any)?.interviewer_model || (config as any)?.default_model || 'not configured'}. `}
+              Spend is estimated from the model catalog's per-token prices; check your cloud bill for actuals.
             </p>
           </div>
           <div className="shrink-0 flex items-center gap-2">
