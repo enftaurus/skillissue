@@ -52,6 +52,50 @@ interface ReplayDiffData {
   summary: { improved: string[]; still_missing: string[]; verdict: string };
 }
 
+interface DeliverySummary {
+  answers_measured: number;
+  avg_words_per_minute: number | null;
+  fillers_per_minute: number | null;
+  top_fillers: [string, number][];
+  hedges: number;
+  longest_pause_s: number;
+  notes: string[];
+}
+
+const DeliveryCard: React.FC<{ interviewId: string }> = ({ interviewId }) => {
+  const [d, setD] = useState<DeliverySummary | null>(null);
+  useEffect(() => {
+    api.get<{ summary: DeliverySummary | null }>(`/interviews/${interviewId}/delivery`).then((r) => setD(r.summary)).catch(() => {});
+  }, [interviewId]);
+  if (!d) return null;
+  const stat = (label: string, value: React.ReactNode) => (
+    <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">{label}</div>
+      <div className="mt-1 text-lg font-bold text-slate-900">{value}</div>
+    </div>
+  );
+  return (
+    <Card className="p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-slate-900">How you sounded</h3>
+        <span className="text-[11px] text-slate-400">{d.answers_measured} voice answers · audio never stored · not part of your score</span>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {stat('Pace', d.avg_words_per_minute ? `${d.avg_words_per_minute} wpm` : '—')}
+        {stat('Fillers / min', d.fillers_per_minute ?? '—')}
+        {stat('Hedges', d.hedges)}
+        {stat('Longest pause', `${d.longest_pause_s}s`)}
+      </div>
+      {d.top_fillers.length > 0 && (
+        <p className="text-xs text-slate-600">Most used: {d.top_fillers.map(([w, n]) => `"${w}" ×${n}`).join(', ')}</p>
+      )}
+      {d.notes.map((n) => (
+        <p key={n} className="text-sm text-slate-800">• {n}</p>
+      ))}
+    </Card>
+  );
+};
+
 const ReplayDiff: React.FC<{ retestId: string }> = ({ retestId }) => {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<ReplayDiffData | null>(null);
@@ -614,6 +658,8 @@ export const EvaluationPage: React.FC = () => {
       </div>
 
       {/* CLOSED-LOOP RETEST DELTAS & VERIFIED PROGRESS */}
+      {id && <DeliveryCard interviewId={id} />}
+
       {retests && retests.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">

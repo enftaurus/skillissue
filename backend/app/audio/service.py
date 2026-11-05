@@ -395,6 +395,7 @@ class AudioService:
         content_type: str = "audio/webm",
         user_id: Optional[str] = None,
         db: Optional[AsyncSession] = None,
+        words_out: Optional[list] = None,
     ) -> str:
         """
         Transcribe audio bytes (WebM, WAV, MP3, etc.) into text.
@@ -402,6 +403,7 @@ class AudioService:
         """
         if not audio_bytes:
             return ""
+        self_words = words_out if words_out is not None else []
 
         # 1. Try Azure OpenAI Whisper if user configured Azure
         if user_id and db:
@@ -480,11 +482,15 @@ class AudioService:
                     beam_size=5,
                     vad_filter=True,
                     vad_parameters=dict(min_silence_duration_ms=300),
+                    word_timestamps=True,
                 )
-                return " ".join([seg.text for seg in segments]).strip()
+                segs = list(segments)
+                words = [(w.word, float(w.start), float(w.end)) for seg in segs for w in (seg.words or [])]
+                return " ".join([seg.text for seg in segs]).strip(), words
 
-            result = await asyncio.to_thread(_transcribe)
-            return result
+            text, words = await asyncio.to_thread(_transcribe)
+            self_words.extend(words)
+            return text
         except Exception as e:
             logger.error(f"Local faster-whisper transcription error: {e}")
             raise

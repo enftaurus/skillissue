@@ -11,6 +11,7 @@ class SttResponse(BaseModel):
     text: str = Field(..., description="Transcribed text from speech input")
     language: Optional[str] = Field("en", description="Detected or configured language")
     duration_seconds: Optional[float] = Field(None, description="Audio duration in seconds")
+    delivery: Optional[dict] = Field(None, description="Spoken delivery metrics (pace, fillers, hedges, pauses)")
 
 class VoiceOption(BaseModel):
     id: str

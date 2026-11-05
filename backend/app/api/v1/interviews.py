@@ -69,9 +69,24 @@ async def send_interview_message(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from backend.app.audio.delivery import merge_delivery
     return await InterviewService.send_message(
-        db, current_user.id, interview_id, data.content, data.client_turn_id
+        db, current_user.id, interview_id, data.content, data.client_turn_id,
+        delivery=merge_delivery(data.delivery or []),
     )
+
+@router.get("/{interview_id}/delivery")
+async def get_interview_delivery(
+    interview_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Spoken-delivery summary across the candidate's voice answers (no audio is stored)."""
+    from backend.app.audio.delivery import summarize_delivery
+    interview = await InterviewService.get_interview(db, current_user.id, interview_id)
+    per_answer = [m.delivery for m in interview.messages if m.role == "user" and getattr(m, "delivery", None)]
+    return {"interview_id": interview_id, "summary": summarize_delivery(per_answer)}
+
 
 @router.get("/{interview_id}/state", response_model=InterviewStateResponse)
 async def get_interview_state(

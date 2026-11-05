@@ -180,6 +180,8 @@ class InterviewMessage(Base):
     # user: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' (repeat/clarify request)
     # assistant: 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup'
     kind: Mapped[str] = mapped_column(String(20), default=_default_message_kind, server_default="answer")
+    # Spoken-delivery metrics for voice answers (numbers only, audio is never stored). Coaching signal, never scored.
+    delivery: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     client_turn_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

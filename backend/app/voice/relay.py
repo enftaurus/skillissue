@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from fastapi import WebSocket
 
 from backend.app.audio.service import clean_text_for_speech
+from backend.app.audio.delivery import delivery_metrics
 from backend.app.core.config import settings
 from backend.app.core.errors import AppException
 from backend.app.core.logging import logger
@@ -79,6 +80,8 @@ class VoiceRelay:
         self.send_message = send_message  # async (transcript) -> InterviewMessage-like
         self.session = SESSION_FACTORY(voice=voice)
         self.user_buffer: List[str] = []
+        self.speech_started_at: Optional[float] = None
+        self.speech_seconds = 0.0
         self.speaking = False
         self.last_speech_end = 0.0
         self.end_after_turn = False
@@ -163,10 +166,14 @@ class VoiceRelay:
                 await self.emit({"type": "caption", "role": "assistant", "text": ev.text})
             elif ev.kind == "speech_start":
                 self.speaking = True
+                self.speech_started_at = time.monotonic()
                 await self.emit({"type": "interrupt"})  # barge-in: client stops playback now
             elif ev.kind == "speech_end":
                 self.speaking = False
                 self.last_speech_end = time.monotonic()
+                if self.speech_started_at:
+                    self.speech_seconds += self.last_speech_end - self.speech_started_at
+                    self.speech_started_at = None
             elif ev.kind == "tool_use":
                 self._tool_tasks.append(asyncio.create_task(self._handle_tool(ev)))
             elif ev.kind == "turn_end" and self.end_after_turn:
@@ -186,16 +193,17 @@ class VoiceRelay:
         async with self._turn_lock:  # eager endpointing can fire several tool calls for one utterance
             transcript = " ".join(self.user_buffer).strip()
             self.user_buffer.clear()
+            spoken, self.speech_seconds = self.speech_seconds, 0.0
             if not transcript:
                 recently_committed = time.monotonic() - self.last_commit < 20
                 await self.session.send_tool_result(ev.tool_use_id, {"say": ""} if recently_committed else
                                                     {"say": "Sorry, I didn't catch that. Could you say it again?"})
                 return
-            await self._commit_turn(ev, transcript)
+            await self._commit_turn(ev, transcript, delivery_metrics(transcript, duration_s=spoken or None))
 
-    async def _commit_turn(self, ev: SonicEvent, transcript: str) -> None:
+    async def _commit_turn(self, ev: SonicEvent, transcript: str, delivery: Optional[Dict[str, Any]] = None) -> None:
         try:
-            msg = await self.send_message(transcript)
+            msg = await self.send_message(transcript, delivery)
         except AppException as e:
             await self.emit({"type": "error", "code": e.code, "message": e.message})
             await self.session.send_tool_result(ev.tool_use_id, {"say": "Sorry, could you rephrase that?"})

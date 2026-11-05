@@ -63,9 +63,10 @@ async def live_voice(ws: WebSocket, interview_id: str):
         user_id = user.id
         persona = pick_persona(interview.id, interview.category, detect_company(interview))
 
-    async def send_message(transcript: str):
+    async def send_message(transcript: str, delivery=None):
         async with AsyncSessionLocal() as tdb:
-            msg = await InterviewService.send_message(tdb, user_id, interview_id, transcript, client_turn_id=str(uuid.uuid4()))
+            msg = await InterviewService.send_message(tdb, user_id, interview_id, transcript,
+                                                      client_turn_id=str(uuid.uuid4()), delivery=delivery)
             await tdb.commit()
             return msg
 

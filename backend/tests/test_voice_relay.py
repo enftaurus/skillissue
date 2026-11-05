@@ -83,7 +83,7 @@ def _fakes(monkeypatch):
 async def test_turn_waits_for_full_transcript_and_goes_through_engine():
     seen = []
 
-    async def send_message(transcript):
+    async def send_message(transcript, delivery=None):
         seen.append(transcript)
         return SimpleNamespace(id="m2", content="How did you size the connection pool?", kind="question")
 
@@ -111,7 +111,7 @@ async def test_turn_waits_for_full_transcript_and_goes_through_engine():
 
 @pytest.mark.asyncio
 async def test_wrapup_ends_the_call():
-    async def send_message(transcript):
+    async def send_message(transcript, delivery=None):
         return SimpleNamespace(id="m9", content="Thanks for your time today. You'll hear back soon.", kind="wrapup")
 
     ws = FakeWS([])
@@ -123,7 +123,7 @@ async def test_wrapup_ends_the_call():
 
 @pytest.mark.asyncio
 async def test_quota_and_single_session_guards(monkeypatch):
-    async def send_message(t):
+    async def send_message(t, delivery=None):
         raise AssertionError("should not be called")
 
     monkeypatch.setattr(settings, "VOICE_DAILY_MINUTES", 0)
@@ -159,7 +159,7 @@ def test_ws_rejects_bad_token_and_disabled(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_duplicate_tool_call_for_same_utterance_is_silent():
-    async def send_message(transcript):
+    async def send_message(transcript, delivery=None):
         return SimpleNamespace(id="m3", content="Why Postgres over MySQL here?", kind="question")
 
     class DoubleCall(FakeSession):

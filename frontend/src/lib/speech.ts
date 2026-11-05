@@ -155,7 +155,7 @@ export class SpeechHandler {
   private static globalAudioContext: AudioContext | null = null;
 
   constructor(
-    private onResult: (text: string, isFinal: boolean) => void,
+    private onResult: (text: string, isFinal: boolean, delivery?: Record<string, any> | null) => void,
     private onError: (err: string) => void,
     private onStateChange: (listening: boolean) => void,
     private onAudioLevel?: (level: number) => void,
@@ -256,9 +256,9 @@ export class SpeechHandler {
             formData.append('audio', audioBlob, `recording.${ext}`);
 
             // Send clean audio to server-side Faster-Whisper / AWS Transcribe
-            const res = await api.post<{ text: string }>('/audio/stt', formData, this.authHeaders ? { headers: this.authHeaders } : undefined);
+            const res = await api.post<{ text: string; delivery?: Record<string, any> | null }>('/audio/stt', formData, this.authHeaders ? { headers: this.authHeaders } : undefined);
             if (res.text && res.text.trim()) {
-              this.onResult(res.text.trim(), true);
+              this.onResult(res.text.trim(), true, res.delivery ?? null);
             } else if (this.onError) {
               this.onError("Didn't catch any speech. Try again closer to the mic, or type your answer.");
             }

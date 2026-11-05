@@ -54,7 +54,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       comparisons); API + dashboard card ("You overrate system design by 1.8, down from 3.2").
 - [x] 4b. Answer replay diff: on a retest, show old vs new answer to the same weakness side by side
       with rubric score, evidence quotes and what changed; API + UI on the evaluation page.
-- [ ] 4c. Delivery analytics from voice (no audio stored): filler words, hedging, words/min, long
+- [x] 4c. Delivery analytics from voice (no audio stored): filler words, hedging, words/min, long
       pauses, time-to-first-point from STT word timestamps; persisted per answer; shown in evaluation.
 - [ ] 4d. AI-coding flagship: verification metric from editor telemetry (ran tests after AI reply?
       pasted vs edited?), prompt/edit/test timeline replay, project template so new projects are
@@ -104,3 +104,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 02:45 IST: 5a first pass: scripts/evals/edge_probe.py; fixed E1-E6 (see QA report Round 3), incl. 500 for every user without a provider. Re-run the probe after each feature batch (keep 5a unchecked for that).
 - 2026-11-06 03:20 IST: 3e done. Benchmarked whisper base.en vs small.en vs Transcribe (see docs/product/nova-sonic-notes.md): kept base.en + prompt; Transcribe opt-in via STT_PROVIDER. Verified platform Polly voices live.
 - 2026-11-06 03:35 IST: 4b done. GET /evaluations/retests/{id}/diff (original vs retest answer on the weakness, scores, quotes, rubric deltas, LLM what-changed summary with fallback) + 'Compare your answers' panel; retests now opened by the real interview engine in the original round's category.
+- 2026-11-06 03:55 IST: 4c done. Delivery metrics (pace, fillers incl. comma-'like', hedges, long pauses, time-to-first-point) from whisper word timestamps (push-to-talk) and Sonic speech timing (live voice); stored per answer (migration 0018, numbers only, never scored); GET /interviews/{id}/delivery + 'How you sounded' card.

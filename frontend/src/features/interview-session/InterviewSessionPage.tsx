@@ -135,6 +135,7 @@ export const InterviewSessionPage: React.FC = () => {
   const baseInputTextRef = useRef<string>('');
   const codeDraftsRef = useRef<Record<string, string>>({});
   const pendingTurnIdRef = useRef<string | null>(null);
+  const draftDeliveryRef = useRef<Record<string, any>[]>([]);
 
   // 1. Initial Load
   useEffect(() => {
@@ -209,7 +210,8 @@ export const InterviewSessionPage: React.FC = () => {
 
     // Initialize Cross-Browser Cloud Neural Speech Handler
     const handler = new SpeechHandler(
-      (text, isFinal) => {
+      (text, isFinal, delivery) => {
+        if (isFinal && delivery) draftDeliveryRef.current = [...draftDeliveryRef.current, delivery].slice(-10);
         if (isFinal) {
           const updated = (baseInputTextRef.current ? `${baseInputTextRef.current} ` : '') + text.trim();
           baseInputTextRef.current = updated;
@@ -337,7 +339,9 @@ export const InterviewSessionPage: React.FC = () => {
       const assistantMsg = await api.post<InterviewMessage>(`/interviews/${id}/message`, {
         content,
         client_turn_id: clientTurnId,
+        delivery: draftDeliveryRef.current.length ? draftDeliveryRef.current : undefined,
       });
+      draftDeliveryRef.current = [];
 
       setMessages((prev) => [
         ...prev.filter((m) => m.id !== optimisticMsg.id),

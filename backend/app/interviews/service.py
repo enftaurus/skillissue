@@ -197,6 +197,7 @@ class InterviewService:
         interview_id: str,
         content: str,
         client_turn_id: Optional[str] = None,
+        delivery: Optional[Dict[str, Any]] = None,
     ) -> InterviewMessage:
         result = await db.execute(
             select(Interview)
@@ -263,6 +264,7 @@ class InterviewService:
                 question_index=len([m for m in interview.messages if m.role == "assistant"]),
                 is_follow_up=False,
                 kind=user_kind,
+                delivery=delivery,
             )
             # Append to the loaded collection (not just db.add) so the turn count and the
             # agent's conversation history both include this answer.
