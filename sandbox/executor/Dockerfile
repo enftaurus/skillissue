@@ -19,12 +19,16 @@ WORKDIR /app
 
 # Setup isolated virtual environment for persistent executor API
 RUN python3 -m venv /app/venv && \
-    /app/venv/bin/pip install --no-cache-dir fastapi "uvicorn[standard]" pydantic httpx
+    /app/venv/bin/pip install --no-cache-dir fastapi "uvicorn[standard]" pydantic httpx "pytest==8.4.2"
 
 COPY sandbox/ /app/sandbox/
 RUN mkdir -p /app/backend/app/core && \
     touch /app/backend/__init__.py /app/backend/app/__init__.py /app/backend/app/core/__init__.py
 COPY backend/app/core/logging.py /app/backend/app/core/logging.py
+# Hardened multi-file project runner (single source of truth with the API; ADR 0023)
+RUN mkdir -p /app/backend/app/projects && touch /app/backend/app/projects/__init__.py
+COPY backend/app/core/errors.py /app/backend/app/core/
+COPY backend/app/projects/sandbox.py /app/backend/app/projects/sandbox.py
 
 ENV PATH="/app/venv/bin:$PATH" \
     PYTHONPATH=/app \

@@ -31,7 +31,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
-from backend.app.core.config import settings
 from backend.app.core.errors import AppException
 from backend.app.core.logging import logger
 
@@ -173,6 +172,36 @@ def _parse_junit(report_path: str) -> Tuple[List[str], Dict[str, Tuple[str, str]
     return passed, failed, seen
 
 
+def _env_flags() -> Tuple[str, bool]:
+    """(environment, allow_unsandboxed). The executor container has no app settings/secrets, so fall back to env."""
+    try:
+        from backend.app.core.config import settings
+        return settings.ENVIRONMENT.lower(), bool(settings.ALLOW_UNSANDBOXED_PROJECT_TESTS)
+    except Exception:
+        return (os.environ.get("ENVIRONMENT", "development").lower(),
+                os.environ.get("ALLOW_UNSANDBOXED_PROJECT_TESTS", "").lower() == "true")
+
+
+def _run_via_executor(url: str, repository_files: Dict[str, str], editable_files: List[str],
+                      overlay: Dict[str, str], t_start: float) -> SandboxRunResult:
+    import httpx
+    secret = os.environ.get("EXECUTOR_SECRET", "dev-executor-secret-token-32chars-min!")
+    try:
+        r = httpx.post(f"{url.rstrip('/')}/execute-project", headers={"X-Executor-Secret": secret}, timeout=TIMEOUT_SECONDS + 15,
+                       json={"repository_files": repository_files, "editable_files": editable_files, "candidate_files": overlay})
+        r.raise_for_status()
+        d = r.json()
+    except Exception as e:
+        logger.warning(f"Project executor unavailable: {type(e).__name__}")
+        raise AppException("Project test sandbox is unavailable right now. Try again shortly.",
+                           code="SANDBOX_UNAVAILABLE", status_code=503)
+    return SandboxRunResult(status=d.get("status", "error"), passed=list(d.get("passed", [])),
+                            failed={k: tuple(v) for k, v in (d.get("failed") or {}).items()},
+                            raw_output=str(d.get("raw_output", ""))[-MAX_OUTPUT_CHARS:],
+                            duration_ms=int(d.get("duration_ms") or (time.time() - t_start) * 1000),
+                            integrity_flags=list(d.get("integrity_flags", [])))
+
+
 def run_project_tests(repository_files: Dict[str, str], editable_files: List[str], candidate_files: Dict[str, str]) -> SandboxRunResult:
     t_start = time.time()
     # Only editable files may be overridden. Tests, fixtures and infrastructure stay authoritative.
@@ -187,7 +216,13 @@ def run_project_tests(repository_files: Dict[str, str], editable_files: List[str
         )
 
     bwrap_bin = shutil.which("bwrap")
-    if not bwrap_bin and (settings.ENVIRONMENT.lower() == "production" or not settings.ALLOW_UNSANDBOXED_PROJECT_TESTS):
+    executor_url = os.environ.get("EXECUTOR_URL")
+    if not bwrap_bin and executor_url:
+        # Production: the API container has no bubblewrap and holds the secrets, so project tests run in the
+        # separate executor container (no app secrets) under the same hardened runner.
+        return _run_via_executor(executor_url, repository_files, editable_files, overlay, t_start)
+    environment, allow_unsandboxed = _env_flags()
+    if not bwrap_bin and (environment == "production" or not allow_unsandboxed):
         raise AppException(
             "Project test sandbox is unavailable on this server, so candidate code was not executed.",
             code="SANDBOX_UNAVAILABLE",

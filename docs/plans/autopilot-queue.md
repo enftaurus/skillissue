@@ -61,7 +61,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       cheap; add 2 more projects.
 - [x] 4e. Evaluator credibility: "dispute this finding" with transcript evidence (re-judged, logged),
       visible evaluator confidence; evaluator consistency check (two runs, flag divergence).
-- [ ] 4f. Docker executor project mode (out-of-process harness) so project runs work in production.
+- [ ] 4f. (BLOCKED, needs product-owner decision, see Log) Docker executor project mode (out-of-process harness) so project runs work in production.
 
 ### 6. Code comprehension round (USP, Google-level)
 - [x] 6a. New interview category `code_comprehension`: candidate gets an unfamiliar, realistic
@@ -107,3 +107,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 03:55 IST: 4c done. Delivery metrics (pace, fillers incl. comma-'like', hedges, long pauses, time-to-first-point) from whisper word timestamps (push-to-talk) and Sonic speech timing (live voice); stored per answer (migration 0018, numbers only, never scored); GET /interviews/{id}/delivery + 'How you sounded' card.
 - 2026-11-06 04:15 IST: 4d done. make_project template + 2 projects (idempotent payments, webhook signatures) with server-side reference solutions verified in tests; project_events log (migration 0019); verification metrics (tests run after assistant replies) in submit analysis + flags; GET /projects/{id}/timeline. Fixed sandbox integrity check rejecting parametrized tests.
 - 2026-11-06 04:40 IST: 4e done. Two parallel grading passes (divergence flagged + averaged), evidence verification (quote_verified flag; old code silently substituted unverified quotes), confidence level with reasons, evidence-backed disputes (verbatim quote required, +/-2 cap, 1 per dimension, max 3, logged; migration 0020) + UI.
+- 2026-11-06 05:00 IST: 4f BLOCKED. Added executor /execute-project + API dispatch (used when the API has no bwrap and EXECUTOR_URL is set; runner shipped in the executor image). But bubblewrap inside the Docker executor can't mount /proc ('Operation not permitted'), which ALSO breaks the existing /execute path for every DSA run under compose. Fix needs either security_opt systempaths=unconfined on the executor, a runner without a private /proc, or gVisor; the auto-mode classifier (correctly) refused to loosen container security without the owner's say. Do not attempt again unattended.
