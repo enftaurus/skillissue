@@ -25,30 +25,28 @@ async def get_integrity_actor(
     Returns:
         (current_user, candidate_assessment)
     """
-    token_str = None
-    if credentials and credentials.credentials:
-        token_str = credentials.credentials
-    elif x_assessment_token:
-        token_str = x_assessment_token
-
-    if not token_str:
+    bearer = credentials.credentials if credentials and credentials.credentials else None
+    if not bearer and not x_assessment_token:
         return None, None
 
-    # 1. Try decoding as User JWT
-    try:
-        token_data = decode_access_token(token_str)
-        if token_data and "sub" in token_data:
-            user = await AuthService.get_by_id(db, token_data["sub"])
-            if user and user.is_active:
-                return user, None
-    except Exception:
-        pass
+    # 1. A valid user access token wins.
+    if bearer:
+        try:
+            token_data = decode_access_token(bearer)
+            if token_data and "sub" in token_data and token_data.get("token_type", "access") == "access":
+                user = await AuthService.get_by_id(db, token_data["sub"])
+                if user and user.is_active:
+                    return user, None
+        except Exception:
+            pass
 
-    # 2. Try looking up CandidateAssessment by access_token
-    query = select(CandidateAssessment).where(CandidateAssessment.access_token == token_str)
-    res = await db.execute(query)
-    ca = res.scalar_one_or_none()
-    if ca:
-        return None, ca
+    # 2. Otherwise a candidate assessment token (explicit header first, then bearer).
+    for candidate_token in (x_assessment_token, bearer):
+        if not candidate_token:
+            continue
+        res = await db.execute(select(CandidateAssessment).where(CandidateAssessment.access_token == candidate_token))
+        ca = res.scalar_one_or_none()
+        if ca:
+            return None, ca
 
     return None, None

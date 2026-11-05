@@ -12,6 +12,8 @@ export interface VoiceOption {
   accent: string;
   provider: string;
   description: string;
+  available?: boolean;
+  unavailable_reason?: string | null;
 }
 
 export const DEFAULT_VOICES: VoiceOption[] = [
@@ -91,9 +93,33 @@ export const DEFAULT_VOICES: VoiceOption[] = [
 
 const SELECTED_VOICE_KEY = 'skillissue_voice_id';
 
+export const DEFAULT_VOICE_ID = 'en-US-ChristopherNeural';
+
 export function getSelectedVoice(): string {
-  if (typeof window === 'undefined') return 'aws-polly-matthew';
-  return localStorage.getItem(SELECTED_VOICE_KEY) || 'aws-polly-matthew';
+  if (typeof window === 'undefined') return DEFAULT_VOICE_ID;
+  try {
+    return localStorage.getItem(SELECTED_VOICE_KEY) || DEFAULT_VOICE_ID;
+  } catch {
+    return DEFAULT_VOICE_ID;
+  }
+}
+
+/** Strip markdown/code so the browser speech fallback doesn't read "hash hash hash" or code. */
+export function toSpeakableText(text: string): string {
+  return (text || '')
+    .replace(/```[\s\S]*?```/g, ' (code shown on screen) ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\bO\(\s*([^)]+?)\s*\)/g, 'O of $1')
+    .replace(/(\w)\s*\^\s*2\b/g, '$1 squared')
+    .replace(/>=/g, ' greater than or equal to ')
+    .replace(/<=/g, ' less than or equal to ')
+    .replace(/(\w)\s+>\s+(\w)/g, '$1 greater than $2')
+    .replace(/(\w)\s+<\s+(\w)/g, '$1 less than $2')
+    .replace(/([A-Za-z0-9])_(?=[A-Za-z0-9])/g, '$1 ')
+    .replace(/[*~`#>]/g, '')
+    .replace(/^\s*[-•]\s*/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function setSelectedVoice(voiceId: string) {
@@ -104,6 +130,12 @@ export function setSelectedVoice(voiceId: string) {
 // Global active audio playback reference
 let activeAudio: HTMLAudioElement | null = null;
 let activeAudioUrl: string | null = null;
+// Every speak()/stopSpeaking() bumps the generation; a TTS response that resolves for an older
+// generation is discarded, so overlapping requests (StrictMode double effects, mute while the
+// fetch is in flight, fast consecutive answers) can never play over each other.
+let speechGeneration = 0;
+let activeFetch: AbortController | null = null;
+let pendingGestureResume: (() => void) | null = null;
 
 export class SpeechHandler {
   public isSupported: boolean = false;
@@ -121,7 +153,9 @@ export class SpeechHandler {
     private onResult: (text: string, isFinal: boolean) => void,
     private onError: (err: string) => void,
     private onStateChange: (listening: boolean) => void,
-    private onAudioLevel?: (level: number) => void
+    private onAudioLevel?: (level: number) => void,
+    private authHeaders?: Record<string, string>,
+    private onTranscribing?: (busy: boolean) => void
   ) {
     if (typeof window !== 'undefined') {
       const hasMedia = !!(
@@ -202,6 +236,7 @@ export class SpeechHandler {
         recorder.onstop = async () => {
           this.stopAudioMeter();
           if (this.audioChunks.length === 0) {
+            if (this.onError) this.onError('No audio was captured. Check your microphone and try again.');
             return;
           }
 
@@ -209,19 +244,24 @@ export class SpeechHandler {
           const audioBlob = new Blob(this.audioChunks, { type: mime });
           this.audioChunks = [];
 
+          this.onTranscribing?.(true);
           try {
             const formData = new FormData();
             const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
             formData.append('audio', audioBlob, `recording.${ext}`);
 
             // Send clean audio to server-side Faster-Whisper / AWS Transcribe
-            const res = await api.post<{ text: string }>('/audio/stt', formData);
+            const res = await api.post<{ text: string }>('/audio/stt', formData, this.authHeaders ? { headers: this.authHeaders } : undefined);
             if (res.text && res.text.trim()) {
               this.onResult(res.text.trim(), true);
+            } else if (this.onError) {
+              this.onError("Didn't catch any speech. Try again closer to the mic, or type your answer.");
             }
           } catch (err: any) {
             console.warn('Server STT notice:', err);
-            if (this.onError) this.onError(err.message || 'Speech recognition failed');
+            if (this.onError) this.onError(err.message || 'Speech recognition failed. Type your answer instead.');
+          } finally {
+            this.onTranscribing?.(false);
           }
         };
 
@@ -311,11 +351,26 @@ export class SpeechHandler {
   static async speak(text: string, onEnd?: () => void, voice?: string) {
     SpeechHandler.stopSpeaking();
     SpeechHandler.unlockAudioContext();
+    const generation = ++speechGeneration;
+    const isCurrent = () => generation === speechGeneration;
+    let ended = false;
+    const finish = () => {
+      if (ended) return;
+      ended = true;
+      if (onEnd) onEnd();
+    };
 
     const selectedVoice = voice || getSelectedVoice();
+    const controller = new AbortController();
+    activeFetch = controller;
 
     try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('skillissue_token') : null;
+      let token: string | null = null;
+      try {
+        token = typeof window !== 'undefined' ? localStorage.getItem('skillissue_token') : null;
+      } catch {
+        token = null;
+      }
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -324,78 +379,90 @@ export class SpeechHandler {
       const res = await fetch('/api/v1/audio/tts', {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          text,
-          voice: selectedVoice,
-        }),
+        body: JSON.stringify({ text: text.slice(0, 12000), voice: selectedVoice }),
+        signal: controller.signal,
       });
-
+      if (!isCurrent()) return finish();
       if (!res.ok) {
         throw new Error(`TTS server returned status ${res.status}`);
       }
 
       const blob = await res.blob();
+      if (!isCurrent()) return finish();
       const objectUrl = URL.createObjectURL(blob);
       activeAudioUrl = objectUrl;
 
       const audio = new Audio(objectUrl);
       activeAudio = audio;
 
-      audio.onended = () => {
-        if (activeAudioUrl) {
-          URL.revokeObjectURL(activeAudioUrl);
+      const cleanup = () => {
+        if (activeAudio === audio) {
+          activeAudio = null;
+        }
+        if (activeAudioUrl === objectUrl) {
+          URL.revokeObjectURL(objectUrl);
           activeAudioUrl = null;
         }
-        activeAudio = null;
-        if (onEnd) onEnd();
+        finish();
       };
-
+      audio.onended = cleanup;
+      audio.onpause = () => {
+        if (!isCurrent()) cleanup();
+      };
       audio.onerror = (e) => {
         console.warn('HTML5 Audio playback error:', e);
-        if (activeAudioUrl) {
-          URL.revokeObjectURL(activeAudioUrl);
-          activeAudioUrl = null;
-        }
-        activeAudio = null;
-        if (onEnd) onEnd();
+        cleanup();
       };
 
       try {
         await audio.play();
       } catch (playErr: any) {
-        // If browser blocks unprompted autoplay before initial gesture, attach auto-resume on first interaction
+        // Autoplay blocked before the first gesture: resume on the next click/key, unless superseded.
         if (playErr.name === 'NotAllowedError') {
           const resumeOnFirstTouch = () => {
-            audio.play().catch(() => {});
-            document.removeEventListener('click', resumeOnFirstTouch);
-            document.removeEventListener('keydown', resumeOnFirstTouch);
+            pendingGestureResume = null;
+            if (isCurrent() && activeAudio === audio) audio.play().catch(() => cleanup());
           };
+          pendingGestureResume = resumeOnFirstTouch;
           document.addEventListener('click', resumeOnFirstTouch, { once: true });
           document.addEventListener('keydown', resumeOnFirstTouch, { once: true });
         } else {
           throw playErr;
         }
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || !isCurrent()) return finish();
       console.warn('Cloud Neural TTS failed, fallback to native SpeechSynthesis:', err);
 
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
+        const utterance = new SpeechSynthesisUtterance(toSpeakableText(text));
         utterance.rate = 1.0;
         utterance.lang = 'en-US';
-        if (onEnd) {
-          utterance.onend = onEnd;
-          utterance.onerror = () => onEnd();
-        }
+        utterance.onend = finish;
+        utterance.onerror = finish;
         window.speechSynthesis.speak(utterance);
       } else {
-        if (onEnd) onEnd();
+        finish();
       }
+    } finally {
+      if (activeFetch === controller) activeFetch = null;
     }
   }
 
   static stopSpeaking() {
+    speechGeneration++;
+    if (activeFetch) {
+      try {
+        activeFetch.abort();
+      } catch (e) {}
+      activeFetch = null;
+    }
+    if (pendingGestureResume) {
+      document.removeEventListener('click', pendingGestureResume);
+      document.removeEventListener('keydown', pendingGestureResume);
+      pendingGestureResume = null;
+    }
     if (activeAudio) {
       try {
         activeAudio.pause();
@@ -417,9 +484,9 @@ export class SpeechHandler {
   static async fetchVoices(): Promise<VoiceOption[]> {
     try {
       const res = await api.get<{ voices: VoiceOption[]; default_voice: string }>('/audio/voices');
-      return res.voices || DEFAULT_VOICES;
+      return res.voices || DEFAULT_VOICES.filter((v) => v.provider !== 'aws-polly');
     } catch (e) {
-      return DEFAULT_VOICES;
+      return DEFAULT_VOICES.filter((v) => v.provider !== 'aws-polly');
     }
   }
 }

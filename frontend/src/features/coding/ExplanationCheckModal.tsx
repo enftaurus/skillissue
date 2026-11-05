@@ -189,13 +189,15 @@ export const ExplanationCheckModal: React.FC<ExplanationCheckModalProps> = ({
       },
       (listening: boolean) => {
         setIsRecording(listening);
-      }
+      },
+      undefined,
+      candidateToken ? { 'X-Assessment-Token': candidateToken } : undefined
     );
 
     return () => {
       speechHandlerRef.current?.stop();
     };
-  }, []);
+  }, [candidateToken]);
 
   const recordFirstInput = () => {
     if (firstInputSeconds[currentQIndex] === undefined) {

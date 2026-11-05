@@ -3,6 +3,7 @@ import io
 import os
 import re
 import tempfile
+import threading
 import uuid
 from typing import List, Optional
 import httpx
@@ -14,9 +15,9 @@ from backend.app.audio.schemas import VoiceOption
 from backend.app.providers.resolver import ModelResolver
 from backend.app.providers.service import ProviderConfigService
 
-# Global in-memory cache for faster-whisper model
+# Global in-memory cache for faster-whisper model (loaded inside worker threads)
 _WHISPER_MODEL = None
-_WHISPER_LOCK = asyncio.Lock()
+_WHISPER_LOCK = threading.Lock()
 
 AVAILABLE_VOICES: List[VoiceOption] = [
     VoiceOption(
@@ -102,45 +103,84 @@ AVAILABLE_VOICES: List[VoiceOption] = [
 ]
 
 def clean_text_for_speech(raw_text: str) -> str:
-    """Strip markdown symbols, code fences, and bracketed metadata for natural prosody."""
+    """Turn interviewer markdown into speakable text without losing technical meaning."""
     if not raw_text:
         return ""
-    # Strip markdown code blocks ```...``` replacing with a spoken placeholder
-    text = re.sub(r'```[\s\S]*?```', ' [code snippet omitted for audio] ', raw_text)
-    # Strip markdown URLs [text](url) -> text
+    # Code blocks are on screen; say so instead of reading symbols.
+    text = re.sub(r'```[\s\S]*?```', ' (code shown on screen) ', raw_text)
+    # Markdown links [text](url) -> text
     text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-    # Strip markdown bold/italics/headers
-    text = re.sub(r'[*_~`#>]', '', text)
-    # Strip bracketed hint tags like [Level 1 Hint - Socratic Direction]
-    text = re.sub(r'\[Level \d+.*?\]', 'Hint: ', text)
-    # Clean up multi-dashes or bullets
+    # Hint tags like [Level 1 Hint]: ...
+    text = re.sub(r'\[Level (\d+)[^\]]*\]:?', r'Level \1 hint:', text)
+    # Big-O and operators, before symbol stripping
+    text = re.sub(r'\bO\(\s*([^)]+?)\s*\)', lambda m: 'O of ' + m.group(1), text)
+    text = re.sub(r'(\w)\s*\^\s*2\b', r'\1 squared', text)
+    text = re.sub(r'(\w)\s*\^\s*(\d+)', r'\1 to the \2', text)
+    for sym, word in ((">=", " greater than or equal to "), ("<=", " less than or equal to "), ("!=", " not equal to "),
+                      ("==", " equals "), ("->", " to "), ("=>", " gives "), ("≥", " at least "), ("≤", " at most ")):
+        text = text.replace(sym, word)
+    text = re.sub(r'(?<=\w)\s+>\s+(?=\w)', ' greater than ', text)
+    text = re.sub(r'(?<=\w)\s+<\s+(?=\w)', ' less than ', text)
+    # snake_case identifiers read as words
+    text = re.sub(r'(?<=[A-Za-z0-9])_(?=[A-Za-z0-9])', ' ', text)
+    # Markdown emphasis / headers / quotes / inline code ticks
+    text = re.sub(r'[*~`#>]', '', text)
+    text = re.sub(r'(?<!\w)_|_(?!\w)', '', text)
+    # Bullets
     text = re.sub(r'^\s*[-•]\s*', '', text, flags=re.MULTILINE)
-    # Normalize whitespace
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 def _get_whisper_model():
-    """Lazy initialize local faster-whisper singleton model."""
+    """Lazy, thread-safe initialisation of the local faster-whisper singleton."""
     global _WHISPER_MODEL
-    if _WHISPER_MODEL is None:
-        try:
-            from faster_whisper import WhisperModel
-            logger.info("Initializing faster-whisper (base.en, cpu, int8)...")
+    if _WHISPER_MODEL is not None:
+        return _WHISPER_MODEL
+    with _WHISPER_LOCK:
+        if _WHISPER_MODEL is None:
             try:
-                _WHISPER_MODEL = WhisperModel("base.en", device="cpu", compute_type="int8")
-            except Exception:
-                logger.info("Falling back to tiny.en...")
-                _WHISPER_MODEL = WhisperModel("tiny.en", device="cpu", compute_type="int8")
-            logger.info("faster-whisper model successfully loaded.")
-        except Exception as e:
-            logger.error(f"Failed to load faster-whisper: {e}")
-            raise
+                from faster_whisper import WhisperModel
+                logger.info("Initializing faster-whisper (base.en, cpu, int8)...")
+                try:
+                    _WHISPER_MODEL = WhisperModel("base.en", device="cpu", compute_type="int8")
+                except Exception:
+                    logger.info("Falling back to tiny.en...")
+                    _WHISPER_MODEL = WhisperModel("tiny.en", device="cpu", compute_type="int8")
+                logger.info("faster-whisper model successfully loaded.")
+            except Exception as e:
+                logger.error(f"Failed to load faster-whisper: {e}")
+                raise
     return _WHISPER_MODEL
 
 class AudioService:
     @classmethod
     def get_voices(cls) -> List[VoiceOption]:
         return AVAILABLE_VOICES
+
+    @classmethod
+    async def get_voices_for_user(cls, user_id: Optional[str], db: Optional[AsyncSession]) -> List[VoiceOption]:
+        """Mark cloud voices unavailable when the caller has no credentials for that provider,
+        so the UI never labels Edge audio as 'AWS Polly'."""
+        has_aws = bool(os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"))
+        has_azure = False
+        if user_id and db:
+            try:
+                config = await ProviderConfigService.get_config(db, user_id)
+                if config is not None:
+                    creds = await ModelResolver.resolve_credentials(config, user_id)
+                    has_aws = has_aws or bool(creds.provider_name == "bedrock" and creds.aws_access_key and creds.aws_secret_key)
+                    has_azure = bool(creds.provider_name == "azure" and creds.azure_api_key and creds.azure_endpoint)
+            except Exception as e:
+                logger.info(f"Voice availability check fell back to defaults: {type(e).__name__}")
+        voices: List[VoiceOption] = []
+        for v in AVAILABLE_VOICES:
+            available, reason = True, None
+            if v.provider == "aws-polly" and not has_aws:
+                available, reason = False, "Needs AWS (Bedrock) credentials"
+            elif v.provider == "azure-openai" and not has_azure:
+                available, reason = False, "Needs an Azure OpenAI provider with a TTS deployment"
+            voices.append(v.model_copy(update={"available": available, "unavailable_reason": reason}))
+        return voices
 
     @classmethod
     async def synthesize_speech(
@@ -160,7 +200,7 @@ class AudioService:
           3. Vaani.dev API (if VAANI_API_KEY + vaani voice configured)
           4. Edge Neural Speech (Universal studio clarity fallback)
         """
-        clean_text = clean_text_for_speech(text)
+        clean_text = clean_text_for_speech(text)[:6000]
         if not clean_text:
             clean_text = "No content to read."
 
@@ -201,13 +241,12 @@ class AudioService:
                         aws_session_token=aws_session_token,
                         region_name=aws_region
                     )
-                    polly_resp = polly_client.synthesize_speech(
-                        Engine=engine,
-                        VoiceId=polly_voice,
-                        OutputFormat="mp3",
-                        Text=clean_text[:3000]
-                    )
-                    return polly_resp["AudioStream"].read()
+                    def _polly() -> bytes:
+                        resp = polly_client.synthesize_speech(
+                            Engine=engine, VoiceId=polly_voice, OutputFormat="mp3", Text=clean_text[:3000]
+                        )
+                        return resp["AudioStream"].read()
+                    return await asyncio.to_thread(_polly)
             except Exception as e:
                 logger.warning(f"AWS Polly TTS synthesis failed, falling back to studio neural TTS: {e}")
 
@@ -224,17 +263,16 @@ class AudioService:
                         api_version=creds.azure_api_version or "2024-06-01"
                     )
                     azure_voice = target_voice.replace("azure-", "")
-                    speech_resp = azure_client.audio.speech.create(
-                        model="tts-1",
-                        voice=azure_voice or "alloy",
-                        input=clean_text[:3000]
+                    speech_resp = await asyncio.to_thread(
+                        azure_client.audio.speech.create,
+                        model="tts-1", voice=azure_voice or "alloy", input=clean_text[:3000],
                     )
                     return speech_resp.content
             except Exception as e:
                 logger.warning(f"Azure OpenAI Audio TTS failed, falling back to neural TTS: {e}")
 
         # 3. Check Vaani.dev / VaaniStack TTS
-        if (target_voice.startswith("vaani-") or settings.VAANI_API_KEY) and settings.VAANI_API_KEY:
+        if target_voice.startswith("vaani-") and settings.VAANI_API_KEY:
             try:
                 headers = {"Authorization": f"Bearer {settings.VAANI_API_KEY}", "Content-Type": "application/json"}
                 payload = {
@@ -269,7 +307,7 @@ class AudioService:
 
         try:
             import edge_tts
-            communicate = edge_tts.Communicate(clean_text[:4000], chosen_voice, rate=rate, pitch=pitch)
+            communicate = edge_tts.Communicate(clean_text, chosen_voice, rate=rate, pitch=pitch)
             audio_buffer = bytearray()
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
@@ -282,7 +320,7 @@ class AudioService:
         # Fallback to default Christopher voice if selected voice failed
         try:
             import edge_tts
-            communicate = edge_tts.Communicate(clean_text[:4000], "en-US-ChristopherNeural")
+            communicate = edge_tts.Communicate(clean_text, "en-US-ChristopherNeural")
             audio_buffer = bytearray()
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
@@ -323,9 +361,9 @@ class AudioService:
                         api_key=creds.azure_api_key,
                         api_version=creds.azure_api_version or "2024-06-01"
                     )
-                    transcription = azure_client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=(filename, audio_bytes, content_type)
+                    transcription = await asyncio.to_thread(
+                        azure_client.audio.transcriptions.create,
+                        model="whisper-1", file=(filename, audio_bytes, content_type),
                     )
                     if hasattr(transcription, "text") and transcription.text:
                         return transcription.text.strip()
