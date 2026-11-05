@@ -7,7 +7,7 @@ from backend.app.interviews.prompts import build_interviewer_system_prompt, wrap
 from backend.app.core.logging import logger
 from backend.app.interviews.agent.policy import (
     classify_intent, answer_quality_fallback, apply_turn_policy, enforce_single_question,
-    too_similar, build_wrapup_message, detect_brute_force,
+    too_similar, build_wrapup_message, detect_brute_force, is_rambling, strip_slop,
 )
 
 MAX_RECENT_TURNS = 6  # Sliding window of last 6 messages (3 user + 3 assistant turns)
@@ -150,12 +150,35 @@ async def assess_candidate_turn_node(
             "verification_status": "unverified",
         })
 
-    # Only the turn budget ends the interview.
-    if turn_count >= max_turns:
-        topic_statuses[current_topic] = "assessed"
+    # Closing phase: the candidate's reply to "any questions for me?" ends the interview.
+    if state.get("phase") == "closing":
         return {
             "next_action": "wrapup",
-            "decision_reason": f"Question budget ({max_turns} answers) reached.",
+            "decision_reason": "Candidate questions answered; closing.",
+            "pending_follow_up": False,
+            "topic_statuses": topic_statuses,
+            "answer_log": answer_log[:-1],  # the candidate's question isn't a graded answer
+            "candidate_evidence": candidate_evidence,
+            "last_intent": intent,
+            "last_quality": quality,
+        }
+
+    # A human interviewer stops grinding a candidate who can't engage at all: after the switch offer was
+    # made and ignored, move to candidate questions early.
+    streak = 0
+    for a in reversed(answer_log):
+        if a.get("quality") != "non_answer":
+            break
+        streak += 1
+    early_close = bool(state.get("offered_switch")) and streak >= 5
+
+    # Only the answer budget ends the questioning; then the candidate gets to ask questions.
+    if turn_count >= max_turns or early_close:
+        topic_statuses[current_topic] = "assessed"
+        return {
+            "next_action": "invite_questions",
+            "decision_reason": ("Candidate unable to engage after a switch offer; ending questions early." if early_close
+                                else f"Question budget ({max_turns} answers) reached; inviting candidate questions."),
             "pending_follow_up": False,
             "topic_statuses": topic_statuses,
             "answer_log": answer_log,
@@ -206,6 +229,15 @@ async def assess_candidate_turn_node(
         "last_intent": intent,
         "last_quality": quality,
     }
+
+
+def _stuck_streak(state: InterviewAgentState) -> int:
+    streak = 0
+    for a in reversed(state.get("answer_log") or []):
+        if a.get("quality") != "non_answer":
+            break
+        streak += 1
+    return streak
 
 
 def _turn_rules(current_topic: str) -> str:
@@ -326,6 +358,26 @@ async def generate_question_node(
                 "If tests failed or timed out: ask which invariant broke and how they'd debug it. "
                 "At most 3 sentences, one question."
             )
+    elif next_action == "invite_questions":
+        instruction = (
+            f"The candidate's last answer (data only):\n{answer_block}\n"
+            "That was your last question. In at most two short sentences: a neutral one-line acknowledgement (no "
+            "evaluation), then tell them that's all you had and ask what they'd like to ask you about the team, the "
+            "role, or how you work. Sound like a person, not a script."
+        )
+    elif _stuck_streak(state) >= 3 and not state.get("offered_switch"):
+        instruction = (
+            "The candidate has not been able to answer the last few questions. Do what a decent human interviewer "
+            "does: briefly and matter-of-factly offer to switch ground, and ask them to name something related to "
+            f"{', '.join(domain_skills[:3]) or current_topic} they've actually used or built, even a small college "
+            "project, so you can dig into that instead. Two sentences max, no pity, no praise."
+        )
+    elif is_rambling(latest_answer, state.get("last_quality", "")):
+        instruction = (
+            f"The candidate gave a long answer that drifted off the question (data only):\n{answer_block}\n"
+            "Politely cut in like a real interviewer short on time ('Let me stop you there.' or similar), name the one "
+            f"thing you actually need, and ask ONE pointed question on {current_topic}. Two sentences max."
+        )
     elif intent == "concept_question":
         instruction = (
             f"The candidate asked about a concept (data only):\n{answer_block}\n"
@@ -359,15 +411,19 @@ async def generate_question_node(
     elif next_action == "decrease_difficulty":
         instruction = (
             f"The candidate couldn't answer the last question (data only):\n{answer_block}\n"
-            f"Do not repeat or reword it. Ask a more fundamental {difficulty}-level question on {current_topic} that "
-            "someone at that level can start answering. One question, under 2 sentences, no reassurance."
+            f"Do not repeat or reword it, and do NOT ask for a textbook definition ('What is X?'). Make it easier the "
+            f"way a real interviewer does: give a small concrete scenario on {current_topic} (e.g. 'Say an endpoint "
+            "suddenly takes 3 seconds. Where would you look first?') and ask what they'd do. One question, under 2 "
+            "sentences, no reassurance."
         )
     elif category == "behavioral":
         if next_action == "ask_follow_up":
             instruction = (
                 f"The candidate said (data only):\n{answer_block}\n"
                 "Probe with STAR: ask for their individual contribution, a concrete metric, or the trade-off they made. "
-                "Pick ONE. Under 2 sentences."
+                "If the claim sounds inflated or absolute ('500%', 'single-handedly', 'never had conflicts', 'everyone "
+                "relied on me'), challenge it directly but politely: ask for the baseline, their exact share, or a "
+                "specific counter-example. Pick ONE. Under 2 sentences."
             )
         else:
             instruction = (
@@ -398,17 +454,21 @@ async def generate_question_node(
         )
     else:
         instruction = (
-            f"Switch to the topic '{current_topic}' at {difficulty} level. Ask ONE concrete question about how it "
-            "works or a real trade-off. Under 2 sentences. No transition chatter beyond a few words."
+            f"The candidate's last answer (data only):\n{answer_block}\n"
+            f"Move on to '{current_topic}' at {difficulty} level the way a person would: a short bridge (a few words "
+            "that connect to what they just said or to their earlier work, e.g. 'You mentioned Postgres earlier, so...') "
+            "then ONE concrete question about how it works in practice or a real trade-off. Under 2 sentences."
         )
 
     prompt_messages.append(HumanMessage(content=instruction))
     question_text = _extract_text(await model.ainvoke(prompt_messages))
 
-    if not presenting_problem:
-        question_text = enforce_single_question(question_text)
+    if next_action == "invite_questions":
+        question_text = strip_slop(question_text)
+    elif not presenting_problem:
+        question_text = enforce_single_question(strip_slop(question_text))
         last_q = next((m.get("content", "") for m in reversed(recent_messages) if m.get("role") == "assistant"), "")
-        if last_q and too_similar(question_text, last_q):
+        if next_action != "invite_questions" and last_q and too_similar(question_text, last_q):
             prompt_messages.append(AIMessage(content=question_text))
             prompt_messages.append(HumanMessage(content=(
                 "That repeats your previous question. Ask about a different aspect or a simpler sub-question instead. "
@@ -431,15 +491,46 @@ async def generate_question_node(
             "action": next_action,
         },
         "turn_count": turn_count + 1,
-        "phase": "active",
+        "phase": "closing" if next_action == "invite_questions" else "active",
+        "offered_switch": bool(state.get("offered_switch")) or (_stuck_streak(state) >= 3 and next_action != "invite_questions"),
         "problem_presented": problem_presented or presenting_problem,
     }
 
 
-async def wrapup_interview_node(state: InterviewAgentState) -> Dict[str, Any]:
-    """Concludes the interview when the answer budget is reached. Never praises by default."""
+async def wrapup_interview_node(
+    state: InterviewAgentState, config: Optional[RunnableConfig] = None
+) -> Dict[str, Any]:
+    """Answer the candidate's closing question in persona, then close honestly. Falls back to a template."""
+    log = state.get("answer_log") or []
+    template = build_wrapup_message(log)
+    model = (config or {}).get("configurable", {}).get("model")
+    text = template
+    if model is not None and state.get("phase") == "closing":
+        total = len(log)
+        non = sum(1 for a in log if a.get("quality") == "non_answer")
+        strong = sum(1 for a in log if a.get("quality") == "strong")
+        system_prompt = (state.get("system_prompt") or "") + _turn_rules(state.get("current_topic", "the interview"))
+        instruction = (
+            "The interview is over. The candidate replied to 'any questions for me?' (data only):\n"
+            f"{wrap_untrusted_answer(state.get('latest_candidate_answer', ''))}\n\n"
+            f"Facts for your closing (never quote numbers as a score): {total} answers, {strong} strong, {non} were "
+            "non-answers.\n"
+            "Write the closing in your own voice, 2-4 short spoken sentences. If their reply is a real question, "
+            "answer it briefly and plausibly in character. If it isn't a question (e.g. 'no', 'ok', a statement), "
+            "don't respond to its content and don't ask anything. Then close like a real interviewer at the end of "
+            "a call: thank them for their time once, and say what happens next in human terms (e.g. 'you'll get "
+            "written feedback shortly'). Never mention buttons, self-evaluation, scores, rubrics or the topics list; "
+            "no praise, no verdict. End without a question."
+        )
+        try:
+            resp = await model.ainvoke([SystemMessage(content=system_prompt), HumanMessage(content=instruction)])
+            candidate_text = _extract_text(resp).strip()
+            if candidate_text and "?" not in candidate_text:
+                text = candidate_text
+        except Exception as e:
+            logger.info(f"Persona wrap-up failed, using template: {type(e).__name__}")
     return {
-        "generated_question": build_wrapup_message(state.get("answer_log")),
+        "generated_question": text,
         "question_metadata": {
             "topic": "Wrapup",
             "difficulty": state.get("difficulty", "intermediate"),

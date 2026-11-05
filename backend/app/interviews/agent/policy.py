@@ -139,10 +139,6 @@ def apply_turn_policy(
     elif action == "ask_follow_up" and follow_ups >= MAX_FOLLOW_UPS_PER_TOPIC:
         action = "next_topic" if has_other_topics else "increase_difficulty"
         reason = f"Follow-up cap ({MAX_FOLLOW_UPS_PER_TOPIC}) reached on '{current_topic}'."
-    elif quality == "strong" and action == "ask_follow_up" and follow_ups >= 1:
-        action = "next_topic" if has_other_topics else "increase_difficulty"
-        delta = max(delta, 0)
-        reason = f"Solid depth on '{current_topic}'. Covering the next competency."
 
     if action == "next_topic" and not has_other_topics:
         action = "increase_difficulty" if not struggling else "decrease_difficulty"
@@ -171,7 +167,8 @@ def apply_turn_policy(
 
 # ---------------------------------------------------------------- output hygiene
 
-_COMPOUND_SPLIT_RE = re.compile(r"[,;]?\s+(?:and|or)\s+(?=(?:how|what|why|which|where|when|who|did|do|does|can|could|would|is|are|was|were)\b)", re.I)
+# Only "..., and how/what ...?" joins two asks; "X, Y, or how Z" is one question with options.
+_COMPOUND_SPLIT_RE = re.compile(r",?\s+and\s+(?=(?:how|what|why|which|where|when|who|did|do|does|can|could|would|is|are|was|were)\b)", re.I)
 
 
 def enforce_single_question(text: str) -> str:
@@ -245,3 +242,62 @@ def detect_brute_force(code: str) -> bool:
     has_hash = bool(re.search(r"\b(dict|set|hashmap|hashset|unordered_map|unordered_set|map<|counter|defaultdict|seen|lookup)\b|\{\}", lower))
     has_two_ptr = bool(re.search(r"\b(left|right|lo|hi|low|high|start|end|ptr)\b", lower) and re.search(r"(\+= 1|-= 1|\+\+|--)", lower))
     return nested and not (has_hash or has_two_ptr)
+
+
+# ---------------------------------------------------------------- persona & realism
+
+_PERSONAS = {
+    "technical": [("Priya", "Staff Engineer", "the payments platform team"),
+                  ("Arjun", "Senior Software Engineer", "the search infrastructure team"),
+                  ("Maya", "Principal Engineer", "the data platform team"),
+                  ("Daniel", "Engineering Manager", "the core APIs team")],
+    "dsa": [("Rohan", "Senior Software Engineer", "the ads ranking team"),
+            ("Sara", "Software Engineer III", "the maps routing team"),
+            ("Kabir", "Staff Engineer", "the storage team")],
+    "behavioral": [("Nisha", "Engineering Manager", "the growth org"),
+                   ("Tom", "Director of Engineering", "the platform org"),
+                   ("Ananya", "Senior Engineering Manager", "the commerce org")],
+    "managerial": [("Vikram", "VP of Engineering", "the product engineering org"),
+                   ("Elena", "Director of Engineering", "the infrastructure org")],
+}
+
+
+def pick_persona(seed: str, category: str, company: Optional[str] = None) -> Dict[str, str]:
+    """Deterministic per interview, so the interviewer keeps one identity across turns and restarts."""
+    options = _PERSONAS.get(category) or _PERSONAS["technical"]
+    name, title, team = options[sum(ord(c) for c in (seed or "x")) % len(options)]
+    org = f"{team} at {company}" if company else team
+    return {"name": name, "title": title, "team": org}
+
+
+def persona_prompt(persona: Dict[str, str], category: str, minutes: int) -> str:
+    return (
+        f"\n\nYOU ARE: {persona['name']}, {persona['title']} on {persona['team']}. Stay in this identity for the whole "
+        f"interview. This is a {minutes}-minute {category} round. Speak like a real, experienced interviewer: plain "
+        "words, contractions, short sentences. A brief natural acknowledgement before a question is fine "
+        "('Okay.', 'Got it.', 'Right, so you used X.') but never evaluate the answer out loud. Refer back to things "
+        "the candidate said earlier when it helps. If asked about the team or role, answer briefly and plausibly in "
+        "character without inventing confidential specifics."
+    )
+
+
+def is_rambling(text: str, quality: str) -> bool:
+    words = len((text or "").split())
+    return words >= 150 or (words >= 90 and quality in ("weak", "non_answer"))
+
+
+_SLOP_SENTENCE_RE = re.compile(
+    r"\b(great (answer|question|job|point|explanation)|excellent|fantastic|awesome|amazing|wonderful|impressive|"
+    r"well done|nice work|thanks for sharing|thank you for sharing|that'?s (a )?(great|good|fascinating|interesting)|"
+    r"let'?s dive|delve|i appreciate|journey|it'?s important to note|feel free to)\b", re.I)
+
+
+def strip_slop(text: str) -> str:
+    """Drop sentences that praise or use AI filler, as long as a question survives."""
+    if not text or "```" in text or "### " in text:
+        return text
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    kept = [s for s in sentences if not _SLOP_SENTENCE_RE.search(s)]
+    if not kept or not any("?" in s for s in kept):
+        return text
+    return " ".join(kept).strip()

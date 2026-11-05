@@ -70,3 +70,4 @@ class InterviewAgentState(TypedDict, total=False):
     last_intent: str
     last_quality: str
     problem_presented: bool
+    offered_switch: bool

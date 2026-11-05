@@ -32,7 +32,7 @@ import httpx
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from backend.app.interviews.agent.policy import too_similar  # noqa: E402
+from backend.app.interviews.agent.policy import classify_intent, too_similar  # noqa: E402
 
 API = os.environ.get("SKILLISSUE_API", "http://localhost:8000/api/v1")
 MESSAGES_PER_MINUTE = 13  # backend allows 15/min per user
@@ -86,6 +86,37 @@ PERSONAS: Dict[str, List[str]] = {
                 "yeah", LONG_RAMBLE[:500], "I think so", LONG_RAMBLE[:700], "ok", "sure"],
 }
 
+ROUND_PERSONA_OVERRIDES: Dict[str, Dict[str, List[str]]] = {
+    "behavioral": {"strong": [
+        "I'm a backend engineer; the project I owned end to end was moving our billing jobs off a cron box onto a queue.",
+        "The hard part was that finance ran reports off the same tables, so I set up a weekly sync with their lead and "
+        "we agreed a freeze window before month-end.",
+        "My part: I wrote the design doc, built the worker and the idempotency keys; a teammate did the dashboards.",
+        "Result: failed billing runs went from about 6 a month to zero over the next quarter, and on-call pages for it stopped.",
+        "A teammate disagreed with my retry design; I asked him to write his alternative, we load-tested both, his was "
+        "simpler, and we shipped his with my monitoring.",
+        "Something I'd do differently: I underestimated the migration and we slipped two weeks; now I timebox spikes first.",
+        "When requirements were vague, I wrote down three assumptions, sent them to the PM, and built only the part both agreed on.",
+        "I mentor an intern weekly; I give him one review comment theme per week instead of twenty nits.",
+        "Could you tell me how your team handles on-call?",
+        "Thanks.",
+    ]},
+}
+
+# Personas answered by an LLM that actually reads the interviewer's question (scripted answers talk past
+# the interviewer, which makes "adaptivity" unmeasurable). Clueless/injector stay scripted.
+SIMULATED = {
+    "strong": "a strong mid-level engineer. Answer the actual question in 2-4 spoken sentences with concrete "
+              "specifics from plausible real work (numbers, tools, a trade-off, a failure you hit). Occasionally admit "
+              "a limit honestly. If asked whether you have questions, ask one sharp question about the team.",
+    "overconfident": "an overconfident candidate. Answer the question vaguely but boastfully with inflated, absolute "
+                     "claims ('10x', 'single-handedly', 'never failed') and no real specifics; when pushed for numbers, "
+                     "deflect with more claims. 1-3 sentences.",
+    "rambler": "a nervous rambler. Start near the question, then drift into a long off-topic story (college, family, "
+               "unrelated tools) for 120-200 words without really answering.",
+}
+MAX_SIM_TURNS = 11
+
 DEFAULT_MATRIX = [
     ("technical", "clueless"), ("technical", "overconfident"), ("technical", "strong"), ("technical", "injector"),
     ("technical", "rambler"), ("behavioral", "overconfident"), ("behavioral", "strong"),
@@ -127,7 +158,18 @@ class RunResult:
     judge: Optional[Dict[str, Any]] = None
 
 
-async def run_interview(client: httpx.AsyncClient, throttle: Throttle, round_name: str, persona: str) -> RunResult:
+async def simulate_answer(sim_provider: Any, persona: str, round_name: str, turns: List[Dict[str, Any]]) -> str:
+    convo = "\n".join(("INTERVIEWER: " if t["role"] == "assistant" else "YOU: ") + t["content"][:1200] for t in turns[-8:])
+    r = await sim_provider.generate_text(
+        prompt=f"Interview transcript so far ({round_name} round):\n{convo}\n\nWrite only your next reply as the candidate.",
+        system_prompt=f"You are role-playing a job candidate in a mock interview: {SIMULATED[persona]} Never mention "
+                      "that you are an AI or role-playing. Plain spoken English.",
+    )
+    return (r.text or "ok").strip()
+
+
+async def run_interview(client: httpx.AsyncClient, throttle: Throttle, round_name: str, persona: str,
+                        sim_provider: Any = None) -> RunResult:
     res = RunResult(round=round_name, persona=persona)
     cfg = ROUNDS[round_name]
     body = {"category": round_name, "domain_skills": cfg["skills"], "difficulty": "intermediate",
@@ -142,7 +184,10 @@ async def run_interview(client: httpx.AsyncClient, throttle: Throttle, round_nam
     iv = r.json()
     res.interview_id = iv["id"]
     res.turns.append({"role": "assistant", "content": iv["messages"][-1]["content"], "kind": "question", "latency": 0})
-    for answer in PERSONAS[persona]:
+    simulated = persona in SIMULATED and sim_provider is not None
+    scripted = ROUND_PERSONA_OVERRIDES.get(round_name, {}).get(persona, PERSONAS[persona])
+    for i in range(MAX_SIM_TURNS if simulated else len(scripted)):
+        answer = await simulate_answer(sim_provider, persona, round_name, res.turns) if simulated else scripted[i]
         await throttle.wait()
         t0 = time.monotonic()
         r = await client.post(f"/interviews/{res.interview_id}/message",
@@ -222,6 +267,9 @@ async def judge_transcript(provider: Any, res: RunResult) -> Optional[Dict[str, 
     for t in res.turns:
         if t["role"] == "assistant":
             lines.append(f"INTERVIEWER: {t['content'][:1500]}")
+        elif classify_intent(t["content"]) == "injection":
+            # Quoting jailbreak text trips provider content filters; the judge only needs to know it happened.
+            lines.append("CANDIDATE: [attempted to manipulate the interviewer / demand a score]")
         else:
             lines.append(f"CANDIDATE: <untrusted_candidate_answer>{sanitize_untrusted_input(t['content'], 800)}</untrusted_candidate_answer>")
     prompt = f"Round: {res.round}. Candidate persona (for context): {res.persona}.\n\n" + "\n".join(lines)
@@ -233,7 +281,7 @@ async def judge_transcript(provider: Any, res: RunResult) -> Optional[Dict[str, 
         return {"error": f"{type(e).__name__}: {str(e)[:160]}"}
 
 
-async def get_judge_provider(email: str):
+async def get_judge_provider(email: str, task_type: str = "evaluation"):
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
     from sqlalchemy import select
@@ -242,7 +290,7 @@ async def get_judge_provider(email: str):
     from backend.app.providers.factory import ModelFactory
     async with AsyncSessionLocal() as db:
         user = (await db.execute(select(User).where(User.email == email.lower()))).scalar_one()
-        return await ModelFactory.get_for_user(db, user.id, task_type="evaluation")
+        return await ModelFactory.get_for_user(db, user.id, task_type=task_type)
 
 
 def write_report(out: Path, results: List[RunResult], started: float) -> Dict[str, Any]:
@@ -281,6 +329,7 @@ async def main():
     ap.add_argument("--full", action="store_true", help="every persona x round")
     ap.add_argument("--only", nargs="*", help="round:persona pairs, e.g. technical:clueless")
     ap.add_argument("--no-judge", action="store_true")
+    ap.add_argument("--scripted-only", action="store_true", help="no LLM-simulated candidates")
     ap.add_argument("--concurrency", type=int, default=3)
     args = ap.parse_args()
 
@@ -306,10 +355,11 @@ async def main():
 
         async def one(pair):
             async with sem:
-                res = await run_interview(client, throttle, *pair)
+                res = await run_interview(client, throttle, *pair, sim_provider=sim_provider)
                 print(f"  done {pair[0]}/{pair[1]} ({len(res.turns)} turns, {len(res.errors)} errors)", flush=True)
                 return res
 
+        sim_provider = None if args.scripted_only else await get_judge_provider(email, task_type="interviewer")
         print(f"Running {len(matrix)} interviews...", flush=True)
         results = await asyncio.gather(*(one(p) for p in matrix))
 

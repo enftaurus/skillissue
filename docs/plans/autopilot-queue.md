@@ -23,17 +23,17 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       answers, no generic filler. Output a markdown scorecard + JSON; record a baseline.
 
 ### 2. Interview realism (measure with the suite before/after)
-- [~] 2a. Interviewer persona: name, role, team, company context; natural opener (small talk,
+- [x] 2a. Interviewer persona: name, role, team, company context; natural opener (small talk,
       agenda for the round), consistent voice across turns.
-- [~] 2b. Realistic structure: intro → warm-up → core → deep dive → "any questions for me?" →
+- [x] 2b. Realistic structure: intro → warm-up → core → deep dive → "any questions for me?" →
       close. Candidate questions answered in persona; not counted as answers.
-- [~] 2c. Natural acknowledgements without praise ("Okay.", "Got it, so you…"), occasional
+- [x] 2c. Natural acknowledgements without praise ("Okay.", "Got it, so you…"), occasional
       callbacks to earlier answers, short thinking beats; ban list of slop phrases enforced in code.
-- [~] 2d. Rambling handling: if an answer is very long and off-point, interviewer politely
+- [x] 2d. Rambling handling: if an answer is very long and off-point, interviewer politely
       interrupts/redirects next turn.
 
 ### 3. Voice: Nova 2.5 Sonic hybrid (Bedrock) — see ADR 0025 once written
-- [ ] 3a. Spike in `scripts/spikes/nova_sonic_spike.py`: open a bidirectional stream to
+- [~] 3a. Spike in `scripts/spikes/nova_sonic_spike.py`: open a bidirectional stream to
       `amazon.nova-2-5-sonic` (us-east-1) with the default credential chain; send a system prompt
       + text turn; receive audio + transcript; demonstrate a tool call round-trip. Record findings
       (SDK, event schema, voices, latency) in `docs/product/nova-sonic-notes.md`.
@@ -93,3 +93,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 00:20 IST: queue created; branch cut from `qa/audit-fixes-2026-11-05`; autopilot timer installed (03:12 IST).
 - 2026-11-06 00:25 IST: interactive session claimed item 1 ([~]).
 - 2026-11-06 00:30 IST: eval suite done (scripts/evals/interview_eval.py). Baseline (10 runs): checks pass 100%; realism 3.11, adaptivity 3.33, no-slop 3.89, rigor 3.44. Weak: templated wrap-ups, ramblers not redirected, definitional questions for stuck candidates, boasts not challenged. Interactive session claimed item 2.
+- 2026-11-06 00:55 IST: item 2 done. Persona + agenda opener, 'any questions for me?' closing phase (not counted), in-persona honest close, rambling interrupts, scenario-based simplification, one-time switch offer then early close, natural topic bridges, deeper follow-ups for strong answers, slop stripping; eval now simulates strong/overconfident/rambler candidates with an LLM. Eval (10 runs): realism 4.1, adaptivity 4.2, no-slop 4.5, rigor 4.1 (baseline 3.1/3.3/3.9/3.4). Weak spot: managerial/clueless adaptivity 2. Interactive session claimed 3a.

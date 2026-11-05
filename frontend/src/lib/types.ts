@@ -91,7 +91,7 @@ export interface InterviewMessage {
   content: string;
   question_index: number;
   is_follow_up: boolean;
-  kind?: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' | 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup';
+  kind?: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' | 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup' | 'closing' | 'candidate_question';
   created_at: string;
 }
 

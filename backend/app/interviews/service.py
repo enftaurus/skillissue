@@ -13,6 +13,14 @@ from backend.app.providers.service import ProviderConfigService
 from backend.app.core.errors import EntityNotFoundError, AppException, translate_model_error
 from backend.app.core.logging import logger
 
+def _assistant_kind(result: Dict[str, Any], default: str) -> str:
+    if result.get("is_completed"):
+        return "wrapup"
+    if result.get("next_action") == "invite_questions":
+        return "closing"
+    return default
+
+
 class InterviewService:
     @classmethod
     async def create_domain_interview(
@@ -240,6 +248,8 @@ class InterviewService:
             if intent in ("repeat_question", "clarify"):
                 return await cls._answer_meta_request(db, user_id, interview, content, client_turn_id, intent)
 
+            last_assistant = next((m for m in reversed(interview.messages) if m.role == "assistant"), None)
+            user_kind = "candidate_question" if getattr(last_assistant, "kind", None) == "closing" else "answer"
             user_msg = InterviewMessage(
                 interview_id=interview.id,
                 role="user",
@@ -247,7 +257,7 @@ class InterviewService:
                 client_turn_id=client_turn_id,
                 question_index=len([m for m in interview.messages if m.role == "assistant"]),
                 is_follow_up=False,
-                kind="answer",
+                kind=user_kind,
             )
             # Append to the loaded collection (not just db.add) so the turn count and the
             # agent's conversation history both include this answer.
@@ -291,7 +301,7 @@ class InterviewService:
             content=assistant_text,
             question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
             is_follow_up=is_follow_up,
-            kind="wrapup" if agent_result.get("is_completed") else "question",
+            kind=_assistant_kind(agent_result, default="question"),
         )
         interview.messages.append(assistant_msg)
         await db.commit()
@@ -355,7 +365,7 @@ class InterviewService:
         return assistant_msg
 
     # Exchanges that are not interview questions/answers (kept in the raw transcript, not paired).
-    _UNPAIRED_KINDS = {"meta", "repeat", "hint_request", "hint"}
+    _UNPAIRED_KINDS = {"meta", "repeat", "hint_request", "hint", "closing", "candidate_question", "wrapup"}
 
     @staticmethod
     def compute_grouped_transcript(messages: List[InterviewMessage]) -> List[dict]:
@@ -663,7 +673,7 @@ class InterviewService:
             content=assistant_content,
             question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
             is_follow_up=bool((turn_result.get("question_metadata") or {}).get("is_follow_up", False)),
-            kind="wrapup" if turn_result.get("is_completed") else "code_feedback",
+            kind=_assistant_kind(turn_result, default="code_feedback"),
         )
         interview.messages.append(assistant_msg)
         await db.commit()
