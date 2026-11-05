@@ -9,6 +9,8 @@ from backend.app.evaluations.schemas import (
     RetestInitiateRequest, RetestSessionResponse
 )
 from backend.app.evaluations.service import EvaluationService
+from backend.app.evaluations.replay_diff import build_replay_diff
+from backend.app.providers.factory import ModelFactory
 
 router = APIRouter(prefix="/evaluations", tags=["Evaluations"])
 
@@ -79,3 +81,17 @@ async def complete_retest_and_calculate_delta(
     Calculates the Before vs After Delta Score and verified improvements for a completed retest interview.
     """
     return await EvaluationService.complete_retest_and_calculate_delta(db, current_user.id, retest_id)
+
+
+@router.get("/retests/{retest_id}/diff")
+async def retest_replay_diff(
+    retest_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Original answer vs retest answer on the same weakness, with scores and what changed."""
+    try:
+        provider = await ModelFactory.get_for_user(db, current_user.id, task_type="evaluation")
+    except Exception:
+        provider = None
+    return await build_replay_diff(db, current_user.id, retest_id, provider)

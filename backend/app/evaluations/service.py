@@ -562,32 +562,31 @@ class EvaluationService:
 
         effective_baseline = baseline_score if baseline_score is not None else evaluation.overall_score
 
-        # Provision targeted 3-question retest interview
+        # Provision a short, focused retest run by the real interview engine (persona, policy, budget).
+        category = original_interview.category if original_interview.category in ("technical", "behavioral", "managerial") else "technical"
         retest_interview = Interview(
             user_id=user_id,
             mode="domain",
-            category="technical",
+            category=category,
             title=f"Retest: {weakness_topic}",
             domain_skills=[weakness_topic],
             target_role=original_interview.target_role or "Software Engineer",
-            difficulty="hard",
+            difficulty=original_interview.difficulty or "intermediate",
             status="in_progress",
-            target_duration_minutes=15,
+            target_duration_minutes=10,
         )
         db.add(retest_interview)
         await db.flush()
 
-        initial_q = (
-            f"Welcome to your targeted retest on {weakness_topic}. In your previous interview, you had difficulty defending your implementation and trade-offs. "
-            f"Let's dive straight in: Explain the exact mechanism you would use to handle high-throughput concurrency and prevent race conditions or data loss in {weakness_topic}."
-        )
-        msg = InterviewMessage(
+        from backend.app.interviews.agent.service import InterviewAgentService
+        initial_q = await InterviewAgentService.start_interview(db=db, user_id=user_id, interview=retest_interview)
+        db.add(InterviewMessage(
             interview_id=retest_interview.id,
             role="assistant",
             content=initial_q,
             question_index=1,
-        )
-        db.add(msg)
+            kind="question",
+        ))
 
         retest_session = RetestSession(
             user_id=user_id,

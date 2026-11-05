@@ -38,6 +38,93 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
+
+interface DiffSide {
+  question: string;
+  answer: string;
+  score: number | null;
+  critique: string;
+}
+interface ReplayDiffData {
+  before: DiffSide | null;
+  after: DiffSide | null;
+  rubric: { dimension_id: string; before: number; after: number; delta: number }[];
+  summary: { improved: string[]; still_missing: string[]; verdict: string };
+}
+
+const ReplayDiff: React.FC<{ retestId: string }> = ({ retestId }) => {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<ReplayDiffData | null>(null);
+  const [err, setErr] = useState('');
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !data) {
+      try {
+        setData(await api.get<ReplayDiffData>(`/evaluations/retests/${retestId}/diff`));
+      } catch (e: any) {
+        setErr(e.message || 'Could not load the comparison.');
+      }
+    }
+  };
+  const side = (label: string, s: DiffSide | null, tone: string) => (
+    <div className={`rounded-lg border p-3 space-y-1.5 ${tone}`}>
+      <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        <span>{label}</span>
+        {s?.score != null && <span className="font-mono text-slate-700">{s.score}/5</span>}
+      </div>
+      {s ? (
+        <>
+          <p className="text-xs text-slate-500">{s.question}</p>
+          <p className="text-sm text-slate-900 italic">&ldquo;{s.answer}&rdquo;</p>
+          {s.critique && <p className="text-xs text-slate-600">{s.critique}</p>}
+        </>
+      ) : (
+        <p className="text-xs text-slate-500">No comparable answer recorded.</p>
+      )}
+    </div>
+  );
+  return (
+    <div className="pt-2 border-t border-surface-border space-y-3">
+      <button onClick={toggle} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">
+        {open ? 'Hide answer comparison' : 'Compare your answers: before vs after'}
+      </button>
+      {open && err && <p className="text-xs text-rose-700">{err}</p>}
+      {open && !data && !err && <div className="h-24 rounded-lg bg-slate-100 animate-pulse" />}
+      {open && data && (
+        <div className="space-y-3 animate-fade-in">
+          <div className="grid md:grid-cols-2 gap-3">
+            {side('Before', data.before, 'bg-slate-50 border-slate-200')}
+            {side('After (retest)', data.after, 'bg-indigo-50/60 border-indigo-200')}
+          </div>
+          {data.summary.verdict && <p className="text-sm text-slate-800">{data.summary.verdict}</p>}
+          <div className="grid md:grid-cols-2 gap-3 text-xs">
+            {data.summary.improved.length > 0 && (
+              <ul className="space-y-1">
+                {data.summary.improved.map((x) => <li key={x} className="text-emerald-800">+ {x}</li>)}
+              </ul>
+            )}
+            {data.summary.still_missing.length > 0 && (
+              <ul className="space-y-1">
+                {data.summary.still_missing.map((x) => <li key={x} className="text-rose-800">− {x}</li>)}
+              </ul>
+            )}
+          </div>
+          {data.rubric.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {data.rubric.map((r) => (
+                <span key={r.dimension_id} className={`text-[11px] px-2 py-0.5 rounded-full border ${r.delta > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : r.delta < 0 ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                  {r.dimension_id.replace(/_/g, ' ')}: {r.before} → {r.after}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const EvaluationPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -610,6 +697,8 @@ export const EvaluationPage: React.FC = () => {
                       </ul>
                     </div>
                   )}
+
+                  {rt.status === 'completed' && <ReplayDiff retestId={rt.id} />}
 
                   {rt.status === 'in_progress' && rt.retest_interview_id && (
                     <div className="pt-2 border-t border-surface-border flex justify-end">

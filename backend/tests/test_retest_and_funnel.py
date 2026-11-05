@@ -68,6 +68,22 @@ async def test_retest_and_funnel_telemetry(client: AsyncClient):
     assert "delta_score" in delta_data
     assert len(delta_data["verified_improvements"]) >= 1
 
+    # Answer replay diff: original answer vs retest answer on the same weakness
+    diff = await client.get(f"/api/v1/evaluations/retests/{retest_session_id}/diff", headers=headers)
+    assert diff.status_code == 200, diff.text
+    d = diff.json()
+    assert d["weakness_topic"] == "Concurrency & Mutex Locks"
+    assert d["after"] and d["after"]["answer"]
+    assert "verdict" in d["summary"]
+    other = await client.post("/api/v1/auth/register", json={"email": f"o_{uuid.uuid4().hex[:6]}@example.com", "password": "Password123!"})
+    otok = (await client.post("/api/v1/auth/login", json={"email": other.json()["email"], "password": "Password123!"})).json()["access_token"]
+    assert (await client.get(f"/api/v1/evaluations/retests/{retest_session_id}/diff",
+                             headers={"Authorization": f"Bearer {otok}"})).status_code == 404
+
+    # Retest opener comes from the interview engine, not a canned concurrency question
+    retest_iv = (await client.get(f"/api/v1/interviews/{retest_interview_id}", headers=headers)).json()
+    assert "high-throughput concurrency and prevent race conditions" not in retest_iv["messages"][0]["content"]
+
     # 4. Check Admin Funnel Telemetry
     funnel_res = await client.get("/api/v1/analytics/funnel", headers=headers)
     assert funnel_res.status_code == 200
