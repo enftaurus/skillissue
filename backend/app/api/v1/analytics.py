@@ -8,8 +8,15 @@ from backend.app.analytics.schemas import (
     AnalyticsDashboardResponse, UserSkillResponse, FunnelTelemetryResponse, AdminAnalyticsResponse
 )
 from backend.app.analytics.service import AnalyticsService
+from backend.app.analytics.self_awareness import self_awareness_report
 
 router = APIRouter(prefix="/analytics", tags=["Analytics & Progress"])
+
+@router.get("/self-awareness")
+async def self_awareness(current_user: User = Depends(get_current_active_user), db: AsyncSession = Depends(get_db)):
+    """Self-rating vs evidence gap per rubric dimension over time."""
+    return await self_awareness_report(db, current_user.id)
+
 
 @router.get("/dashboard", response_model=AnalyticsDashboardResponse)
 async def get_analytics_dashboard(

@@ -50,7 +50,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       Kiara) when platform voice is enabled; honest availability flags.
 
 ### 4. Product features from the 2026-11-05 recommendations
-- [ ] 4a. Self-awareness index: track self-vs-AI rubric gap per dimension over time (from existing
+- [x] 4a. Self-awareness index: track self-vs-AI rubric gap per dimension over time (from existing
       comparisons); API + dashboard card ("You overrate system design by 1.8, down from 3.2").
 - [ ] 4b. Answer replay diff: on a retest, show old vs new answer to the same weakness side by side
       with rubric score, evidence quotes and what changed; API + UI on the evaluation page.
@@ -100,3 +100,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 01:45 IST: interactive session claimed 6a-6c (code comprehension). Autopilot runner now waits while an interactive session is actively writing in this repo.
 - 2026-11-06 02:10 IST: 6a-6c done. 9 Google-style items (TTL/LRU cache, token bucket, quota race, retry, keyset pagination, consistent hashing, async fan-out, closures/defaults, build order) x 3-4 questions; trace keys verified by execution in tests; deterministic trace/location/numeric grading + LLM judge with non-revealing reviewer follow-ups; /comprehension UI with clickable line refs, timer, reveal. Tailwind animations defined (were no-ops). Interactive session claimed 7a.
 - 2026-11-06 02:20 IST: 7a done. Public landing at / for signed-out visitors (and /welcome): animated live-interview hero, rounds marquee, 4 USPs, interactive code-reading demo, loop, real-eval proof, CTA; scroll reveal, reduced motion, no h-scroll at 390 px; signed-in / still shows the dashboard; 401 redirect skips public pages.
+- 2026-11-06 02:30 IST: 4a done. /api/v1/analytics/self-awareness (per-dimension self-vs-evidence gap, bias, trend, index over last 3 sessions, headline) + dashboard card.
