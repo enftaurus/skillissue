@@ -176,8 +176,12 @@ async def run_interview(client: httpx.AsyncClient, throttle: Throttle, round_nam
             "target_role": "Software Engineer"}
     if cfg.get("coding_problem_id"):
         body["coding_problem_id"] = cfg["coding_problem_id"]
-    await throttle.wait()
-    r = await client.post("/interviews/domain", json=body)
+    for _ in range(12):  # interview creation is rate-limited to 10/min per user
+        await throttle.wait()
+        r = await client.post("/interviews/domain", json=body)
+        if r.status_code != 429:
+            break
+        await asyncio.sleep(10)
     if r.status_code != 201:
         res.errors.append(f"create {r.status_code}: {r.text[:200]}")
         return res
