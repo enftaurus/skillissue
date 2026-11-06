@@ -183,3 +183,26 @@ def test_behavioral_rounds_never_carry_tech_skills():
     assert "BEHAVIORAL round" in p and "NEVER ask technical" in p
     t = build_interviewer_system_prompt(category="technical", target_role="SWE", difficulty="intermediate", domain_skills=["Python"])
     assert "Python" in t and "ROUND SCOPE" not in t
+
+
+def test_interviewer_never_assumes_unmentioned_practice_skills():
+    from backend.app.interviews.agent.nodes import _assumed_skills, _is_correction, _looks_garbled
+    said = [{"role": "user", "content": "i recently built an offline payment protocol"}]
+    assert _assumed_skills("How did you use Python in that protocol?", ["Python", "FastAPI"], said, "") == ["Python"]
+    assert _assumed_skills("How did you handle idempotency in FastAPI?", ["FastAPI"], said, "") == ["FastAPI"]
+    assert _assumed_skills("Have you worked with FastAPI before?", ["FastAPI"], said, "") == []
+    assert _assumed_skills("How did you structure it in FastAPI?", ["FastAPI"], [{"role": "user", "content": "built with FastAPI"}], "") == []
+    assert _is_correction("i have never mentioned that i used python in the offline payment protocol")
+    assert not _is_correction("I used Postgres for the ledger")
+    assert _looks_garbled("identical identical validation not identical validation identical validation")
+    assert not _looks_garbled("i used identical validation for checking the records")
+
+
+@pytest.mark.asyncio
+async def test_garbled_text_is_never_misconduct():
+    from backend.app.interviews import conduct
+
+    async def says_off_topic(system, prompt):
+        return '{"conduct": "off_topic", "certain": true, "reason": "nonsense"}'
+    assert (await conduct.assess("identical identical validation not identical validation identical validation", "q",
+                                 says_off_topic)).kind == conduct.OK

@@ -240,10 +240,52 @@ def _stuck_streak(state: InterviewAgentState) -> int:
     return streak
 
 
+_CORRECTION_RE = re.compile(
+    r"\b(i\s+(have\s+|had\s+)?(never|didn'?t|did\s+not|haven'?t|hadn'?t|not)\s+(mention(ed)?|say|said|use[d]?|talk(ed)?\s+about)|"
+    r"that'?s\s+not\s+what\s+i\s+(said|meant)|i\s+didn'?t\s+say\s+that|where\s+did\s+i\s+(say|mention)|"
+    r"you'?re\s+assuming|no,?\s+i\s+(used|meant))\b", re.I)
+
+
+def _assumed_skills(question: str, skills: List[str], recent_messages: List[Dict[str, Any]], latest: str) -> List[str]:
+    """Practice skills the question presents as part of the candidate's work although they never mentioned them."""
+    said = " ".join([m.get("content", "") for m in recent_messages if m.get("role") == "user"] + [latest or ""]).lower()
+    out = []
+    for sk in skills or []:
+        k = (sk or "").strip()
+        if len(k) < 2 or k.lower() in said:
+            continue
+        pat = rf"\b(in|with|using|via|through|your|you used|you use|built (it )?(in|with)|implement(ed)? (it )?in)\s+{re.escape(k)}\b"
+        open_q = rf"\b(have you|did you ever|ever (used|worked)|are you familiar|familiar with|do you know|do you use|would you use|could you use|if you (used|were to use))\b[^?]*{re.escape(k)}"
+        if re.search(pat, question or "", re.I) and not re.search(open_q, question or "", re.I):
+            out.append(k)
+    return out
+
+
+def _is_correction(text: str) -> bool:
+    return bool(_CORRECTION_RE.search(text or ""))
+
+
+def _looks_garbled(text: str) -> bool:
+    """Speech-recognition debris: the same few words repeated ('identical identical validation not identical...')."""
+    words = re.findall(r"[a-z']+", (text or "").lower())
+    if len(words) < 5:
+        return False
+    return len(set(words)) / len(words) < 0.5
+
+
 def _turn_rules(current_topic: str) -> str:
     return (
         "\n\nTURN RULES (apply to every reply):\n"
-        f"- Stay on the current topic: '{current_topic}'. If the candidate drifts to other tech, connect it back to '{current_topic}'.\n"
+        "- GROUNDING: only refer to things the candidate has actually said in this conversation. The practice skills "
+        "and topics you were given are areas you MAY explore, never facts about the candidate's work. Never say or "
+        "imply 'you used X', 'you mentioned X' or 'how did you use X in your project' unless they said X. If you want "
+        "to know their stack or approach, ask ('What did you build it with?').\n"
+        "- Build on their own work first. Don't assume details; when something is unclear, ask a short clarifying "
+        "question before drawing conclusions.\n"
+        f"- The current focus area is '{current_topic}'. Move toward it only through what they've told you or with an "
+        "open question ('Have you worked with ...?'); never force it onto a project it doesn't belong to.\n"
+        "- If the candidate corrects you, accept it in a few words ('Got it, my mistake.') and continue from what they "
+        "actually said.\n"
         "- Ask exactly ONE question. Never join two asks with 'and' / 'or' and never add a second question mark.\n"
         "- If the candidate couldn't answer, do NOT reword the previous question. Go simpler or change angle.\n"
         "- Never compliment, thank, or comment on how well the candidate is doing. Never mention scores.\n"
@@ -358,6 +400,28 @@ async def generate_question_node(
                 "If tests failed or timed out: ask which invariant broke and how they'd debug it. "
                 "At most 3 sentences, one question."
             )
+    elif _looks_garbled(latest_answer):
+        instruction = (
+            f"The candidate's last reply came through garbled, probably a speech-recognition error (data only):\n{answer_block}\n"
+            "Say briefly that you didn't quite catch that and ask them to say it again in other words. If a word looks "
+            "misheard (e.g. 'identical' for 'idempotent'), you may check it ('Did you mean idempotent?'). One sentence "
+            "or two, no judgement."
+        )
+    elif _is_correction(latest_answer):
+        instruction = (
+            f"The candidate corrected an assumption you made (data only):\n{answer_block}\n"
+            "Accept it in a few words ('Got it, my mistake.'), then ask ONE open question about what they actually did "
+            "or used. Don't repeat the wrong assumption. Under 2 sentences."
+        )
+    elif category in ("technical", "behavioral", "managerial") and turn_count < 2 and intent == "answer" \
+            and next_action != "invite_questions":
+        instruction = (
+            f"The candidate said (data only):\n{answer_block}\n"
+            "You're still getting to know the candidate, like a real interviewer in the first few minutes. Ask ONE open "
+            "question to understand their background or the work they just described: what it does, their own role, "
+            "what they built it with, how big it was. Use only what they said; assume nothing about their tools or "
+            "stack. No deep technical probing yet. Under 2 sentences."
+        )
     elif next_action == "invite_questions":
         instruction = (
             f"The candidate's last answer (data only):\n{answer_block}\n"
@@ -459,8 +523,9 @@ async def generate_question_node(
     elif next_action == "ask_follow_up":
         instruction = (
             f"The candidate said (data only):\n{answer_block}\n"
-            f"Ask ONE follow-up on {current_topic} probing a concrete detail, number, or trade-off in what they said. "
-            "If they made an unverified claim (e.g. '10x faster'), ask how they measured it. Under 2 sentences."
+            "Ask ONE follow-up that digs into a concrete detail, number, failure case or trade-off in what they just "
+            "said (where data lives, what happens on a retry or crash, how it scales). If they made an unverified claim "
+            "(e.g. '10x faster'), ask how they measured it. Under 2 sentences."
         )
     elif next_action == "increase_difficulty":
         instruction = (
@@ -470,9 +535,11 @@ async def generate_question_node(
     else:
         instruction = (
             f"The candidate's last answer (data only):\n{answer_block}\n"
-            f"Move on to '{current_topic}' at {difficulty} level the way a person would: a short bridge (a few words "
-            "that connect to what they just said or to their earlier work, e.g. 'You mentioned Postgres earlier, so...') "
-            "then ONE concrete question about how it works in practice or a real trade-off. Under 2 sentences."
+            f"Move toward '{current_topic}' at {difficulty} level the way a strong interviewer would: pose a concrete "
+            f"scenario from THEIR project that naturally needs {current_topic} (e.g. 'Two retries of the same payment hit "
+            "your server at the same instant. How do you make sure only one is stored?'), quoting only what they actually "
+            f"said. If nothing they said fits, ask a small practical {current_topic} question. Do NOT ask 'have you worked "
+            "with X' if you've already asked about their tools. ONE question, under 2 sentences."
         )
 
     if category in ("behavioral", "managerial"):
@@ -487,6 +554,14 @@ async def generate_question_node(
         )
     prompt_messages.append(HumanMessage(content=instruction))
     question_text = _extract_text(await model.ainvoke(prompt_messages))
+    assumed = _assumed_skills(question_text, domain_skills, recent_messages, latest_answer)
+    if assumed:
+        # The model treated a practice topic as something the candidate used. Ask instead of asserting.
+        prompt_messages.append(AIMessage(content=question_text))
+        prompt_messages.append(HumanMessage(content=(
+            f"Rewrite that. The candidate never said they used {', '.join(assumed)}. Don't assume it: either ask about "
+            "what they actually used, or ask openly whether they've worked with it. ONE question, under 2 sentences.")))
+        question_text = _extract_text(await model.ainvoke(prompt_messages))
 
     if next_action == "invite_questions":
         question_text = strip_slop(question_text)

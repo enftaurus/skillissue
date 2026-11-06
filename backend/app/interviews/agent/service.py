@@ -135,8 +135,8 @@ class InterviewAgentService:
                 f"for the role of {interview.target_role}. Start as an authentic hiring manager: "
                 f"Open like a real interviewer: introduce yourself by name and role in one sentence, give a one-line agenda "
                 f"for this {interview.target_duration_minutes or 20}-minute round (a few situations from your past work, then "
-                "time for their questions), then ask them to walk you through a project they personally owned and what "
-                "made it hard. ONE question. Plain spoken English, no flattery."
+                "time for their questions), then ask them to tell you a bit about themselves: their background and the "
+                "kind of work they've been doing. Don't ask for a specific story yet. ONE question. Plain spoken English, no flattery."
             )
             prompt_messages = [
                 SystemMessage(content=system_prompt),
@@ -151,8 +151,8 @@ class InterviewAgentService:
                 f"The candidate is ready for an engineering leadership / Managerial round{comp_label} "
                 f"for the role of {interview.target_role}. Start as a VP of Engineering: "
                 f"Open like a real interviewer: introduce yourself by name and role in one sentence, a one-line agenda for "
-                f"this {interview.target_duration_minutes or 20}-minute round, then ask about a recent time they had to trade "
-                "off tech debt against a deadline and what they decided. ONE question. Plain spoken English, no flattery."
+                f"this {interview.target_duration_minutes or 20}-minute round, then ask them to tell you about themselves: "
+                "their current role, the team they work in or lead, and what they're responsible for. ONE question. Plain spoken English, no flattery."
             )
             prompt_messages = [
                 SystemMessage(content=system_prompt),
@@ -168,8 +168,9 @@ class InterviewAgentService:
                 f"for the role of {interview.target_role}. Start the interview like an authentic senior engineering hiring manager: "
                 f"Open like a real interviewer: introduce yourself by name and role in one sentence, a one-line agenda for "
                 f"this {interview.target_duration_minutes or 20}-minute round (a couple of technical deep dives, then time "
-                "for their questions), then ask them to walk you through something they built recently and the hardest "
-                "part of it. ONE question. Plain spoken English, no flattery."
+                "for their questions), then ask them to tell you a bit about "
+                "themselves: their background, what they've been building lately, and the tools they use most. Don't "
+                "assume any technology. ONE question. Plain spoken English, no flattery."
             )
 
             prompt_messages = [

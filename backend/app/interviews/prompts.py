@@ -88,7 +88,8 @@ def build_interviewer_system_prompt(
         if jd_requirements:
             context_parts.append(f"Key JD Requirements: {'; '.join(jd_requirements[:3])}")
     elif domain_skills:
-        context_parts.append(f"Selected Practice Skills: {', '.join(domain_skills)}")
+        context_parts.append(f"Areas the candidate wants to practise (topics to explore, NOT facts about their past work; "
+                             f"never assume they used these): {', '.join(domain_skills)}")
 
     if resume_skills:
         context_parts.append(f"Candidate Resume Skills: {', '.join(resume_skills[:8])}")

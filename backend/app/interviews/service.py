@@ -348,7 +348,9 @@ class InterviewService:
             raw = resp.content
             return raw if isinstance(raw, str) else str(raw)
 
-        verdict = await conduct.assess(content, last_q, ask)
+        # Spoken answers arrive through speech recognition, and misheard words look like nonsense. For voice turns
+        # only clear-cut patterns (abuse, profanity, cheating admissions) count; the model's off-topic call is skipped.
+        verdict = await conduct.assess(content, last_q, None if delivery else ask)
         warnings = sum(1 for m in interview.messages if m.role == "assistant" and getattr(m, "kind", None) == "conduct_warning")
         action = conduct.decide(verdict, warnings)
         if action == "continue":
