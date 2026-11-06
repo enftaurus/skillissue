@@ -109,6 +109,8 @@ class CandidateAssessmentResponse(BaseModel):
     rounds: List[Dict[str, Any]] = []
     is_invite_token: bool = False
     rank: Optional[int] = None
+    email_sent: Optional[bool] = None
+    email_detail: Optional[str] = None
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 

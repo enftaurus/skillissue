@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     ENCRYPTION_KEY: str = "gH7_mK9_sP2_wL4_xR8_yT1_bV3_nQ6_zC5_dF0_jA="
 
     # Database
+    # Outbound mail (candidate invitations). Empty SMTP_HOST disables sending.
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "Skill Issue Hiring"
+    # Base URL used in emailed links. Local prototype: the Vite dev server.
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/skillissue"
     DATABASE_URL_SYNC: str = "postgresql://postgres:postgres@localhost:5433/skillissue"
 

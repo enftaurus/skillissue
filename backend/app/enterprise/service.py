@@ -307,8 +307,11 @@ class EnterpriseService:
 
         await db.commit()
         await db.refresh(candidate)
+        mail = await cls._send_invite_email(db, pipeline, candidate)
 
         return CandidateAssessmentResponse(
+            email_sent=mail.sent,
+            email_detail=mail.detail or None,
             id=candidate.id,
             pipeline_id=candidate.pipeline_id,
             pipeline_title=pipeline.title,
@@ -374,6 +377,23 @@ class EnterpriseService:
         # The offline mock is for local development, not for judging real candidates: use the curated question bank
         # and deterministic grading, and mark model-only rounds "not evaluated" instead of inventing a score.
         return None if isinstance(provider, MockProvider) else provider
+
+    @staticmethod
+    async def _send_invite_email(db: AsyncSession, pipeline: AssessmentPipeline, candidate: CandidateAssessment):
+        """Email the candidate the pipeline's invite link (they sign in with this address to start)."""
+        from backend.app.core.config import settings
+        from backend.app.database.models import Tenant
+        from backend.app.notifications.mailer import send_email
+        from backend.app.notifications.templates import assessment_invite
+        company = None
+        if pipeline.tenant_id:
+            company = (await db.execute(select(Tenant.name).where(Tenant.id == pipeline.tenant_id))).scalar_one_or_none()
+        link = f"{settings.FRONTEND_BASE_URL.rstrip('/')}/assess/take/{pipeline.invite_token}"
+        expires = _aware(candidate.token_expires_at)
+        subject, text, html = assessment_invite(
+            candidate.candidate_name, candidate.candidate_email, pipeline.title, pipeline.target_role, company,
+            enabled_rounds(pipeline), link, expires.strftime("%d %b %Y") if expires else None)
+        return await send_email(candidate.candidate_email, subject, text, html)
 
     @classmethod
     async def enter_assessment(

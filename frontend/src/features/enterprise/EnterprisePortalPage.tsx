@@ -155,6 +155,7 @@ export const EnterprisePortalPage: React.FC = () => {
   const [candidateName, setCandidateName] = useState('');
   const [candidateEmail, setCandidateEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
+  const [inviteNotice, setInviteNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
   const loadPipelines = async () => {
     try {
@@ -216,10 +217,14 @@ export const EnterprisePortalPage: React.FC = () => {
 
     try {
       setIsInviting(true);
-      await api.post(`/enterprise/pipelines/${selectedPipelineId}/invite`, {
+      const res = await api.post<any>(`/enterprise/pipelines/${selectedPipelineId}/invite`, {
         candidate_name: candidateName,
         candidate_email: candidateEmail,
       });
+      const pipe = pipelines.find((p) => p.id === selectedPipelineId);
+      setInviteNotice(res?.email_sent
+        ? { ok: true, text: `Invitation emailed to ${candidateEmail}.` }
+        : { ok: false, text: `Couldn't email ${candidateEmail} (${res?.email_detail || 'unknown error'}). Share the link instead: ${window.location.origin}/assess/take/${pipe?.invite_token ?? ''}` });
       setIsInviteOpen(false);
       setCandidateName('');
       setCandidateEmail('');
@@ -406,6 +411,13 @@ export const EnterprisePortalPage: React.FC = () => {
       )}
 
       {/* TAB 2: Leaderboard & Telemetry */}
+      {inviteNotice && (
+        <div role="status" className={`flex items-start justify-between gap-3 p-3 rounded-xl border text-xs ${inviteNotice.ok ? 'bg-lime-50 border-lime-200 text-lime-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+          <span className="break-all">{inviteNotice.text}</span>
+          <button onClick={() => setInviteNotice(null)} className="font-semibold shrink-0" aria-label="Dismiss">✕</button>
+        </div>
+      )}
+
       {activeTab === 'leaderboard' && (
         <div className="space-y-6">
           {/* Pipeline Selector */}
