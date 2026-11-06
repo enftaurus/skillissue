@@ -253,7 +253,7 @@ stop_services
 
 # 6. Start FastAPI Backend in Background
 log_info "Starting FastAPI backend at http://localhost:8000 ..."
-backend/venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload &
+backend/venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend/app &
 BACKEND_PID=$!
 echo "$BACKEND_PID" > "$PID_DIR/backend.pid"
 

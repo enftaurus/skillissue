@@ -15,6 +15,7 @@ from datetime import date
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from fastapi import WebSocket
+from starlette.websockets import WebSocketDisconnect
 
 from backend.app.audio.service import clean_text_for_speech
 from backend.app.audio.delivery import delivery_metrics
@@ -132,6 +133,12 @@ class VoiceRelay:
             done, pending = await asyncio.wait({client_task, sonic_task}, return_when=asyncio.FIRST_COMPLETED)
             for t in pending:
                 t.cancel()
+            for t in done:
+                # Collect the result so a normal browser disconnect (or a server reload, code 1012) isn't reported
+                # as "Task exception was never retrieved".
+                exc = t.exception()
+                if exc and not isinstance(exc, WebSocketDisconnect):
+                    raise exc
             for t in self._tool_tasks:
                 t.cancel()
         except VoiceUnavailable as e:
