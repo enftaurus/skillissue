@@ -6,6 +6,13 @@ import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
 import { Sparkles } from 'lucide-react';
 
+// Only same-site paths: "/x" but never "//evil.com" or "/\\evil.com".
+const safeNext = (): string | null => {
+  const n = new URLSearchParams(window.location.search).get('next');
+  return n && n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') ? n : null;
+};
+
+
 export const RegisterPage: React.FC = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -25,7 +32,7 @@ export const RegisterPage: React.FC = () => {
         email,
         password,
       });
-      navigate('/onboarding/bedrock');
+      navigate(safeNext() || '/onboarding/bedrock');
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
     } finally {
@@ -82,7 +89,7 @@ export const RegisterPage: React.FC = () => {
           <div className="mt-6 pt-5 border-t border-slate-100 text-center">
             <p className="text-xs sm:text-sm text-slate-500">
               Already have an account?{' '}
-              <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-700">
+              <Link to={`/login${window.location.search}`} className="font-semibold text-indigo-600 hover:text-indigo-700">
                 Sign In
               </Link>
             </p>

@@ -4,7 +4,8 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from backend.app.database.models import ProjectSubmission, utc_now
+from backend.app.database.models import ProjectEvent, ProjectSubmission, utc_now
+from backend.app.projects.process import process_flags, session_timeline, verification_metrics
 from backend.app.projects.schemas import (
     ProjectTestRunResponse,
     ProjectTestCaseResult,
@@ -68,6 +69,14 @@ class ProjectService:
         # Score the server-side copilot log; client-supplied history is ignored.
         server_history = await load_session_prompts(db, user_id, project_id)
         prompt_analysis = await judge_prompts(db, user_id, project_id, server_history, final_passed)
+        # Verification behaviour from server-side events (test runs after assistant replies).
+        timeline = await session_timeline(db, user_id, project_id)
+        timeline.append({"at": utc_now().isoformat(), "kind": "submit", "status": "passed" if final_passed else "failed"})
+        verification = verification_metrics(timeline)
+        prompt_analysis = prompt_analysis.model_copy(update={
+            "process": verification,
+            "integrity_flags": list(prompt_analysis.integrity_flags) + process_flags(verification),
+        })
 
         # 3. Persist submission record
         sub_id = str(uuid.uuid4())
@@ -84,6 +93,8 @@ class ProjectService:
             created_at=utc_now(),
         )
         db.add(submission)
+        db.add(ProjectEvent(user_id=user_id, project_id=project_id, kind="submit",
+                            payload={"status": submission.status, "passed": test_run.passed_tests, "total": test_run.total_tests}))
         await db.commit()
         await db.refresh(submission)
 

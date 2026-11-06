@@ -1,8 +1,21 @@
 import React, { useEffect, useState } from 'react';
+import { PageSkeleton } from '../../components/ui/Skeleton';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
 import { Interview, Plan, AnalyticsDashboard } from '../../lib/types';
+
+interface SelfAwareness {
+  index: number | null;
+  headline: string | null;
+  dimensions: {
+    dimension_id: string;
+    name: string;
+    latest_gap: number;
+    bias: 'overrate' | 'underrate' | 'calibrated';
+    series: { self: number; ai: number; gap: number }[];
+  }[];
+}
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -25,6 +38,11 @@ export const DashboardPage: React.FC = () => {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsDashboard | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [awareness, setAwareness] = useState<SelfAwareness | null>(null);
+
+  useEffect(() => {
+    api.get<SelfAwareness>('/analytics/self-awareness').then(setAwareness).catch(() => setAwareness(null));
+  }, []);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -88,12 +106,7 @@ export const DashboardPage: React.FC = () => {
     : [];
 
   if (loading) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-        <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm text-ink-muted">Loading your cockpit dashboard...</p>
-      </div>
-    );
+    return <PageSkeleton variant="dashboard" label="Loading your dashboard" />;
   }
 
   return (
@@ -268,6 +281,45 @@ export const DashboardPage: React.FC = () => {
           </div>
         </Card>
       </div>
+
+      {awareness && awareness.dimensions.length > 0 && (
+        <Card className="p-6">
+          <div className="flex flex-col md:flex-row md:items-center gap-6">
+            <div className="md:w-72 shrink-0">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Self-awareness index</div>
+              <div className="mt-1 text-4xl font-extrabold text-slate-900">
+                {awareness.index?.toFixed(1)}
+                <span className="text-base font-medium text-slate-400"> pts off</span>
+              </div>
+              <p className="mt-1 text-sm text-slate-600">{awareness.headline}</p>
+              <p className="mt-1 text-[11px] text-slate-400">Average gap between your self-rating and the evidence, last 3 sessions. 0 is perfect calibration.</p>
+            </div>
+            <div className="flex-1 space-y-3">
+              {awareness.dimensions.slice(0, 4).map((d) => {
+                const last = d.series[d.series.length - 1];
+                return (
+                  <div key={d.dimension_id}>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-slate-800">{d.name}</span>
+                      <span className={d.bias === 'overrate' ? 'text-rose-600' : d.bias === 'underrate' ? 'text-amber-600' : 'text-emerald-600'}>
+                        {d.latest_gap > 0 ? '+' : ''}{d.latest_gap.toFixed(1)} {d.bias === 'calibrated' ? '' : d.bias}
+                      </span>
+                    </div>
+                    <div className="mt-1 relative h-2 rounded-full bg-slate-100" aria-label={`You ${last.self}/5, evidence ${last.ai}/5`}>
+                      <div className="absolute inset-y-0 left-0 rounded-full bg-indigo-200" style={{ width: `${(last.self / 5) * 100}%` }} />
+                      <div className="absolute inset-y-0 left-0 rounded-full bg-indigo-600" style={{ width: `${(last.ai / 5) * 100}%` }} />
+                    </div>
+                    <div className="mt-0.5 flex justify-between text-[10px] text-slate-400">
+                      <span>Evidence {last.ai}/5</span>
+                      <span>You said {last.self}/5</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Main 2-Column Section: Active Daily Plan + Recent Interviews */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">

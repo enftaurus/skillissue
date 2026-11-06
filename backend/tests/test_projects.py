@@ -9,10 +9,11 @@ client = TestClient(app)
 
 def test_list_and_get_projects():
     projects = list_projects()
-    assert len(projects) == 2
+    assert len(projects) >= 4
     ids = {p.id for p in projects}
     assert "distributed-rate-limiter" in ids
     assert "async-job-queue" in ids
+    assert {"idempotent-payments", "webhook-signatures"} <= set(ids)
 
     p1 = get_project("distributed-rate-limiter")
     assert p1 is not None

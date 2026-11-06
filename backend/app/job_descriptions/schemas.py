@@ -1,18 +1,20 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 class JobDescriptionCreate(BaseModel):
+    # Bounds mirror the String(200) columns (overlong values used to 500 as a Postgres DataError);
+    # only the first 5000 chars of raw_text reach the model, 50k is plenty for any real posting.
     title: str = Field(min_length=2, max_length=200)
-    company: Optional[str] = ""
-    raw_text: str = Field(min_length=20)
+    company: Optional[str] = Field(default="", max_length=200)
+    raw_text: str = Field(min_length=20, max_length=50_000)
 
 class JobDescriptionUpdate(BaseModel):
-    title: Optional[str] = None
-    company: Optional[str] = None
-    extracted_role: Optional[str] = None
-    extracted_skills: Optional[List[str]] = None
-    extracted_requirements: Optional[List[str]] = None
+    title: Optional[str] = Field(default=None, min_length=2, max_length=200)
+    company: Optional[str] = Field(default=None, max_length=200)
+    extracted_role: Optional[str] = Field(default=None, max_length=200)
+    extracted_skills: Optional[List[Annotated[str, Field(max_length=200)]]] = Field(default=None, max_length=100)
+    extracted_requirements: Optional[List[Annotated[str, Field(max_length=1000)]]] = Field(default=None, max_length=100)
 
 class JobDescriptionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

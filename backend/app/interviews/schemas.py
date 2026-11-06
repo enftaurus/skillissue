@@ -10,6 +10,8 @@ class InterviewCreateDomain(BaseModel):
     resume_id: Optional[str] = None
     coding_problem_id: Optional[str] = None
     target_duration_minutes: Optional[int] = 20
+    # Company mock interview from a company track (registry slug).
+    company_slug: Optional[str] = Field(default=None, pattern="^[a-z0-9-]{2,40}$")
 
 class InterviewCreateJd(BaseModel):
     category: str = Field(default="technical", pattern="^(technical|behavioral|dsa|managerial)$")
@@ -22,6 +24,8 @@ class InterviewCreateJd(BaseModel):
 class InterviewMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
     client_turn_id: Optional[str] = Field(default=None, max_length=64)
+    # Per-recording delivery metrics from /audio/stt for voice answers (coaching only, never scored).
+    delivery: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=10)
 
 class CodingTurnRequest(BaseModel):
     language: str = Field(default="python", pattern="^(python|cpp|java)$")

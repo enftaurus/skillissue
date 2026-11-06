@@ -708,3 +708,9 @@ def get_project(project_id: str) -> Optional[ProjectDetail]:
         instructions=p["instructions"],
         domain=p["domain"],
     )
+
+
+# Projects built with backend/app/projects/extra_projects.make_project
+from backend.app.projects.extra_projects import EXTRA_PROJECTS  # noqa: E402
+
+PROJECTS_CATALOG.update(EXTRA_PROJECTS)

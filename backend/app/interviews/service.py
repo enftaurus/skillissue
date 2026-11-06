@@ -13,6 +13,14 @@ from backend.app.providers.service import ProviderConfigService
 from backend.app.core.errors import EntityNotFoundError, AppException, translate_model_error
 from backend.app.core.logging import logger
 
+def _assistant_kind(result: Dict[str, Any], default: str) -> str:
+    if result.get("is_completed"):
+        return "wrapup"
+    if result.get("next_action") == "invite_questions":
+        return "closing"
+    return default
+
+
 class InterviewService:
     @classmethod
     async def create_domain_interview(
@@ -46,12 +54,20 @@ class InterviewService:
                 raise EntityNotFoundError("Resume", data.resume_id)
 
         title = f"{data.category.capitalize()} Interview: {', '.join(data.domain_skills[:3])}"
+        picker_skills = list(data.domain_skills)
+        if data.company_slug:
+            from backend.app.tracks.company_context import company_title, get_company, picker_skills as company_skills
+            company = get_company(data.company_slug)
+            if company is None:
+                raise EntityNotFoundError("Company", data.company_slug)
+            title = company_title(company, data.category)
+            picker_skills = company_skills(company) + picker_skills
         coding_prob_id = data.coding_problem_id
         if data.category == "dsa" and not coding_prob_id:
             # Only curated problems have a full statement and real test cases. Live Codeforces
             # stubs have neither, so the interviewer can't discuss them and empty code "passes".
             from backend.app.coding.problems import pick_curated_interview_problem
-            coding_prob_id = pick_curated_interview_problem(data.domain_skills, data.difficulty)
+            coding_prob_id = pick_curated_interview_problem(picker_skills, data.difficulty)
 
         interview = Interview(
             user_id=user_id,
@@ -189,6 +205,7 @@ class InterviewService:
         interview_id: str,
         content: str,
         client_turn_id: Optional[str] = None,
+        delivery: Optional[Dict[str, Any]] = None,
     ) -> InterviewMessage:
         result = await db.execute(
             select(Interview)
@@ -202,6 +219,11 @@ class InterviewService:
 
         if interview.status != "in_progress":
             raise AppException("Interview is no longer active", code="INTERVIEW_NOT_ACTIVE")
+
+        # NUL bytes break Postgres text/JSONB (messages and the LangGraph checkpoint).
+        content = (content or "").replace("\x00", "")
+        if not content.strip():
+            raise AppException("Write an answer first.", code="EMPTY_ANSWER")
 
         # 1. Turn idempotency check by client_turn_id
         if client_turn_id:
@@ -240,6 +262,8 @@ class InterviewService:
             if intent in ("repeat_question", "clarify"):
                 return await cls._answer_meta_request(db, user_id, interview, content, client_turn_id, intent)
 
+            last_assistant = next((m for m in reversed(interview.messages) if m.role == "assistant"), None)
+            user_kind = "candidate_question" if getattr(last_assistant, "kind", None) == "closing" else "answer"
             user_msg = InterviewMessage(
                 interview_id=interview.id,
                 role="user",
@@ -247,7 +271,8 @@ class InterviewService:
                 client_turn_id=client_turn_id,
                 question_index=len([m for m in interview.messages if m.role == "assistant"]),
                 is_follow_up=False,
-                kind="answer",
+                kind=user_kind,
+                delivery=delivery,
             )
             # Append to the loaded collection (not just db.add) so the turn count and the
             # agent's conversation history both include this answer.
@@ -291,7 +316,7 @@ class InterviewService:
             content=assistant_text,
             question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
             is_follow_up=is_follow_up,
-            kind="wrapup" if agent_result.get("is_completed") else "question",
+            kind=_assistant_kind(agent_result, default="question"),
         )
         interview.messages.append(assistant_msg)
         await db.commit()
@@ -355,7 +380,7 @@ class InterviewService:
         return assistant_msg
 
     # Exchanges that are not interview questions/answers (kept in the raw transcript, not paired).
-    _UNPAIRED_KINDS = {"meta", "repeat", "hint_request", "hint"}
+    _UNPAIRED_KINDS = {"meta", "repeat", "hint_request", "hint", "closing", "candidate_question", "wrapup"}
 
     @staticmethod
     def compute_grouped_transcript(messages: List[InterviewMessage]) -> List[dict]:
@@ -575,6 +600,8 @@ class InterviewService:
             raise AppException("Interview is no longer active", code="INTERVIEW_NOT_ACTIVE")
 
         problem_id = interview.coding_problem_id or "two-sum"
+        code = (code or "").replace("\x00", "")
+        candidate_notes = candidate_notes.replace("\x00", "") if candidate_notes else candidate_notes
 
         # 1. Execute code via isolated coding service
         from backend.app.coding.service import CodingService
@@ -663,7 +690,7 @@ class InterviewService:
             content=assistant_content,
             question_index=len([m for m in interview.messages if m.role == "assistant"]) + 1,
             is_follow_up=bool((turn_result.get("question_metadata") or {}).get("is_follow_up", False)),
-            kind="wrapup" if turn_result.get("is_completed") else "code_feedback",
+            kind=_assistant_kind(turn_result, default="code_feedback"),
         )
         interview.messages.append(assistant_msg)
         await db.commit()

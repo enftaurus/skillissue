@@ -94,6 +94,11 @@ export const DEFAULT_VOICES: VoiceOption[] = [
 const SELECTED_VOICE_KEY = 'skillissue_voice_id';
 
 export const DEFAULT_VOICE_ID = 'en-US-ChristopherNeural';
+let serverDefaultVoice = DEFAULT_VOICE_ID;
+/** The server's recommended voice (a Polly generative voice when platform voice is available). */
+export function getServerDefaultVoice(): string {
+  return serverDefaultVoice;
+}
 
 export function getSelectedVoice(): string {
   if (typeof window === 'undefined') return DEFAULT_VOICE_ID;
@@ -150,7 +155,7 @@ export class SpeechHandler {
   private static globalAudioContext: AudioContext | null = null;
 
   constructor(
-    private onResult: (text: string, isFinal: boolean) => void,
+    private onResult: (text: string, isFinal: boolean, delivery?: Record<string, any> | null) => void,
     private onError: (err: string) => void,
     private onStateChange: (listening: boolean) => void,
     private onAudioLevel?: (level: number) => void,
@@ -251,9 +256,9 @@ export class SpeechHandler {
             formData.append('audio', audioBlob, `recording.${ext}`);
 
             // Send clean audio to server-side Faster-Whisper / AWS Transcribe
-            const res = await api.post<{ text: string }>('/audio/stt', formData, this.authHeaders ? { headers: this.authHeaders } : undefined);
+            const res = await api.post<{ text: string; delivery?: Record<string, any> | null }>('/audio/stt', formData, this.authHeaders ? { headers: this.authHeaders } : undefined);
             if (res.text && res.text.trim()) {
-              this.onResult(res.text.trim(), true);
+              this.onResult(res.text.trim(), true, res.delivery ?? null);
             } else if (this.onError) {
               this.onError("Didn't catch any speech. Try again closer to the mic, or type your answer.");
             }
@@ -484,6 +489,7 @@ export class SpeechHandler {
   static async fetchVoices(): Promise<VoiceOption[]> {
     try {
       const res = await api.get<{ voices: VoiceOption[]; default_voice: string }>('/audio/voices');
+      if (res.default_voice) serverDefaultVoice = res.default_voice;
       return res.voices || DEFAULT_VOICES.filter((v) => v.provider !== 'aws-polly');
     } catch (e) {
       return DEFAULT_VOICES.filter((v) => v.provider !== 'aws-polly');

@@ -2,7 +2,9 @@ import asyncio
 import os
 import json
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict, List
+
+from pydantic import BaseModel
 
 from fastapi import FastAPI, Header, HTTPException, status, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -146,3 +148,31 @@ async def execute_stream(request: ExecuteRequest):
             await admission.release()
 
     return StreamingResponse(sse_generator(), media_type="text/event-stream")
+
+
+class ProjectRunRequest(BaseModel):
+    repository_files: Dict[str, str]
+    editable_files: List[str]
+    candidate_files: Dict[str, str]
+
+
+@app.post("/execute-project", dependencies=[Depends(verify_executor_secret)])
+async def execute_project(request: ProjectRunRequest):
+    """Run a multi-file project test suite under the hardened bubblewrap runner, inside this container
+    (which holds no application secrets). Same integrity checks as the API-side runner."""
+    total = sum(len(v) for v in request.repository_files.values()) + sum(len(v) for v in request.candidate_files.values())
+    if total > 2_000_000 or len(request.repository_files) > 60:
+        raise HTTPException(status_code=413, detail="Project too large")
+    admitted = await admission.try_acquire()
+    if not admitted:
+        return JSONResponse(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            content={"detail": "Sandbox executor queue is full. Try again shortly."}, headers={"Retry-After": "2"})
+    try:
+        from backend.app.projects.sandbox import run_project_tests
+        loop = asyncio.get_running_loop()
+        res = await loop.run_in_executor(None, run_project_tests, request.repository_files, request.editable_files,
+                                         request.candidate_files)
+        return {"status": res.status, "passed": res.passed, "failed": {k: list(v) for k, v in res.failed.items()},
+                "raw_output": res.raw_output, "duration_ms": res.duration_ms, "integrity_flags": res.integrity_flags}
+    finally:
+        await admission.release()

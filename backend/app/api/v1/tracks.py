@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database.session import get_db
 from backend.app.database.models import User
 from backend.app.auth.dependencies import get_current_active_user
+from backend.app.core.rate_limit import rate_limit
 from backend.app.tracks.schemas import (
     CompanyTrackSummary, CompanyTrackDetail, CompanyProblemDetail,
     SolveCompanyProblemRequest, SolveCompanyProblemResponse,
@@ -95,3 +96,11 @@ async def toggle_problem_solved(
         db, current_user.id, problem_id
     )
 
+
+
+@router.post("/simulations/{sim_id}/start", status_code=201,
+             dependencies=[Depends(rate_limit(max_requests=10, window_seconds=60))])
+async def start_simulation(sim_id: str, current_user: User = Depends(get_current_active_user), db: AsyncSession = Depends(get_db)):
+    """Start (or resume) a company hiring simulation; returns the assessment token to open at /assess/take/{token}."""
+    from backend.app.enterprise.practice import start_simulation as _start
+    return await _start(db, current_user, sim_id)

@@ -180,6 +180,8 @@ class InterviewMessage(Base):
     # user: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' (repeat/clarify request)
     # assistant: 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup'
     kind: Mapped[str] = mapped_column(String(20), default=_default_message_kind, server_default="answer")
+    # Spoken-delivery metrics for voice answers (numbers only, audio is never stored). Coaching signal, never scored.
+    delivery: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     client_turn_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
@@ -216,6 +218,8 @@ class Evaluation(Base):
     uncertainty_notes: Mapped[List[str]] = mapped_column(JSON, default=list)
     weakness_analysis: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
     raw_llm_response: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Consistency check, evidence verification and confidence (QA 2026-11-06)
+    credibility: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     stored_transcript: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     model_identifier: Mapped[str] = mapped_column(String(100), default="")
@@ -360,6 +364,50 @@ class ProjectCopilotTurn(Base):
     tests_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
+class ProjectEvent(Base):
+    """Server-side process log for AI-assisted projects (test runs, submissions)."""
+    __tablename__ = "project_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[str] = mapped_column(String(100), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # 'test_run' | 'submit'
+    payload: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
+class EvaluationDispute(Base):
+    """A candidate's evidence-backed challenge to one evaluation finding, and the re-judgement."""
+    __tablename__ = "evaluation_disputes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    evaluation_id: Mapped[str] = mapped_column(String(36), ForeignKey("evaluations.id", ondelete="CASCADE"), index=True)
+    dimension_id: Mapped[str] = mapped_column(String(80))
+    argument: Mapped[str] = mapped_column(Text)
+    quote: Mapped[str] = mapped_column(Text)
+    decision: Mapped[str] = mapped_column(String(20))  # 'upheld' | 'revised'
+    old_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    new_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ComprehensionSession(Base):
+    """A candidate's attempt at one code comprehension item (answers graded against a hidden key)."""
+    __tablename__ = "comprehension_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    item_id: Mapped[str] = mapped_column(String(100), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="in_progress")
+    answers: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
+    score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    time_limit_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class CompanyTrack(Base):
     __tablename__ = "company_tracks"
 
@@ -472,6 +520,10 @@ class CandidateAssessment(Base):
     candidate_name: Mapped[str] = mapped_column(String(150), nullable=False)
     candidate_email: Mapped[str] = mapped_column(String(255), nullable=False)
     access_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    # The signed-in account taking the assessment. Results are never shown to this user (ADR 0027).
+    candidate_user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Server-side per-round state: assigned problems/items, timers, interview transcript, answers. Never sent raw.
+    round_state: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True, default=dict)
     token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="invited")  # 'invited', 'in_progress', 'completed', 'flagged'
     resume_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

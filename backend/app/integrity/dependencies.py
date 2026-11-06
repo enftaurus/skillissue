@@ -29,7 +29,15 @@ async def get_integrity_actor(
     if not bearer and not x_assessment_token:
         return None, None
 
-    # 1. A valid user access token wins.
+    # 1. An explicit assessment token wins: a signed-in candidate's browser also sends their user JWT, and the
+    #    assessment's telemetry and explanation checks must attach to the assessment, not the account.
+    if x_assessment_token:
+        res = await db.execute(select(CandidateAssessment).where(CandidateAssessment.access_token == x_assessment_token))
+        ca = res.scalar_one_or_none()
+        if ca:
+            return None, ca
+
+    # 2. Otherwise a valid user access token.
     if bearer:
         try:
             token_data = decode_access_token(bearer)
@@ -40,7 +48,7 @@ async def get_integrity_actor(
         except Exception:
             pass
 
-    # 2. Otherwise a candidate assessment token (explicit header first, then bearer).
+    # 3. Legacy: a candidate assessment token sent as the bearer.
     for candidate_token in (x_assessment_token, bearer):
         if not candidate_token:
             continue

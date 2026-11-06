@@ -110,11 +110,13 @@ def test_d7_interviewer_prompt_boundary_and_delimiters():
     assert hostile_resume in prompt
 
 @pytest.mark.asyncio
-async def test_d7_evaluation_schema_validation_and_retry_failure(db_session: AsyncSession, create_test_user):
+async def test_d7_evaluation_schema_validation_and_retry_failure(db_session: AsyncSession, create_test_user, monkeypatch):
     """
     D7: When LLM outputs malformed/invalid JSON schema, it retries once.
     If retry also fails, stores status='not_evaluated' and overall_score=None.
     """
+    from backend.app.core.config import settings
+    monkeypatch.setattr(settings, "EVAL_CONSISTENCY_CHECK", False)  # this test pins single-pass retry semantics
     user = await create_test_user(email=f"candidate_{uuid.uuid4().hex[:6]}@example.com")
 
     # Create interview with 2 messages
@@ -175,11 +177,13 @@ async def test_d7_evaluation_schema_validation_and_retry_failure(db_session: Asy
         assert "failed JSON schema validation after retry" in evaluation.uncertainty_notes[0]
 
 @pytest.mark.asyncio
-async def test_d7_evaluation_schema_validation_retry_success(db_session: AsyncSession, create_test_user):
+async def test_d7_evaluation_schema_validation_retry_success(db_session: AsyncSession, create_test_user, monkeypatch):
     """
     D7: When LLM outputs malformed JSON on attempt 1, but succeeds on retry attempt 2,
     stores status='completed' with valid overall_score.
     """
+    from backend.app.core.config import settings
+    monkeypatch.setattr(settings, "EVAL_CONSISTENCY_CHECK", False)  # this test pins single-pass retry semantics
     user = await create_test_user(email=f"candidate_{uuid.uuid4().hex[:6]}@example.com")
 
     interview = Interview(
@@ -254,3 +258,30 @@ async def test_d7_evaluation_schema_validation_retry_success(db_session: AsyncSe
         assert evaluation.status == "completed"
         assert evaluation.overall_score is not None
         assert evaluation.overall_score > 0
+
+
+
+@pytest.mark.asyncio
+async def test_consistency_pass_replaces_malformed_first_pass(db_session: AsyncSession, create_test_user):
+    """With the consistency check on, a valid second pass is used instead of retrying a malformed first pass."""
+    user = await create_test_user(email=f"candidate_{uuid.uuid4().hex[:6]}@example.com")
+    interview = Interview(user_id=user.id, mode="domain", category="technical", title="t", target_role="SWE",
+                          difficulty="intermediate", status="in_progress", domain_skills=["Python"], hint_level_used=0)
+    db_session.add(interview)
+    await db_session.flush()
+    db_session.add(InterviewMessage(interview_id=interview.id, role="assistant", content="Explain connection pooling."))
+    db_session.add(InterviewMessage(interview_id=interview.id, role="user", content="PgBouncer in transaction mode cut connections from 800 to 60."))
+    await db_session.commit()
+    bad = ProviderResponse(text="nope", parsed_json=None, input_tokens=10, output_tokens=5, model_id="m")
+    good = ProviderResponse(text="{}", parsed_json={"overall_score": 60, "dimension_scores": {"technical_depth": {"score": 3, "explanation": "ok"}},
+                                                    "question_feedback": [], "evidence_excerpts": []},
+                            input_tokens=10, output_tokens=5, model_id="m")
+    with patch("backend.app.providers.factory.ModelFactory.get_for_user") as mock_get_provider:
+        inst = AsyncMock()
+        inst.generate_json.side_effect = [bad, good]
+        inst.model_id = "m"
+        mock_get_provider.return_value = inst
+        evaluation = await EvaluationService.generate_ai_evaluation(db_session, user.id, interview.id)
+    assert inst.generate_json.call_count == 2
+    assert evaluation.status == "completed" and evaluation.overall_score is not None
+    assert evaluation.credibility["consistency"]["passes"] == 1

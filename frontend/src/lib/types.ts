@@ -91,7 +91,7 @@ export interface InterviewMessage {
   content: string;
   question_index: number;
   is_follow_up: boolean;
-  kind?: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' | 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup';
+  kind?: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' | 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup' | 'closing' | 'candidate_question';
   created_at: string;
 }
 
@@ -210,6 +210,7 @@ export interface EvaluationComparison {
 }
 
 export interface QuestionFeedback {
+  quote_verified?: boolean;
   question_index: number;
   interviewer_question: string;
   candidate_answer: string;
@@ -242,6 +243,12 @@ export interface Evaluation {
   created_at: string;
   stored_transcript?: string;
   transcript_turns?: QuestionTurn[];
+  credibility?: {
+    consistency?: { passes: number; divergent_dimensions?: string[]; max_gap?: number };
+    evidence?: { quotes: number; verified: number };
+    question_quotes?: { total: number; verified: number };
+    confidence?: { level: 'high' | 'medium' | 'low'; reasons: string[] };
+  } | null;
 }
 
 export interface CodeforcesProblem {
@@ -620,7 +627,7 @@ export interface CandidateAssessment {
   round_results: Record<string, any>;
   composite_score?: number | null;
   integrity_signals: {
-    window_blurs?: number;
+    window_blurs?: number | Record<string, number>;
     copy_paste_count?: number;
     speech_code_divergence?: number;
     status?: string;
@@ -629,6 +636,8 @@ export interface CandidateAssessment {
   rounds: RoundConfig[];
   token_expires_at?: string | null;
   is_invite_token?: boolean;
+  requires_login?: boolean;
+  rank?: number | null;
   created_at: string;
   completed_at?: string;
 }
@@ -646,7 +655,7 @@ export interface PipelineLeaderboard {
 export interface SimulationRound {
   round_number: number;
   name: string;
-  type: 'oa_dsa' | 'ai_project' | 'tough_interview';
+  type: 'oa_dsa' | 'ai_project' | 'code_comprehension' | 'tough_interview';
   time_limit: number;
   problem: string;
   description: string;
@@ -655,6 +664,7 @@ export interface SimulationRound {
 export interface PresetSimulation {
   id: string;
   company: string;
+  company_slug?: string;
   title: string;
   tier: 'gold' | 'silver' | 'bronze';
   logo_icon: string;

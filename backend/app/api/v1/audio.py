@@ -8,6 +8,7 @@ from backend.app.integrity.dependencies import get_integrity_actor
 from backend.app.core.config import settings
 from backend.app.audio.schemas import TtsRequest, SttResponse, VoiceListResponse
 from backend.app.audio.service import AudioService
+from backend.app.audio.delivery import delivery_metrics
 from backend.app.core.logging import logger
 
 router = APIRouter(prefix="/audio", tags=["Audio & Speech"])
@@ -31,7 +32,8 @@ async def list_voices(
     """List voices, marking cloud voices the caller has no credentials for as unavailable."""
     user = actor[0]
     voices = await AudioService.get_voices_for_user(user.id if user else None, db)
-    return VoiceListResponse(voices=voices, default_voice="en-US-ChristopherNeural")
+    polly_ok = any(v.id == "aws-polly-matthew" and v.available for v in voices)
+    return VoiceListResponse(voices=voices, default_voice="aws-polly-matthew" if polly_ok else "en-US-ChristopherNeural")
 
 @router.post("/tts")
 async def text_to_speech(
@@ -93,14 +95,18 @@ async def speech_to_text(
     try:
 
         user_id = current_user.id if current_user else None
+        words: list = []
         transcribed_text = await AudioService.transcribe_audio(
             audio_bytes=content,
             filename=audio.filename or "recording.webm",
             content_type=audio.content_type or "audio/webm",
             user_id=user_id,
             db=db,
+            words_out=words,
         )
-        return SttResponse(text=transcribed_text, language="en")
+        metrics = delivery_metrics(transcribed_text, words=words or None)
+        return SttResponse(text=transcribed_text, language="en",
+                           duration_seconds=metrics.get("duration_s") if metrics else None, delivery=metrics)
     except Exception as e:
         logger.error(f"STT endpoint error: {type(e).__name__}: {e}")
         if "Invalid data" in str(e) or "InvalidDataError" in type(e).__name__:

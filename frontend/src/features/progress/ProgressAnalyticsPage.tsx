@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PageSkeleton } from '../../components/ui/Skeleton';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { AnalyticsDashboard, UserSkill } from '../../lib/types';
@@ -63,12 +64,7 @@ export const ProgressAnalyticsPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-16 text-center">
-        <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm text-slate-500">Crunching your interview data & progress metrics...</p>
-      </div>
-    );
+    return <PageSkeleton variant="report" label="Loading your progress" />;
   }
 
   if (error || !data) {

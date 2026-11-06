@@ -24,6 +24,46 @@ import {
 } from 'lucide-react';
 import { EditorReplayModal } from './EditorReplayModal';
 
+type CatalogEntry = { id: string; title: string; meta?: string };
+
+const blurCount = (v: any): number =>
+  typeof v === 'number' ? v : v && typeof v === 'object' ? Object.values(v).reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0;
+
+const RoundDetails: React.FC<{ data: any }> = ({ data }) => {
+  const d = data?.details || {};
+  return (
+    <div className="w-full text-[11px] text-zinc-600 space-y-1">
+      {d.problems &&
+        Object.entries(d.problems).map(([pid, p]: [string, any]) => (
+          <p key={pid} className="font-mono">
+            {pid}: {p.status === 'not_attempted' ? 'not attempted' : `${p.tests_passed}/${p.tests_total} tests (${p.language})`}
+          </p>
+        ))}
+      {d.per_question && (
+        <p className="font-mono">
+          {d.item_id}: {Object.entries(d.per_question).map(([q, v]: [string, any]) => `${q} ${Math.round(v * 100)}%`).join(' · ')}
+        </p>
+      )}
+      {typeof d.passed_tests === 'number' && <p className="font-mono">{d.passed_tests}/{d.total_tests} project tests</p>}
+      {d.summary && <p className="italic">{d.summary}</p>}
+      {Array.isArray(d.transcript) && d.transcript.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-zinc-800 font-semibold">Interview transcript ({d.answered}/{d.questions_total} answered)</summary>
+          <div className="mt-1 space-y-1.5">
+            {d.transcript.map((t: any, i: number) => (
+              <div key={i}>
+                <p className="font-semibold text-zinc-800">Q{i + 1}. {t.question}</p>
+                <p className="whitespace-pre-wrap">{t.answer || '(no answer)'}</p>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      {data?.overtime && <p className="text-amber-700">Submitted after the time limit.</p>}
+    </div>
+  );
+};
+
 export const EnterprisePortalPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pipelines' | 'leaderboard'>('pipelines');
   const [pipelines, setPipelines] = useState<AssessmentPipeline[]>([]);
@@ -41,41 +81,73 @@ export const EnterprisePortalPage: React.FC = () => {
   const [pipelineTitle, setPipelineTitle] = useState('');
   const [targetRole, setTargetRole] = useState('Software Development Engineer');
   const [jobDescription, setJobDescription] = useState('');
-  const [oaMode, setOaMode] = useState<'preset' | 'custom_url' | 'codeforces_random'>('preset');
-  const [oaCustomUrl, setOaCustomUrl] = useState('');
-  const [oaCfRating, setOaCfRating] = useState(1500);
-  const [oaCfTopic, setOaCfTopic] = useState('graphs');
+  const [catalog, setCatalog] = useState<{ problems: CatalogEntry[]; projects: CatalogEntry[]; items: CatalogEntry[] }>({
+    problems: [], projects: [], items: [],
+  });
 
   const [rounds, setRounds] = useState<RoundConfig[]>([
     {
       round_type: 'oa_dsa',
-      name: 'Round 1: Company DSA Online Assessment',
+      name: 'Coding assessment',
       time_limit_minutes: 35,
       is_enabled: true,
-      config: { problems: 2, focus: 'Data Structures & Algorithms' },
-    },
-    {
-      round_type: 'ai_project',
-      name: 'Round 2: AI-Assisted Machine Coding (Take-Home Simulation)',
-      time_limit_minutes: 30,
-      is_enabled: true,
-      config: { project: 'Distributed Rate Limiter', mode: 'read_only_copilot' },
-    },
-    {
-      round_type: 'tough_interview',
-      name: 'Round 3: Anti-Sycophancy Oral Technical Interview',
-      time_limit_minutes: 20,
-      is_enabled: true,
-      config: { anti_sycophancy: true, speech_verification: true },
+      config: { problems_count: 2, difficulty: 'medium', problem_ids: [] },
     },
     {
       round_type: 'code_comprehension',
-      name: 'Round 4: Architecture & Code Comprehension (Google-Style)',
+      name: 'Code comprehension (read, trace, find the bug)',
       time_limit_minutes: 20,
+      is_enabled: true,
+      config: { item_id: '' },
+    },
+    {
+      round_type: 'ai_project',
+      name: 'Project work in a real repository',
+      time_limit_minutes: 30,
       is_enabled: false,
-      config: { badge: 'Coming Soon' },
+      config: { project_id: 'distributed-rate-limiter' },
+    },
+    {
+      round_type: 'tough_interview',
+      name: 'Technical interview',
+      time_limit_minutes: 20,
+      is_enabled: true,
+      config: { questions_count: 4 },
     },
   ]);
+  const updateRound = (idx: number, patch: Partial<RoundConfig>, cfg?: Record<string, any>) => {
+    setRounds((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch, config: { ...r.config, ...(cfg || {}) } } : r)));
+  };
+  const moveRound = (idx: number, dir: -1 | 1) => {
+    setRounds((prev) => {
+      const j = idx + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  };
+
+  const [modelConnected, setModelConnected] = useState<boolean | null>(null);
+  useEffect(() => {
+    api.get<{ provider_name?: string }>('/providers/config')
+      .then((c) => setModelConnected(Boolean(c?.provider_name) && c.provider_name !== 'mock'))
+      .catch(() => setModelConnected(false));
+  }, []);
+
+  useEffect(() => {
+    Promise.all([
+      api.get<any[]>('/coding/problems').catch(() => []),
+      api.get<any[]>('/projects').catch(() => []),
+      api.get<any[]>('/comprehension/items').catch(() => []),
+    ]).then(([problems, projects, items]) =>
+      setCatalog({
+        problems: problems.map((p) => ({ id: p.id, title: p.title, meta: p.difficulty })),
+        projects: projects.map((p) => ({ id: p.id, title: p.title, meta: p.difficulty })),
+        items: items.map((i) => ({ id: i.id, title: i.title, meta: i.difficulty })),
+      })
+    );
+  }, []);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Invite Candidate Modal State
@@ -121,13 +193,11 @@ export const EnterprisePortalPage: React.FC = () => {
         title: pipelineTitle,
         target_role: targetRole,
         job_description: jobDescription,
-        rounds: rounds,
-        oa_config: {
-          mode: oaMode,
-          custom_url: oaMode === 'custom_url' ? oaCustomUrl : undefined,
-          cf_rating: oaMode === 'codeforces_random' ? Number(oaCfRating) : undefined,
-          cf_topic: oaMode === 'codeforces_random' ? oaCfTopic : undefined,
-        },
+        rounds: rounds.map((r) => ({
+          ...r,
+          config: Object.fromEntries(Object.entries(r.config || {}).filter(([, v]) => v !== '' && !(Array.isArray(v) && v.length === 0))),
+        })),
+        oa_config: { mode: 'curated' },
       });
       setIsCreateOpen(false);
       setPipelineTitle('');
@@ -388,14 +458,14 @@ export const EnterprisePortalPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100 font-sans">
-                      {leaderboard.candidates.map((c, index) => {
+                      {leaderboard.candidates.map((c) => {
                         const isFlagged = c.status === 'flagged';
                         const divergence = c.integrity_signals?.speech_code_divergence || 0;
 
                         return (
                           <tr key={c.id} className="hover:bg-zinc-50/70 transition-colors">
-                            <td className="py-3 px-4 font-mono font-bold text-zinc-400">
-                              #{index + 1}
+                            <td className="py-3 px-4 font-mono font-bold text-zinc-400" title={c.rank == null ? 'Not ranked until finished and scored' : undefined}>
+                              {c.rank != null ? `#${c.rank}` : '—'}
                             </td>
                             <td className="py-3 px-4">
                               <p className="font-bold text-zinc-950">{c.candidate_name}</p>
@@ -417,8 +487,18 @@ export const EnterprisePortalPage: React.FC = () => {
                             </td>
                             <td className="py-3 px-4">
                               <span className="text-sm font-bold font-mono text-zinc-950">
-                                {c.composite_score != null ? `${c.composite_score}%` : 'Not scored'}
+                                {c.composite_score != null ? `${c.composite_score}%` : c.status === 'completed' ? 'Not scored' : 'In progress'}
                               </span>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {(c.rounds || []).map((r: any, i: number) => {
+                                  const res = c.round_results?.[String(i)];
+                                  return (
+                                    <span key={i} title={r.name} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 border border-zinc-200 text-zinc-600">
+                                      R{i + 1} {res ? (res.score != null ? `${Math.round(res.score)}` : 'n/e') : '·'}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             </td>
                             <td className="py-3 px-4 space-y-1">
                               <div className="flex items-center gap-1.5">
@@ -428,7 +508,8 @@ export const EnterprisePortalPage: React.FC = () => {
                                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                                 )}
                                 <span className={isFlagged ? 'text-rose-700 font-semibold' : 'text-zinc-600'}>
-                                  {c.integrity_signals?.window_blurs || 0} Tab Switches
+                                  {blurCount((c.integrity_signals as any)?.tab_switches_by_round ?? c.integrity_signals?.window_blurs)} tab switches
+                                  {(c.integrity_signals as any)?.overtime_rounds?.length ? ` · ${(c.integrity_signals as any).overtime_rounds.length} overtime` : ''}
                                 </span>
                               </div>
                               {divergence > 0.5 && (
@@ -455,15 +536,6 @@ export const EnterprisePortalPage: React.FC = () => {
                               >
                                 <Activity className="w-3 h-3 text-lime-700" />
                                 <span>Replay</span>
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => copyInviteLink(`/assess/take/${c.access_token}`, c.id)}
-                                className="text-[11px] gap-1"
-                              >
-                                <Copy className="w-3 h-3" />
-                                <span>Token</span>
                               </Button>
                             </td>
                           </tr>
@@ -504,8 +576,8 @@ export const EnterprisePortalPage: React.FC = () => {
               </div>
               <div>
                 <span className="text-[10px] uppercase font-mono text-zinc-400 font-bold">Focus Tab Switches</span>
-                <p className={`text-sm font-bold ${(selectedCandidateForAudit.integrity_signals?.window_blurs ?? 0) > 2 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                  {selectedCandidateForAudit.integrity_signals?.window_blurs || 0} Blurs
+                <p className={`text-sm font-bold ${blurCount((selectedCandidateForAudit.integrity_signals as any)?.tab_switches_by_round ?? selectedCandidateForAudit.integrity_signals?.window_blurs) > 2 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {blurCount((selectedCandidateForAudit.integrity_signals as any)?.tab_switches_by_round ?? selectedCandidateForAudit.integrity_signals?.window_blurs)} Blurs
                 </p>
               </div>
             </div>
@@ -551,7 +623,7 @@ export const EnterprisePortalPage: React.FC = () => {
               <h4 className="font-bold text-zinc-900">Multi-Round Performance Log</h4>
               <div className="space-y-2">
                 {Object.entries(selectedCandidateForAudit.round_results || {}).map(([rIdx, rData]: [string, any]) => (
-                  <div key={rIdx} className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between">
+                  <div key={rIdx} className="p-3 rounded-xl bg-zinc-50 border border-zinc-200 flex flex-wrap items-center justify-between gap-y-2">
                     <div>
                       <span className="font-semibold text-zinc-900 uppercase font-mono text-[10px]">
                         Stage {Number(rIdx) + 1}: {rData.round_type}
@@ -561,8 +633,9 @@ export const EnterprisePortalPage: React.FC = () => {
                       </p>
                     </div>
                     <span className="font-bold font-mono text-lime-700 text-sm">
-                      {rData.score != null ? `${rData.score}%` : 'Unscored'}
+                      {rData.score != null ? `${rData.score}%` : 'Not evaluated'}
                     </span>
+                    <RoundDetails data={rData} />
                   </div>
                 ))}
               </div>
@@ -608,134 +681,90 @@ export const EnterprisePortalPage: React.FC = () => {
             />
           </div>
 
-          {/* OA Question Flexibility (Preset vs Custom URL vs Codeforces Randomizer) */}
-          <div className="space-y-2 p-3 rounded-xl bg-zinc-50 border border-zinc-200">
-            <label className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
-              <Code2 className="w-3.5 h-3.5 text-lime-600" />
-              Round 1 OA Question Customization
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setOaMode('preset')}
-                className={`p-2 rounded-lg text-xs font-medium border text-center transition-all ${
-                  oaMode === 'preset'
-                    ? 'bg-white border-lime-500 text-zinc-900 font-bold shadow-2xs'
-                    : 'bg-zinc-100 border-zinc-200 text-zinc-600'
-                }`}
-              >
-                Curated Preset
-              </button>
-              <button
-                type="button"
-                onClick={() => setOaMode('custom_url')}
-                className={`p-2 rounded-lg text-xs font-medium border text-center transition-all ${
-                  oaMode === 'custom_url'
-                    ? 'bg-white border-lime-500 text-zinc-900 font-bold shadow-2xs'
-                    : 'bg-zinc-100 border-zinc-200 text-zinc-600'
-                }`}
-              >
-                Custom URL
-              </button>
-              <button
-                type="button"
-                onClick={() => setOaMode('codeforces_random')}
-                className={`p-2 rounded-lg text-xs font-medium border text-center transition-all ${
-                  oaMode === 'codeforces_random'
-                    ? 'bg-white border-lime-500 text-zinc-900 font-bold shadow-2xs'
-                    : 'bg-zinc-100 border-zinc-200 text-zinc-600'
-                }`}
-              >
-                CF Randomizer
-              </button>
-            </div>
-
-            {oaMode === 'custom_url' && (
-              <Input
-                label="Custom Problem URL"
-                placeholder="https://leetcode.com/problems/... or codeforces.com/problemset/..."
-                value={oaCustomUrl}
-                onChange={(e) => setOaCustomUrl(e.target.value)}
-              />
-            )}
-
-            {oaMode === 'codeforces_random' && (
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="text-[11px] font-semibold text-zinc-700">Difficulty Rating:</label>
-                  <select
-                    value={oaCfRating}
-                    onChange={(e) => setOaCfRating(Number(e.target.value))}
-                    className="w-full text-xs p-2 rounded-lg border border-zinc-200 bg-white"
-                  >
-                    <option value={1200}>1200 (Easy-Medium)</option>
-                    <option value={1500}>1500 (Standard Interview)</option>
-                    <option value={1800}>1800 (Hard FAANG Bar)</option>
-                    <option value={2100}>2100 (Master / Uber Bar)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-zinc-700">Topic Domain:</label>
-                  <select
-                    value={oaCfTopic}
-                    onChange={(e) => setOaCfTopic(e.target.value)}
-                    className="w-full text-xs p-2 rounded-lg border border-zinc-200 bg-white"
-                  >
-                    <option value="graphs">Graphs &amp; Trees</option>
-                    <option value="dp">Dynamic Programming</option>
-                    <option value="data structures">Data Structures (Segment Trees, Heaps)</option>
-                    <option value="greedy">Greedy &amp; Two Pointers</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Rounds Configurator */}
+          {/* Round sequence: every round is auto-graded on the server from curated, test-backed content */}
           <div className="space-y-2 pt-2">
-            <label className="text-xs font-semibold text-zinc-800">Assessment Round Sequence:</label>
+            <label className="text-xs font-semibold text-zinc-800">Rounds (in order)</label>
+            <p className="text-[11px] text-zinc-500">
+              Candidates sign in with their own account. They never see scores; results land on your leaderboard.
+            </p>
+            {modelConnected === false && (
+              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                No AI model is connected to your account. Coding and code-reading rounds are still graded, but the
+                technical interview will show as "not evaluated". <a href="/settings/provider" className="underline font-semibold">Connect a model</a>.
+              </p>
+            )}
             <div className="space-y-2">
               {rounds.map((round, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3 rounded-xl border border-zinc-200 bg-zinc-50 text-xs"
-                >
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={round.is_enabled}
-                      disabled={round.round_type === 'code_comprehension'}
-                      onChange={(e) => {
-                        const next = [...rounds];
-                        next[idx].is_enabled = e.target.checked;
-                        setRounds(next);
-                      }}
-                      className="rounded text-lime-600 focus:ring-lime-500"
-                    />
-                    <div>
-                      <span className="font-semibold text-zinc-900">{round.name}</span>
-                      {round.round_type === 'code_comprehension' && (
-                        <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 font-mono">
-                          Google-Style Beta
-                        </span>
-                      )}
+                <div key={round.round_type} className={`p-3 rounded-xl border text-xs space-y-2 ${round.is_enabled ? 'border-zinc-300 bg-white' : 'border-zinc-200 bg-zinc-50 opacity-70'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={round.is_enabled}
+                        onChange={(e) => updateRound(idx, { is_enabled: e.target.checked })}
+                        className="rounded text-lime-600 focus:ring-lime-500"
+                      />
+                      <input
+                        value={round.name}
+                        onChange={(e) => updateRound(idx, { name: e.target.value })}
+                        aria-label="Round name"
+                        className="font-semibold text-zinc-900 bg-transparent border-b border-transparent focus:border-zinc-300 focus:outline-none min-w-0 flex-1"
+                      />
+                    </label>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button type="button" aria-label="Move up" onClick={() => moveRound(idx, -1)} className="px-1.5 py-0.5 rounded border border-zinc-200 text-zinc-500 hover:text-zinc-900">↑</button>
+                      <button type="button" aria-label="Move down" onClick={() => moveRound(idx, 1)} className="px-1.5 py-0.5 rounded border border-zinc-200 text-zinc-500 hover:text-zinc-900">↓</button>
+                      <input
+                        type="number"
+                        min={10}
+                        max={120}
+                        value={round.time_limit_minutes}
+                        onChange={(e) => updateRound(idx, { time_limit_minutes: Number(e.target.value) })}
+                        aria-label="Time limit in minutes"
+                        className="w-14 px-1.5 py-1 text-center font-mono border border-zinc-200 rounded-lg bg-white"
+                      />
+                      <span className="text-[11px] text-zinc-500">min</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={10}
-                      max={90}
-                      value={round.time_limit_minutes}
-                      onChange={(e) => {
-                        const next = [...rounds];
-                        next[idx].time_limit_minutes = Number(e.target.value);
-                        setRounds(next);
-                      }}
-                      className="w-12 px-1.5 py-1 text-center font-mono border border-zinc-200 rounded-lg bg-white"
-                    />
-                    <span className="text-[11px] text-zinc-500">min</span>
-                  </div>
+                  {round.is_enabled && round.round_type === 'oa_dsa' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <select value={round.config?.difficulty} onChange={(e) => updateRound(idx, {}, { difficulty: e.target.value })}
+                        className="text-xs p-2 rounded-lg border border-zinc-200 bg-white" aria-label="Difficulty">
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="medium-hard">Medium to hard</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                      <select value={round.config?.problems_count} onChange={(e) => updateRound(idx, {}, { problems_count: Number(e.target.value) })}
+                        className="text-xs p-2 rounded-lg border border-zinc-200 bg-white" aria-label="Problem count">
+                        {[1, 2, 3].map((n) => <option key={n} value={n}>{n} problem{n > 1 ? 's' : ''}</option>)}
+                      </select>
+                      <select value={(round.config?.problem_ids || [])[0] || ''} onChange={(e) => updateRound(idx, {}, { problem_ids: e.target.value ? [e.target.value] : [] })}
+                        className="text-xs p-2 rounded-lg border border-zinc-200 bg-white" aria-label="Fixed problem">
+                        <option value="">Random per candidate</option>
+                        {catalog.problems.map((p) => <option key={p.id} value={p.id}>{p.title} ({p.meta})</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {round.is_enabled && round.round_type === 'code_comprehension' && (
+                    <select value={round.config?.item_id || ''} onChange={(e) => updateRound(idx, {}, { item_id: e.target.value })}
+                      className="w-full text-xs p-2 rounded-lg border border-zinc-200 bg-white" aria-label="Code to read">
+                      <option value="">Random codebase per candidate</option>
+                      {catalog.items.map((i) => <option key={i.id} value={i.id}>{i.title} ({i.meta})</option>)}
+                    </select>
+                  )}
+                  {round.is_enabled && round.round_type === 'ai_project' && (
+                    <select value={round.config?.project_id} onChange={(e) => updateRound(idx, {}, { project_id: e.target.value })}
+                      className="w-full text-xs p-2 rounded-lg border border-zinc-200 bg-white" aria-label="Project">
+                      {catalog.projects.map((p) => <option key={p.id} value={p.id}>{p.title} ({p.meta})</option>)}
+                    </select>
+                  )}
+                  {round.is_enabled && round.round_type === 'tough_interview' && (
+                    <select value={round.config?.questions_count} onChange={(e) => updateRound(idx, {}, { questions_count: Number(e.target.value) })}
+                      className="w-full text-xs p-2 rounded-lg border border-zinc-200 bg-white" aria-label="Questions">
+                      {[3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} questions, adaptive follow-ups, cross-examines their code</option>)}
+                    </select>
+                  )}
                 </div>
               ))}
             </div>

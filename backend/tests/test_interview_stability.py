@@ -83,10 +83,20 @@ async def test_interview_wraps_up_after_exactly_max_answers(client):
         assert r.status_code == 200, r.text
         last = r.json()
         iv = (await client.get(f"/api/v1/interviews/{iid}", headers=headers)).json()
-        if i < MAX_CANDIDATE_TURNS - 1:
-            assert iv["status"] == "in_progress", f"ended early after {i + 1} answers"
+        assert iv["status"] == "in_progress", f"ended early after {i + 1} answers"
+    # After the last answer the interviewer invites the candidate's questions, like a real interview.
+    assert last["kind"] == "closing"
+
+    r = await client.post(f"/api/v1/interviews/{iid}/message", headers=headers,
+                          json={"content": "What does your team's on-call look like?", "client_turn_id": str(uuid.uuid4())})
+    assert r.status_code == 200, r.text
+    assert r.json()["kind"] == "wrapup"
+    iv = (await client.get(f"/api/v1/interviews/{iid}", headers=headers)).json()
     assert iv["status"] == "completed"
-    user_msgs = [m for m in iv["messages"] if m["role"] == "user"]
-    assert len(user_msgs) == MAX_CANDIDATE_TURNS
+    kinds = [m["kind"] for m in iv["messages"] if m["role"] == "user"]
+    assert kinds.count("answer") == MAX_CANDIDATE_TURNS
+    assert kinds[-1] == "candidate_question"
     state = (await client.get(f"/api/v1/interviews/{iid}/state", headers=headers)).json()
     assert state["turn_count"] == MAX_CANDIDATE_TURNS
+    # The closing question is not graded as an answer.
+    assert all(t["candidate_answer"] != "What does your team's on-call look like?" for t in iv["grouped_transcript"])

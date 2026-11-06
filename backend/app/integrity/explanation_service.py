@@ -112,6 +112,7 @@ class ExplanationService:
             n_questions=target_questions,
             user=current_user,
             db=db,
+            candidate_assessment_id=candidate_assessment.id if candidate_assessment else None,
         )
 
         # 4. Save ExplanationCheck record
@@ -135,18 +136,34 @@ class ExplanationService:
         return check
 
     @staticmethod
+    async def _resolve_provider(db: AsyncSession, user: Optional[User], candidate_assessment_id: Optional[str]):
+        """Practice: the user's model. Assessment: the hiring team's model (they own the drive). Else offline mock."""
+        try:
+            if user:
+                return await ModelFactory.get_for_user(db, user.id)
+            if candidate_assessment_id:
+                from backend.app.database.models import AssessmentPipeline
+                owner = (await db.execute(
+                    select(AssessmentPipeline.created_by_user_id)
+                    .join(CandidateAssessment, CandidateAssessment.pipeline_id == AssessmentPipeline.id)
+                    .where(CandidateAssessment.id == candidate_assessment_id))).scalar_one_or_none()
+                if owner:
+                    return await ModelFactory.get_for_user(db, owner)
+        except Exception:
+            pass
+        return MockProvider()
+
+    @staticmethod
     async def _generate_and_verify_questions(
         problem: str,
         code: str,
         n_questions: int,
         user: Optional[User],
         db: AsyncSession,
+        candidate_assessment_id: Optional[str] = None,
     ) -> List[ExplanationQuestion]:
         """Generate questions and verify code_reference occurs verbatim in code. Retry once if not."""
-        try:
-            provider = await ModelFactory.get_for_user(db, user.id) if user else MockProvider()
-        except Exception:
-            provider = MockProvider()
+        provider = await ExplanationService._resolve_provider(db, user, candidate_assessment_id)
 
         prompt = build_question_generation_prompt(problem, code, n_questions)
 
@@ -204,17 +221,34 @@ class ExplanationService:
         return verified, all_valid
 
     @staticmethod
+    def _salient_identifiers(code: str) -> Tuple[str, str]:
+        """
+        The two names a reviewer would ask about: functions and variables the candidate defined and uses most.
+        Imported modules, builtins and I/O plumbing (`sys`, `input`, `print`, `main`) are never the interesting part.
+        """
+        noise = {"def", "class", "return", "import", "from", "for", "while", "if", "else", "elif", "in", "and", "or",
+                 "not", "True", "False", "None", "self", "sys", "stdin", "stdout", "input", "print", "main", "range",
+                 "len", "int", "str", "list", "dict", "set", "map", "split", "read", "readline", "strip", "append",
+                 "enumerate", "sorted", "min", "max", "sum", "std", "cin", "cout", "endl", "include", "using",
+                 "namespace", "public", "static", "void", "String", "System", "out", "println", "Scanner", "args",
+                 "nextInt", "vector", "auto", "const", "bits", "stdc"}
+        imported = set(re.findall(r"^\s*(?:import|from)\s+([\w.]+)", code, re.M))
+        imported |= {n.strip() for m in re.findall(r"^\s*from\s+\S+\s+import\s+(.+)$", code, re.M) for n in m.split(",")}
+        defined = re.findall(r"\bdef\s+([A-Za-z_]\w*)", code) + re.findall(r"(?:^|[;{(])\s*(?:[A-Za-z_][\w<>:]*\s+)?([A-Za-z_]\w*)\s*(?:\[[^\]]*\]|\([^)]*\))?\s*[+\-*/]?=(?!=)", code, re.M)
+        counts: Dict[str, int] = {}
+        for name in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]{1,}\b", code):
+            counts[name] = counts.get(name, 0) + 1
+        ranked = [n for n in dict.fromkeys(defined) if n not in noise and n not in imported and len(n) > 1]
+        ranked.sort(key=lambda n: -counts.get(n, 0))
+        if not ranked:
+            ranked = [n for n, _ in sorted(counts.items(), key=lambda kv: -kv[1]) if n not in noise and n not in imported and len(n) > 2]
+        primary = ranked[0] if ranked else "solution"
+        return primary, (ranked[1] if len(ranked) > 1 else primary)
+
+    @staticmethod
     def _generate_grounded_fallback_questions(code: str, problem: str, n_questions: int) -> List[ExplanationQuestion]:
         """Template-based questions grounded in actual code identifiers extracted from code."""
-        # Extract function names or variable identifiers
-        identifiers = re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]{2,}\b", code)
-        filtered_ids = [
-            i for i in identifiers
-            if i not in {"def", "class", "return", "import", "from", "for", "while", "if", "else", "elif", "in", "and", "or", "not", "True", "False", "None"}
-        ]
-        primary_ref = filtered_ids[0] if filtered_ids else "solution"
-        secondary_ref = filtered_ids[1] if len(filtered_ids) > 1 else primary_ref
-
+        primary_ref, secondary_ref = ExplanationService._salient_identifiers(code)
         questions = [
             ExplanationQuestion(
                 type="rationale",
@@ -337,10 +371,7 @@ class ExplanationService:
         db: AsyncSession,
     ) -> None:
         """Evaluate candidate answers against code using LLM judge, and compute metrics on server."""
-        try:
-            provider = await ModelFactory.get_for_user(db, user.id) if user else MockProvider()
-        except Exception:
-            provider = MockProvider()
+        provider = await ExplanationService._resolve_provider(db, user, check.candidate_assessment_id)
 
         qa_pairs = []
         for q in check.questions:

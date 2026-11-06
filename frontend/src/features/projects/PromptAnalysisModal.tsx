@@ -38,6 +38,13 @@ export interface PromptAnalysisData {
   assessed?: boolean;
   scoring_method?: string;
   integrity_flags?: string[];
+  process?: {
+    prompts: number;
+    test_runs: number;
+    verified_replies: number;
+    verification_rate: number | null;
+    submitted_green: boolean;
+  } | null;
 }
 
 interface PromptAnalysisModalProps {
@@ -154,6 +161,12 @@ export const PromptAnalysisModal: React.FC<PromptAnalysisModalProps> = ({
               <span>Evaluator Synthesis</span>
             </div>
             <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">{data.summary}</p>
+            {data.process && data.process.prompts > 0 && (
+              <p className="mt-2 text-xs text-slate-700">
+                <span className="font-semibold">Verification:</span> ran the tests after {data.process.verified_replies} of{' '}
+                {data.process.prompts} assistant replies · {data.process.test_runs} test runs in total.
+              </p>
+            )}
             {data.integrity_flags && data.integrity_flags.length > 0 && (
               <ul className="mt-2 space-y-1 text-xs text-amber-900">
                 {data.integrity_flags.map((flag) => (

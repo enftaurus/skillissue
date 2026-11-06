@@ -42,6 +42,7 @@ class QuestionFeedback(BaseModel):
     interviewer_question: str
     candidate_answer: str
     verbatim_quote: Optional[str] = None
+    quote_verified: Optional[bool] = None
     critique: str
     strong_answer_guide: str
     targeted_resource: Optional[str] = None
@@ -77,6 +78,7 @@ class EvaluationResponse(BaseModel):
     created_at: datetime
     stored_transcript: Optional[str] = None
     transcript_turns: Optional[List[Dict[str, Any]]] = None
+    credibility: Optional[Dict[str, Any]] = None
 
 class DimensionComparison(BaseModel):
     dimension_id: str
@@ -130,4 +132,21 @@ class RetestSessionResponse(BaseModel):
     delta_score: float
     verified_improvements: List[str] = []
     status: str
+    created_at: datetime
+
+
+class DisputeCreate(BaseModel):
+    dimension_id: str = Field(..., max_length=80)
+    quote: str = Field(..., min_length=12, max_length=1500)
+    argument: str = Field(..., min_length=10, max_length=1500)
+
+
+class DisputeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    dimension_id: str
+    decision: str
+    old_score: Optional[int] = None
+    new_score: Optional[int] = None
+    reason: str
     created_at: datetime

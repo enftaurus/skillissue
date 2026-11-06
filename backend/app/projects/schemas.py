@@ -1,5 +1,27 @@
 from typing import Any, Dict, List, Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+MAX_PROJECT_FILES = 20
+MAX_FILE_BYTES = 200_000
+MAX_TOTAL_BYTES = 600_000
+
+
+def _check_files(files: Dict[str, str]) -> Dict[str, str]:
+    if len(files) > MAX_PROJECT_FILES:
+        raise ValueError(f"At most {MAX_PROJECT_FILES} files per request.")
+    total = 0
+    for path, content in files.items():
+        size = len(content.encode("utf-8", "ignore"))
+        if len(path) > 200:
+            raise ValueError("File path too long.")
+        if size > MAX_FILE_BYTES:
+            raise ValueError(f"{path[:80]} is larger than {MAX_FILE_BYTES // 1000} KB.")
+        total += size
+    if total > MAX_TOTAL_BYTES:
+        raise ValueError(f"Files exceed {MAX_TOTAL_BYTES // 1000} KB in total.")
+    return files
+
 
 class ProjectSummary(BaseModel):
     id: str
@@ -28,6 +50,11 @@ class ProjectDetail(BaseModel):
 class ProjectRunTestsRequest(BaseModel):
     files: Dict[str, str]
 
+    @field_validator("files")
+    @classmethod
+    def _limit_files(cls, v):
+        return _check_files(v)
+
 class ProjectTestCaseResult(BaseModel):
     name: str
     status: Literal["passed", "failed"]
@@ -47,11 +74,16 @@ class ProjectTestRunResponse(BaseModel):
 
 class ProjectCopilotRequest(BaseModel):
     files: Dict[str, str]
-    active_file: Optional[str] = None
+    active_file: Optional[str] = Field(default=None, max_length=200)
     active_cursor_line: Optional[int] = None
-    message: str
-    conversation_history: List[Dict[str, str]] = []
+    message: str = Field(..., min_length=1, max_length=4000)
+    conversation_history: List[Dict[str, str]] = Field(default_factory=list, max_length=200)
     last_test_results: Optional[Dict[str, Any]] = None
+
+    @field_validator("files")
+    @classmethod
+    def _limit_files(cls, v):
+        return _check_files(v)
 
 class ProjectCopilotResponse(BaseModel):
     message: str
@@ -77,11 +109,17 @@ class ProjectPromptAnalysisResponse(BaseModel):
     assessed: bool = True
     scoring_method: str = "heuristic"  # 'heuristic' | 'llm+heuristic' | 'none'
     integrity_flags: List[str] = []
+    process: Optional[Dict[str, Any]] = None  # verification behaviour (test runs after assistant replies)
 
 class ProjectSubmissionRequest(BaseModel):
     files: Dict[str, str]
-    conversation_history: List[Dict[str, str]] = []
-    time_spent_seconds: int = 0
+    conversation_history: List[Dict[str, str]] = Field(default_factory=list, max_length=200)
+    time_spent_seconds: int = Field(default=0, ge=0, le=24 * 3600)
+
+    @field_validator("files")
+    @classmethod
+    def _limit_files(cls, v):
+        return _check_files(v)
 
 class ProjectSubmissionResponse(BaseModel):
     id: str

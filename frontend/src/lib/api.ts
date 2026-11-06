@@ -77,7 +77,9 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       localStorage.removeItem('skillissue_token');
       localStorage.removeItem('skillissue_user');
       window.dispatchEvent(new CustomEvent('auth:expired'));
-      if (!window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+      const path = window.location.pathname;
+      const publicPage = path === '/' || path === '/welcome' || path.startsWith('/login') || path.startsWith('/register');
+      if (!publicPage) {
         window.location.href = '/login';
       }
     }

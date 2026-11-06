@@ -13,6 +13,8 @@ import { EvaluationPage } from './features/evaluation/EvaluationPage';
 import { PlanlyPage } from './features/improvement-plan/PlanlyPage';
 import { ProgressAnalyticsPage } from './features/progress/ProgressAnalyticsPage';
 import { CodingPracticePage } from './features/coding/CodingPracticePage';
+import { CodeComprehensionPage } from './features/comprehension/CodeComprehensionPage';
+import { LandingPage } from './features/landing/LandingPage';
 import { ProjectCatalogPage } from './features/projects/ProjectCatalogPage';
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage';
 import { CompanyTracksPage } from './features/tracks/CompanyTracksPage';
@@ -78,6 +80,24 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: strin
   return <>{children}</>;
 };
 
+// Signed-out visitors get the landing page; signed-in users get their dashboard.
+const HomeRoute: React.FC = () => {
+  const { user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+  if (!user) return <LandingPage />;
+  return (
+    <ProtectedRoute>
+      <DashboardPage />
+    </ProtectedRoute>
+  );
+};
+
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const location = useLocation();
@@ -99,6 +119,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     location.pathname === '/enterprise/login' ||
     location.pathname === '/admin/login' ||
     location.pathname === '/register' ||
+    location.pathname === '/welcome' ||
     location.pathname === '/onboarding/bedrock';
 
   const isInterviewSession =
@@ -136,7 +157,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           isSidebarCollapsed ? 'pl-16' : 'pl-60'
         }`}
       >
-        <main className="flex-1 pb-16">{children}</main>
+        <main key={location.pathname} className="flex-1 pb-16 animate-fade-in">{children}</main>
         <footer className="border-t border-surface-border bg-white py-3.5 px-6">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-ink-muted">
             <div className="flex items-center gap-2">
@@ -178,14 +199,8 @@ export const App: React.FC = () => {
             <Route path="/register" element={<RegisterPage />} />
 
             {/* Protected Core Application Routes */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <DashboardPage />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/welcome" element={<LandingPage />} />
+            <Route path="/" element={<HomeRoute />} />
             <Route
               path="/interviews/new"
               element={
@@ -223,6 +238,22 @@ export const App: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <ProgressAnalyticsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/comprehension"
+              element={
+                <ProtectedRoute>
+                  <CodeComprehensionPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/comprehension/:sessionId"
+              element={
+                <ProtectedRoute>
+                  <CodeComprehensionPage />
                 </ProtectedRoute>
               }
             />

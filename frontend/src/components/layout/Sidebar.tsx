@@ -20,6 +20,7 @@ import {
   Target,
   Building2,
   BarChart3,
+  Brain,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -100,6 +101,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { label: 'Dashboard', path: '/', icon: LayoutDashboard, shortcut: '⌘1', roles: ['candidate', 'recruiter', 'admin'] },
     { label: 'Company Tracks', path: '/tracks', icon: Target, badge: '50+ PACKS', roles: ['candidate', 'recruiter', 'admin'] },
     { label: 'DSA Arena', path: '/coding', icon: Code2, shortcut: '⌘2', roles: ['candidate', 'recruiter', 'admin'] },
+    { label: 'Code Reading', path: '/comprehension', icon: Brain, badge: 'NEW', roles: ['candidate', 'recruiter', 'admin'] },
     { label: 'AI Projects', path: '/projects', icon: Boxes, badge: 'NEW', roles: ['candidate', 'recruiter', 'admin'] },
     { label: 'Interview', path: '/interviews/new', icon: Mic, shortcut: '⌘3', roles: ['candidate', 'recruiter', 'admin'] },
     { label: 'Planly', path: '/planly', icon: Calendar, shortcut: '⌘4', roles: ['candidate', 'recruiter', 'admin'] },

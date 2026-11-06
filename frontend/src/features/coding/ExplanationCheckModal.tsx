@@ -111,7 +111,7 @@ export const ExplanationCheckModal: React.FC<ExplanationCheckModalProps> = ({
   const getAuthHeaders = (): Record<string, string> => {
     const headers: Record<string, string> = {};
     if (candidateToken) {
-      headers['Authorization'] = `Bearer ${candidateToken}`;
+      headers['X-Assessment-Token'] = candidateToken;
     }
     return headers;
   };

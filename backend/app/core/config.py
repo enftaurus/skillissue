@@ -47,6 +47,20 @@ class Settings(BaseSettings):
     # Audio endpoints
     AUDIO_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
 
+    # Evaluator credibility: run two independent grading passes in parallel and flag disagreement
+    EVAL_CONSISTENCY_CHECK: bool = True
+
+    # Live voice (Nova Sonic, platform credentials via the default AWS chain; ADR 0025)
+    VOICE_LIVE_ENABLED: bool = True
+    PLATFORM_VOICE_ENABLED: bool = True  # Polly TTS / Transcribe STT via the server's own AWS credentials
+    STT_PROVIDER: str = "whisper"  # "whisper" (default, benchmarked best) | "transcribe" (opt-in, platform AWS)
+    TRANSCRIBE_LANGUAGE: str = "en-IN"  # Indian English handles both Indian and US accents well
+    SONIC_MODEL_ID: str = "amazon.nova-2-5-sonic"
+    SONIC_REGION: str = "us-east-1"
+    SONIC_DEFAULT_VOICE: str = "matthew"
+    VOICE_DAILY_MINUTES: int = 60
+    VOICE_SESSION_MAX_MINUTES: int = 30
+
     # Codeforces API
     CF_API_KEY: str = ""
     CF_API_SECRET: str = ""

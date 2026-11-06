@@ -13,17 +13,28 @@ from backend.app.providers.model_client_factory import ModelClientFactory
 from backend.app.core.errors import AppException, EntityNotFoundError, translate_model_error
 from backend.app.core.logging import logger
 from backend.app.interviews.constants import max_turns_for_duration, count_candidate_answers
+from backend.app.interviews.agent.policy import pick_persona, persona_prompt
 
 _COMPANIES = ["google", "uber", "openai", "meta", "amazon", "apple", "netflix", "microsoft", "stripe"]
 
 
 def detect_company(interview: Interview, jd: Optional[JobDescription] = None) -> Optional[str]:
-    """Company calibration source: JD company first, then whole-word matches in title/role/skills."""
+    """
+    Company calibration source, most explicit first: the JD's company, a company mock interview (title written by
+    tracks.company_context), then legacy whole-word matches on role/skills for the big names.
+    """
+    from backend.app.tracks.company_context import company_by_name, company_from_title
     if jd is not None and getattr(jd, "company", None):
+        c = company_by_name(jd.company)
+        if c:
+            return c["name"]
         for comp in _COMPANIES:
             if re.search(rf"\b{comp}\b", jd.company.lower()):
                 return comp.capitalize()
-    blob = f"{interview.title or ''} {interview.target_role or ''} {' '.join(interview.domain_skills or [])}".lower()
+    c = company_from_title(interview.title)
+    if c:
+        return c["name"]
+    blob = f"{interview.target_role or ''} {' '.join(interview.domain_skills or [])}".lower()
     for comp in _COMPANIES:
         if re.search(rf"\b{comp}\b", blob):
             return comp.capitalize()
@@ -37,7 +48,7 @@ def build_full_system_prompt(
     jd: Optional[JobDescription],
     comp_name: Optional[str],
 ) -> str:
-    return build_interviewer_system_prompt(
+    prompt = build_interviewer_system_prompt(
         category=interview.category,
         target_role=interview.target_role,
         difficulty=interview.difficulty,
@@ -50,6 +61,13 @@ def build_full_system_prompt(
         resume_text=resume.extracted_text if resume else None,
         company_name=comp_name,
     )
+    persona = pick_persona(interview.id or "", interview.category, comp_name)
+    return prompt + persona_prompt(persona, interview.category, interview.target_duration_minutes or 20)
+
+
+def _awaiting_candidate_questions(interview: Interview) -> bool:
+    last_assistant = next((m for m in reversed(interview.messages) if m.role == "assistant"), None)
+    return getattr(last_assistant, "kind", None) == "closing"
 
 
 def _problem_already_presented(interview: Interview) -> bool:
@@ -100,17 +118,24 @@ class InterviewAgentService:
         system_prompt = build_full_system_prompt(interview, domain_skills, resume, jd, comp_name)
 
         if interview.category == "dsa":
+            persona = pick_persona(interview.id or "", "dsa", comp_name)
             initial_question = (
-                "Welcome to the DSA round. Before the problem: introduce yourself in a few sentences, "
-                "and tell me which DSA topics you're strongest and weakest at."
+                f"Hi, I'm {persona['name']}, {persona['title']} on {persona['team']}. "
+                + (f"This is a {comp_name}-style coding round. " if comp_name else "")
+                + f"Plan for the next "
+                f"{interview.target_duration_minutes or 20} minutes: one coding problem, we talk it through, then you can "
+                "ask me anything. Before the problem, tell me a bit about yourself and which DSA topics you're strongest "
+                "and weakest at."
             )
         elif interview.category == "behavioral":
             comp_label = f" for {comp_name}" if comp_name else ""
             first_q_prompt = (
                 f"The candidate is ready for a {interview.difficulty}-level HR / Behavioral round{comp_label} "
                 f"for the role of {interview.target_role}. Start as an authentic hiring manager: "
-                "Welcome them to the behavioral round and ask them to introduce themselves and walk through a high-impact engineering project they personally owned. "
-                "Ask exactly ONE concise question under 3 sentences. No artificial flattery."
+                f"Open like a real interviewer: introduce yourself by name and role in one sentence, give a one-line agenda "
+                f"for this {interview.target_duration_minutes or 20}-minute round (a few situations from your past work, then "
+                "time for their questions), then ask them to walk you through a project they personally owned and what "
+                "made it hard. ONE question. Plain spoken English, no flattery."
             )
             prompt_messages = [
                 SystemMessage(content=system_prompt),
@@ -124,8 +149,9 @@ class InterviewAgentService:
             first_q_prompt = (
                 f"The candidate is ready for an engineering leadership / Managerial round{comp_label} "
                 f"for the role of {interview.target_role}. Start as a VP of Engineering: "
-                "Welcome them and ask them to introduce their leadership style and how they prioritize technical debt against product shipping deadlines. "
-                "Ask exactly ONE concise question under 3 sentences. No artificial flattery."
+                f"Open like a real interviewer: introduce yourself by name and role in one sentence, a one-line agenda for "
+                f"this {interview.target_duration_minutes or 20}-minute round, then ask about a recent time they had to trade "
+                "off tech debt against a deadline and what they decided. ONE question. Plain spoken English, no flattery."
             )
             prompt_messages = [
                 SystemMessage(content=system_prompt),
@@ -139,8 +165,10 @@ class InterviewAgentService:
             first_q_prompt = (
                 f"The candidate is ready for a {interview.difficulty}-level {interview.category} interview{comp_label} "
                 f"for the role of {interview.target_role}. Start the interview like an authentic senior engineering hiring manager: "
-                "Welcome them and ask them to briefly introduce themselves, their primary tech stack, and an interesting project or architectural challenge they handled recently. "
-                "Ask exactly ONE concise question under 3 sentences. No artificial flattery."
+                f"Open like a real interviewer: introduce yourself by name and role in one sentence, a one-line agenda for "
+                f"this {interview.target_duration_minutes or 20}-minute round (a couple of technical deep dives, then time "
+                "for their questions), then ask them to walk you through something they built recently and the hardest "
+                "part of it. ONE question. Plain spoken English, no flattery."
             )
 
             prompt_messages = [
@@ -308,7 +336,8 @@ class InterviewAgentService:
                 "client_turn_id": client_turn_id,
                 "turn_count": turn_count,
                 "max_turns": max_turns_for_duration(interview.target_duration_minutes),
-                "phase": "active",
+                # The closing phase survives across turns (and lost checkpoints): it's derived from the transcript.
+                "phase": "closing" if _awaiting_candidate_questions(interview) else "active",
                 "coding_problem_id": interview.coding_problem_id,
                 # Older checkpoints predate these keys: rebuild instead of silently dropping context.
                 "system_prompt": prior_state.get("system_prompt")
@@ -318,6 +347,7 @@ class InterviewAgentService:
                 "topic_questions": prior_state.get("topic_questions") or {},
                 "answer_log": prior_state.get("answer_log") or [],
                 "problem_presented": bool(prior_state.get("problem_presented")) or _problem_already_presented(interview),
+                "offered_switch": bool(prior_state.get("offered_switch")),
             }
 
             try:

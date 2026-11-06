@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PageSkeleton } from '../../components/ui/Skeleton';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ResponsiveContainer,
@@ -37,6 +38,213 @@ import {
   TrendingUp,
   RotateCcw,
 } from 'lucide-react';
+
+
+interface DiffSide {
+  question: string;
+  answer: string;
+  score: number | null;
+  critique: string;
+}
+interface ReplayDiffData {
+  before: DiffSide | null;
+  after: DiffSide | null;
+  rubric: { dimension_id: string; before: number; after: number; delta: number }[];
+  summary: { improved: string[]; still_missing: string[]; verdict: string };
+}
+
+interface DeliverySummary {
+  answers_measured: number;
+  avg_words_per_minute: number | null;
+  fillers_per_minute: number | null;
+  top_fillers: [string, number][];
+  hedges: number;
+  longest_pause_s: number;
+  notes: string[];
+}
+
+const DeliveryCard: React.FC<{ interviewId: string }> = ({ interviewId }) => {
+  const [d, setD] = useState<DeliverySummary | null>(null);
+  useEffect(() => {
+    api.get<{ summary: DeliverySummary | null }>(`/interviews/${interviewId}/delivery`).then((r) => setD(r.summary)).catch(() => {});
+  }, [interviewId]);
+  if (!d) return null;
+  const stat = (label: string, value: React.ReactNode) => (
+    <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+      <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">{label}</div>
+      <div className="mt-1 text-lg font-bold text-slate-900">{value}</div>
+    </div>
+  );
+  return (
+    <Card className="p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-slate-900">How you sounded</h3>
+        <span className="text-[11px] text-slate-400">{d.answers_measured} voice answers · audio never stored · not part of your score</span>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {stat('Pace', d.avg_words_per_minute ? `${d.avg_words_per_minute} wpm` : '—')}
+        {stat('Fillers / min', d.fillers_per_minute ?? '—')}
+        {stat('Hedges', d.hedges)}
+        {stat('Longest pause', `${d.longest_pause_s}s`)}
+      </div>
+      {d.top_fillers.length > 0 && (
+        <p className="text-xs text-slate-600">Most used: {d.top_fillers.map(([w, n]) => `"${w}" ×${n}`).join(', ')}</p>
+      )}
+      {d.notes.map((n) => (
+        <p key={n} className="text-sm text-slate-800">• {n}</p>
+      ))}
+    </Card>
+  );
+};
+
+const ReplayDiff: React.FC<{ retestId: string }> = ({ retestId }) => {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<ReplayDiffData | null>(null);
+  const [err, setErr] = useState('');
+  const toggle = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !data) {
+      try {
+        setData(await api.get<ReplayDiffData>(`/evaluations/retests/${retestId}/diff`));
+      } catch (e: any) {
+        setErr(e.message || 'Could not load the comparison.');
+      }
+    }
+  };
+  const side = (label: string, s: DiffSide | null, tone: string) => (
+    <div className={`rounded-lg border p-3 space-y-1.5 ${tone}`}>
+      <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        <span>{label}</span>
+        {s?.score != null && <span className="font-mono text-slate-700">{s.score}/5</span>}
+      </div>
+      {s ? (
+        <>
+          <p className="text-xs text-slate-500">{s.question}</p>
+          <p className="text-sm text-slate-900 italic">&ldquo;{s.answer}&rdquo;</p>
+          {s.critique && <p className="text-xs text-slate-600">{s.critique}</p>}
+        </>
+      ) : (
+        <p className="text-xs text-slate-500">No comparable answer recorded.</p>
+      )}
+    </div>
+  );
+  return (
+    <div className="pt-2 border-t border-surface-border space-y-3">
+      <button onClick={toggle} className="text-xs font-semibold text-indigo-700 hover:text-indigo-900">
+        {open ? 'Hide answer comparison' : 'Compare your answers: before vs after'}
+      </button>
+      {open && err && <p className="text-xs text-rose-700">{err}</p>}
+      {open && !data && !err && <div className="h-24 rounded-lg bg-slate-100 animate-pulse" />}
+      {open && data && (
+        <div className="space-y-3 animate-fade-in">
+          <div className="grid md:grid-cols-2 gap-3">
+            {side('Before', data.before, 'bg-slate-50 border-slate-200')}
+            {side('After (retest)', data.after, 'bg-indigo-50/60 border-indigo-200')}
+          </div>
+          {data.summary.verdict && <p className="text-sm text-slate-800">{data.summary.verdict}</p>}
+          <div className="grid md:grid-cols-2 gap-3 text-xs">
+            {data.summary.improved.length > 0 && (
+              <ul className="space-y-1">
+                {data.summary.improved.map((x) => <li key={x} className="text-emerald-800">+ {x}</li>)}
+              </ul>
+            )}
+            {data.summary.still_missing.length > 0 && (
+              <ul className="space-y-1">
+                {data.summary.still_missing.map((x) => <li key={x} className="text-rose-800">− {x}</li>)}
+              </ul>
+            )}
+          </div>
+          {data.rubric.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {data.rubric.map((r) => (
+                <span key={r.dimension_id} className={`text-[11px] px-2 py-0.5 rounded-full border ${r.delta > 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : r.delta < 0 ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                  {r.dimension_id.replace(/_/g, ' ')}: {r.before} → {r.after}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+interface DisputeRow {
+  id: string;
+  dimension_id: string;
+  decision: 'upheld' | 'revised';
+  old_score: number | null;
+  new_score: number | null;
+  reason: string;
+}
+
+const DisputePanel: React.FC<{ interviewId: string; evaluation: Evaluation; onRevised: (e: Evaluation) => void }> = ({
+  interviewId,
+  evaluation,
+  onRevised,
+}) => {
+  const [rows, setRows] = useState<DisputeRow[]>([]);
+  const [dim, setDim] = useState('');
+  const [quote, setQuote] = useState('');
+  const [argument, setArgument] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    api.get<DisputeRow[]>(`/evaluations/${interviewId}/disputes`).then(setRows).catch(() => {});
+  }, [interviewId]);
+  const dims = Object.entries(evaluation.rubric_dimension_scores || {}).filter(([d]) => !rows.some((r) => r.dimension_id === d));
+  const submit = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      const r = await api.post<DisputeRow>(`/evaluations/${interviewId}/disputes`, { dimension_id: dim, quote, argument });
+      setRows((x) => [...x, r]);
+      setQuote('');
+      setArgument('');
+      setDim('');
+      if (r.decision === 'revised') onRevised(await api.get<Evaluation>(`/evaluations/${interviewId}`));
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card className="p-5 space-y-3">
+      <div>
+        <h3 className="text-sm font-bold text-slate-900">Think a score is wrong? Dispute it with evidence.</h3>
+        <p className="text-xs text-slate-500">Quote your own words exactly as they appear in the transcript. A re-judge can move one score by up to 2 points. Up to 3 disputes per evaluation, all logged.</p>
+      </div>
+      {rows.map((r) => (
+        <div key={r.id} className={`text-xs rounded-lg border p-2.5 ${r.decision === 'revised' ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+          <b>{r.dimension_id.replace(/_/g, ' ')}</b>: {r.decision === 'revised' ? `revised ${r.old_score} → ${r.new_score}` : 'score upheld'}. {r.reason}
+        </div>
+      ))}
+      {rows.length < 3 && dims.length > 0 && (
+        <div className="space-y-2">
+          <select value={dim} onChange={(e) => setDim(e.target.value)} className="w-full text-sm border border-slate-200 rounded-lg p-2">
+            <option value="">Choose a dimension…</option>
+            {dims.map(([d, v]) => (
+              <option key={d} value={d}>{d.replace(/_/g, ' ')} (currently {v.score}/5)</option>
+            ))}
+          </select>
+          <textarea value={quote} onChange={(e) => setQuote(e.target.value)} rows={2} placeholder="Exact quote from your answer"
+            className="w-full text-sm border border-slate-200 rounded-lg p-2 font-mono" />
+          <textarea value={argument} onChange={(e) => setArgument(e.target.value)} rows={2} placeholder="Why this quote shows a higher level"
+            className="w-full text-sm border border-slate-200 rounded-lg p-2" />
+          {err && <p className="text-xs text-rose-700">{err}</p>}
+          <div className="flex justify-end">
+            <Button size="sm" variant="primary" isLoading={busy} disabled={!dim || quote.trim().length < 12 || argument.trim().length < 10} onClick={submit}>
+              Submit dispute
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+};
 
 export const EvaluationPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -217,12 +425,7 @@ export const EvaluationPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto py-16 text-center">
-        <div className="inline-block animate-spin w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full" />
-        <p className="mt-3 text-sm text-ink-muted">Synthesizing evidence-based evaluation...</p>
-      </div>
-    );
+    return <PageSkeleton variant="report" label="Loading your evaluation" />;
   }
 
   if (error || !evaluation) {
@@ -328,6 +531,24 @@ export const EvaluationPage: React.FC = () => {
               </span>
             </div>
           </div>
+          {evaluation.credibility?.confidence && (
+            <div className="mt-4 text-xs space-y-1" title={evaluation.credibility.confidence.reasons.join(' ')}>
+              <span
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border font-semibold ${
+                  evaluation.credibility.confidence.level === 'high'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : evaluation.credibility.confidence.level === 'medium'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}
+              >
+                Evaluator confidence: {evaluation.credibility.confidence.level}
+              </span>
+              <ul className="text-slate-500 space-y-0.5">
+                {evaluation.credibility.confidence.reasons.map((r) => <li key={r}>{r}</li>)}
+              </ul>
+            </div>
+          )}
           <div className="pt-6 border-t border-slate-200/60 text-xs text-slate-500 leading-relaxed">
             Calculated across system trade-offs, technical depth, and communication grounding.
           </div>
@@ -527,6 +748,10 @@ export const EvaluationPage: React.FC = () => {
       </div>
 
       {/* CLOSED-LOOP RETEST DELTAS & VERIFIED PROGRESS */}
+      {id && <DisputePanel interviewId={id} evaluation={evaluation} onRevised={setEvaluation} />}
+
+      {id && <DeliveryCard interviewId={id} />}
+
       {retests && retests.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -610,6 +835,8 @@ export const EvaluationPage: React.FC = () => {
                       </ul>
                     </div>
                   )}
+
+                  {rt.status === 'completed' && <ReplayDiff retestId={rt.id} />}
 
                   {rt.status === 'in_progress' && rt.retest_interview_id && (
                     <div className="pt-2 border-t border-surface-border flex justify-end">
@@ -903,7 +1130,7 @@ export const EvaluationPage: React.FC = () => {
                         <div className="p-3.5 bg-white rounded-xl border border-indigo-200/80 space-y-1.5">
                           <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-800">
                             <Quote className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Verbatim Candidate Quote Highlighted</span>
+                            <span>{qf.quote_verified === false ? 'Closest line from your answer (model quote not found verbatim)' : 'Verbatim Candidate Quote Highlighted'}</span>
                           </div>
                           <p className="italic text-slate-800 font-mono text-xs sm:text-sm pl-4 border-l-2 border-indigo-500 leading-relaxed">
                             &ldquo;{qf.verbatim_quote}&rdquo;

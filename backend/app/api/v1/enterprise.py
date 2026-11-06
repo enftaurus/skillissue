@@ -1,15 +1,16 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database.session import get_db
 from backend.app.database.models import User
-from backend.app.auth.dependencies import get_current_recruiter_user
+from backend.app.auth.dependencies import get_current_recruiter_user, get_current_active_user, get_optional_user
 from backend.app.core.rate_limit import rate_limit
 from backend.app.enterprise.schemas import (
     CreatePipelineRequest, UpdatePipelineRequest, AssessmentPipelineResponse,
     CandidateInviteRequest, CandidateEntryRequest,
-    CandidateAssessmentResponse, CandidateSubmitRoundRequest, PipelineLeaderboardResponse
+    CandidateAssessmentResponse, CandidateSubmitRoundRequest, PipelineLeaderboardResponse,
+    CandidateExamView, DsaRunRequest, ProjectRunRequest, ComprehensionAnswerRequest, InterviewAnswerRequest,
 )
 from backend.app.enterprise.service import EnterpriseService
 
@@ -93,40 +94,66 @@ async def export_pipeline_candidates(
     """
     return await EnterpriseService.export_pipeline_candidates(db, current_user, pipeline_id)
 
-# Candidate Public Assessment Endpoints (Token-Authenticated)
-@router.get("/assessments/{token}", response_model=CandidateAssessmentResponse)
+# Candidate endpoints. The candidate is a signed-in user and owns the assessment; responses carry progress and the
+# work itself, never scores (ADR 0027). Only the invite landing view is public.
+@router.get("/assessments/{token}", response_model=CandidateExamView)
 async def get_candidate_exam(
     token: str,
+    user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Candidate enters the multi-round assessment runner using their unique access token or general invite token.
-    """
-    return await EnterpriseService.get_candidate_exam_by_token(db, token)
+    return await EnterpriseService.get_candidate_exam_by_token(db, token, user)
 
 @router.post(
     "/assessments/entry/{invite_token}",
-    response_model=CandidateAssessmentResponse,
+    response_model=CandidateExamView,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(rate_limit(max_requests=10, window_seconds=60))]
 )
 async def enter_candidate_assessment(
     invite_token: str,
     req: CandidateEntryRequest,
+    user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Candidate enters their name and email at the invite link entry screen to start/resume assessment.
-    """
-    return await EnterpriseService.enter_assessment(db, invite_token, req)
+    return await EnterpriseService.enter_assessment(db, invite_token, req, user)
 
-@router.post("/assessments/{token}/submit-round", response_model=CandidateAssessmentResponse)
+@router.get("/assessments/{token}/round")
+async def get_current_round(token: str, user: User = Depends(get_current_active_user), db: AsyncSession = Depends(get_db)):
+    """The current round's server-assigned content. Starts the round clock on first call."""
+    return await EnterpriseService.get_current_round(db, user, token)
+
+@router.post("/assessments/{token}/run", dependencies=[Depends(rate_limit(max_requests=20, window_seconds=60))])
+async def run_dsa_samples(token: str, req: DsaRunRequest, user: User = Depends(get_current_active_user),
+                          db: AsyncSession = Depends(get_db)):
+    """Run code against the visible sample tests only."""
+    return await EnterpriseService.run_dsa(db, user, token, req)
+
+@router.post("/assessments/{token}/run-project", dependencies=[Depends(rate_limit(max_requests=10, window_seconds=60))])
+async def run_project_tests(token: str, req: ProjectRunRequest, user: User = Depends(get_current_active_user),
+                            db: AsyncSession = Depends(get_db)):
+    return await EnterpriseService.run_project(db, user, token, req)
+
+@router.post("/assessments/{token}/comprehension/answer", dependencies=[Depends(rate_limit(max_requests=20, window_seconds=60))])
+async def answer_comprehension(token: str, req: ComprehensionAnswerRequest, user: User = Depends(get_current_active_user),
+                               db: AsyncSession = Depends(get_db)):
+    return await EnterpriseService.answer_comprehension(db, user, token, req)
+
+@router.post("/assessments/{token}/interview/answer", dependencies=[Depends(rate_limit(max_requests=20, window_seconds=60))])
+async def interview_answer(token: str, req: InterviewAnswerRequest, user: User = Depends(get_current_active_user),
+                           db: AsyncSession = Depends(get_db)):
+    return await EnterpriseService.interview_answer(db, user, token, req)
+
+@router.get("/assessments/{token}/report")
+async def practice_report(token: str, user: User = Depends(get_current_active_user), db: AsyncSession = Depends(get_db)):
+    """Full results, only for the candidate's own practice simulation. Enterprise results stay with the hiring team."""
+    return await EnterpriseService.practice_report(db, user, token)
+
+@router.post("/assessments/{token}/submit-round", response_model=CandidateExamView)
 async def submit_candidate_round(
     token: str,
     req: CandidateSubmitRoundRequest,
+    user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Candidate completes a round and transitions to the next round in the unified exam session.
-    """
-    return await EnterpriseService.submit_candidate_round(db, token, req)
+    return await EnterpriseService.submit_candidate_round(db, token, req, user)

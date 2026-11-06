@@ -55,6 +55,8 @@ async def test_stt_invalid_audio_is_400_without_internal_paths(client: httpx.Asy
 
 @pytest.mark.asyncio
 async def test_cloud_voices_marked_unavailable_without_credentials(client: httpx.AsyncClient, monkeypatch):
+    from backend.app.core.config import settings
+    monkeypatch.setattr(settings, "PLATFORM_VOICE_ENABLED", False)
     monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
     monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
     headers = await _auth_headers(client)
@@ -72,7 +74,7 @@ async def test_get_voices(client: httpx.AsyncClient):
     data = response.json()
     assert "voices" in data
     assert len(data["voices"]) >= 5
-    assert data["default_voice"] == "en-US-ChristopherNeural"
+    assert data["default_voice"] in ("en-US-ChristopherNeural", "aws-polly-matthew")
 
 @pytest.mark.asyncio
 async def test_tts_endpoint(client: httpx.AsyncClient):

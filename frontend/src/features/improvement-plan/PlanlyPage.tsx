@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { PageSkeleton } from '../../components/ui/Skeleton';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import {
@@ -498,12 +499,7 @@ export const PlanlyPage: React.FC = () => {
   const queuedBacklogCount = backlogItems.filter((i) => i.status === 'queued').length;
 
   if (loading) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-16 text-center">
-        <div className="w-10 h-10 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm text-slate-500">Loading Planly workspace...</p>
-      </div>
-    );
+    return <PageSkeleton variant="dashboard" label="Loading Planly" />;
   }
 
   const completedCount = plan ? plan.tasks.filter((t) => t.is_completed).length : 0;

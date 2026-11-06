@@ -56,92 +56,68 @@ async def test_enterprise_pipeline_candidate_entry_and_scoring(client: AsyncClie
     pipe_id = pipe_data["id"]
     invite_token = pipe_data["invite_token"]
 
-    # 3. D4: Viewing invite token directly does NOT create guest user
+    # 3. Viewing the invite token is public landing info only and never creates a candidate
     invite_view_res = await client.get(f"/api/v1/enterprise/assessments/{invite_token}")
     assert invite_view_res.status_code == 200
     invite_view_data = invite_view_res.json()
     assert invite_view_data["status"] == "entry_required"
+    assert invite_view_data["requires_login"] is True
     assert invite_view_data["access_token"] == ""
 
-    # 4. D4: Candidate enters name & email via entry endpoint
-    entry_res = await client.post(
-        f"/api/v1/enterprise/assessments/entry/{invite_token}",
-        json={"candidate_name": "Alice Candidate", "candidate_email": "alice@university.edu"}
-    )
+    # 4. Entry needs a signed-in candidate account (ADR 0027); anonymous name+email entry is gone
+    anon = await client.post(f"/api/v1/enterprise/assessments/entry/{invite_token}",
+                             json={"candidate_name": "Alice Candidate", "candidate_email": "alice@university.edu"})
+    assert anon.status_code == 401
+    alice_email = f"alice_{uuid.uuid4().hex[:6]}@university.edu"
+    await client.post("/api/v1/auth/register", json={"email": alice_email, "password": "Password123!"})
+    alice_tok = (await client.post("/api/v1/auth/login", json={"email": alice_email, "password": "Password123!"})).json()["access_token"]
+    alice = {"Authorization": f"Bearer {alice_tok}"}
+    entry_res = await client.post(f"/api/v1/enterprise/assessments/entry/{invite_token}", headers=alice,
+                                  json={"candidate_name": "Alice Candidate", "candidate_email": "spoof@evil.com"})
     assert entry_res.status_code == 201
     entry_data = entry_res.json()
     access_token = entry_data["access_token"]
     assert access_token != ""
     assert entry_data["candidate_name"] == "Alice Candidate"
-    assert entry_data["candidate_email"] == "alice@university.edu"
-    assert entry_data["token_expires_at"] is not None
+    assert entry_data["candidate_email"] == alice_email  # identity comes from the account, not the body
+    assert "round_results" not in entry_data and "composite_score" not in entry_data
 
-    # Re-entering with same email returns the same candidate assessment
-    re_entry = await client.post(
-        f"/api/v1/enterprise/assessments/entry/{invite_token}",
-        json={"candidate_name": "Alice Candidate", "candidate_email": "alice@university.edu"}
-    )
+    re_entry = await client.post(f"/api/v1/enterprise/assessments/entry/{invite_token}", headers=alice, json={})
     assert re_entry.status_code == 201
     assert re_entry.json()["id"] == entry_data["id"]
 
-    # 5. D2 & D3: Candidate submits round with client-supplied score=100
-    # Client-supplied score must be completely ignored!
+    # 5. Client-supplied scores are ignored and the response never carries results
     sub1_res = await client.post(
-        f"/api/v1/enterprise/assessments/{access_token}/submit-round",
-        json={
-            "round_index": 0,
-            "round_type": "oa_dsa",
-            "submission_data": {"score": 100.0, "code": "def solve(): return 1"},
-            "integrity_events": {"window_blurs": 5, "copy_paste_count": 10}
-        }
+        f"/api/v1/enterprise/assessments/{access_token}/submit-round", headers=alice,
+        json={"round_index": 0, "round_type": "oa_dsa",
+              "submission_data": {"score": 100.0, "code": "def solve(): return 1"},
+              "integrity_events": {"window_blurs": 5, "copy_paste_count": 10}}
     )
     assert sub1_res.status_code == 200
     sub1_data = sub1_res.json()
     assert sub1_data["current_round_index"] == 1
-    # D2: Since no server problem_id was linked to grade this DSA code, score is None and status is submitted_unscored
-    round_0_result = sub1_data["round_results"]["0"]
-    assert round_0_result["score"] is None
-    assert round_0_result["status"] == "submitted_unscored"
-    # D3: Integrity signals must be {"status": "not_assessed"} and candidate status must NOT be flagged
     assert sub1_data["status"] == "in_progress"
-    assert sub1_data["integrity_signals"] == {"status": "not_assessed"}
+    for leaked in ("round_results", "composite_score", "integrity_signals"):
+        assert leaked not in sub1_data
 
-    # 6. Candidate completes remaining rounds
-    sub2_res = await client.post(
-        f"/api/v1/enterprise/assessments/{access_token}/submit-round",
-        json={
-            "round_index": 1,
-            "round_type": "ai_project",
-            "submission_data": {"score": 99.0, "code": "print('ok')"},
-            "integrity_events": {}
-        }
-    )
-    assert sub2_res.status_code == 200
-    assert sub2_res.json()["round_results"]["1"]["score"] is None
+    for idx, rtype in ((1, "ai_project"), (2, "tough_interview")):
+        r = await client.post(f"/api/v1/enterprise/assessments/{access_token}/submit-round", headers=alice,
+                              json={"round_index": idx, "round_type": rtype, "submission_data": {"score": 99.0}})
+        assert r.status_code == 200
+    assert r.json()["status"] == "completed"
 
-    sub3_res = await client.post(
-        f"/api/v1/enterprise/assessments/{access_token}/submit-round",
-        json={
-            "round_index": 2,
-            "round_type": "tough_interview",
-            "submission_data": {"score": 88.0, "transcript": "..."},
-            "integrity_events": {}
-        }
-    )
-    assert sub3_res.status_code == 200
-    sub3_data = sub3_res.json()
-    assert sub3_data["status"] == "completed"
-    # Since unscored rounds, composite_score is None, not fabricated 85 or 99
-    assert sub3_data["composite_score"] is None
-
-    # 7. Recruiter views leaderboard
+    # 6. Recruiter leaderboard: the unattempted DSA round scored 0 server-side, not the client's 100
     lb_res = await client.get(f"/api/v1/enterprise/pipelines/{pipe_id}/leaderboard", headers=headers)
     assert lb_res.status_code == 200
     lb_data = lb_res.json()
     assert lb_data["total_candidates"] == 1
-    assert lb_data["completed_candidates"] == 0  # No scored completed candidates
-    assert lb_data["average_score"] is None
-    assert lb_data["candidates"][0]["candidate_name"] == "Alice Candidate"
+    assert lb_data["completed_candidates"] == 1
+    cand = lb_data["candidates"][0]
+    assert cand["candidate_name"] == "Alice Candidate"
+    assert cand["access_token"] == ""
+    assert cand["round_results"]["0"]["score"] == 0.0
+    assert cand["composite_score"] is not None and cand["composite_score"] < 50
+    assert lb_data["rankings"][0]["rank"] == 1
 
 @pytest.mark.asyncio
 async def test_tenant_isolation_on_pipelines(client: AsyncClient, create_test_user):

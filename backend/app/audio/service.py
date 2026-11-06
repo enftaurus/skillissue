@@ -22,7 +22,7 @@ _WHISPER_LOCK = threading.Lock()
 AVAILABLE_VOICES: List[VoiceOption] = [
     VoiceOption(
         id="aws-polly-matthew",
-        name="Matthew (AWS Polly Neural)",
+        name="Matthew (AWS Polly Generative)",
         gender="Male",
         accent="US",
         provider="aws-polly",
@@ -30,7 +30,7 @@ AVAILABLE_VOICES: List[VoiceOption] = [
     ),
     VoiceOption(
         id="aws-polly-kajal",
-        name="Kajal (AWS Polly Neural)",
+        name="Kajal (AWS Polly Generative)",
         gender="Female",
         accent="India",
         provider="aws-polly",
@@ -43,6 +43,38 @@ AVAILABLE_VOICES: List[VoiceOption] = [
         accent="US",
         provider="aws-polly",
         description="AWS Polly Generative Engine. Ultra-realistic conversational human prosody."
+    ),
+    VoiceOption(
+        id="aws-polly-stephen",
+        name="Stephen (AWS Polly Generative)",
+        gender="Male",
+        accent="US",
+        provider="aws-polly",
+        description="Generative engine. Calm, conversational senior-engineer delivery."
+    ),
+    VoiceOption(
+        id="aws-polly-danielle",
+        name="Danielle (AWS Polly Generative)",
+        gender="Female",
+        accent="US",
+        provider="aws-polly",
+        description="Generative engine. Warm, natural hiring-manager tone."
+    ),
+    VoiceOption(
+        id="aws-polly-arjun",
+        name="Arjun (AWS Polly Generative)",
+        gender="Male",
+        accent="India",
+        provider="aws-polly",
+        description="Generative engine. Natural Indian English."
+    ),
+    VoiceOption(
+        id="aws-polly-kiara",
+        name="Kiara (AWS Polly Generative)",
+        gender="Female",
+        accent="India",
+        provider="aws-polly",
+        description="Generative engine. Natural Indian English."
     ),
     VoiceOption(
         id="aws-polly-arthur",
@@ -101,6 +133,27 @@ AVAILABLE_VOICES: List[VoiceOption] = [
         description="Azure OpenAI tts-1 natural conversational model."
     ),
 ]
+
+# Polly voices that support the generative engine (us-east-1); others fall back to neural.
+GENERATIVE_POLLY_VOICES = {"matthew", "ruth", "stephen", "danielle", "joanna", "salli", "tiffany", "kenneth",
+                           "nate", "kajal", "arjun", "kiara"}
+
+_platform_aws: Optional[bool] = None
+
+
+def platform_aws_available() -> bool:
+    """True when the server itself has AWS credentials (default chain) and platform voice is enabled."""
+    global _platform_aws
+    if not settings.PLATFORM_VOICE_ENABLED:
+        return False
+    if _platform_aws is None:
+        try:
+            import boto3
+            _platform_aws = boto3.Session().get_credentials() is not None
+        except Exception:
+            _platform_aws = False
+    return _platform_aws
+
 
 def clean_text_for_speech(raw_text: str) -> str:
     """Turn interviewer markdown into speakable text without losing technical meaning."""
@@ -161,13 +214,13 @@ class AudioService:
     async def get_voices_for_user(cls, user_id: Optional[str], db: Optional[AsyncSession]) -> List[VoiceOption]:
         """Mark cloud voices unavailable when the caller has no credentials for that provider,
         so the UI never labels Edge audio as 'AWS Polly'."""
-        has_aws = bool(os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"))
+        has_aws = platform_aws_available() or bool(os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"))
         has_azure = False
         if user_id and db:
             try:
                 config = await ProviderConfigService.get_config(db, user_id)
                 if config is not None:
-                    creds = await ModelResolver.resolve_credentials(config, user_id)
+                    creds = await ModelResolver.resolve_credentials(db, user_id)
                     has_aws = has_aws or bool(creds.provider_name == "bedrock" and creds.aws_access_key and creds.aws_secret_key)
                     has_azure = bool(creds.provider_name == "azure" and creds.azure_api_key and creds.azure_endpoint)
             except Exception as e:
@@ -218,22 +271,16 @@ class AudioService:
                 # Check database credentials if available
                 if user_id and db:
                     config = await ProviderConfigService.get_config(db, user_id)
-                    creds = await ModelResolver.resolve_credentials(config, user_id)
+                    creds = await ModelResolver.resolve_credentials(db, user_id)
                     if creds.provider_name == "bedrock" and creds.aws_access_key and creds.aws_secret_key:
                         aws_access_key = creds.aws_access_key
                         aws_secret_key = creds.aws_secret_key
                         aws_session_token = creds.aws_session_token
                         aws_region = creds.aws_region or aws_region
 
-                # Check environment / AWS CLI variables
-                if not aws_access_key:
-                    aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID")
-                    aws_secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-                    aws_session_token = os.environ.get("AWS_SESSION_TOKEN")
-
+                polly_voice = target_voice.replace("aws-polly-", "").capitalize()
+                engine = "generative" if polly_voice.lower() in GENERATIVE_POLLY_VOICES else "neural"
                 if aws_access_key and aws_secret_key:
-                    polly_voice = target_voice.replace("aws-polly-", "").capitalize()
-                    engine = "generative" if polly_voice.lower() in ("ruth", "danielle") else "neural"
                     polly_client = boto3.client(
                         "polly",
                         aws_access_key_id=aws_access_key,
@@ -241,6 +288,13 @@ class AudioService:
                         aws_session_token=aws_session_token,
                         region_name=aws_region
                     )
+                elif platform_aws_available():
+                    # Platform-provided voice (ADR 0025): server's default AWS credential chain.
+                    polly_client = boto3.Session().client("polly", region_name=settings.SONIC_REGION)
+                else:
+                    polly_client = None
+
+                if polly_client is not None:
                     def _polly() -> bytes:
                         resp = polly_client.synthesize_speech(
                             Engine=engine, VoiceId=polly_voice, OutputFormat="mp3", Text=clean_text[:3000]
@@ -255,7 +309,7 @@ class AudioService:
             try:
                 from openai import AzureOpenAI
                 config = await ProviderConfigService.get_config(db, user_id)
-                creds = await ModelResolver.resolve_credentials(config, user_id)
+                creds = await ModelResolver.resolve_credentials(db, user_id)
                 if creds.provider_name == "azure" and creds.azure_api_key and creds.azure_endpoint:
                     azure_client = AzureOpenAI(
                         azure_endpoint=creds.azure_endpoint,
@@ -341,6 +395,7 @@ class AudioService:
         content_type: str = "audio/webm",
         user_id: Optional[str] = None,
         db: Optional[AsyncSession] = None,
+        words_out: Optional[list] = None,
     ) -> str:
         """
         Transcribe audio bytes (WebM, WAV, MP3, etc.) into text.
@@ -348,13 +403,14 @@ class AudioService:
         """
         if not audio_bytes:
             return ""
+        self_words = words_out if words_out is not None else []
 
         # 1. Try Azure OpenAI Whisper if user configured Azure
         if user_id and db:
             try:
                 from openai import AzureOpenAI
                 config = await ProviderConfigService.get_config(db, user_id)
-                creds = await ModelResolver.resolve_credentials(config, user_id)
+                creds = await ModelResolver.resolve_credentials(db, user_id)
                 if creds.provider_name == "azure" and creds.azure_api_key and creds.azure_endpoint:
                     azure_client = AzureOpenAI(
                         azure_endpoint=creds.azure_endpoint,
@@ -385,7 +441,17 @@ class AudioService:
             except Exception as e:
                 logger.warning(f"Vaani STT API failed: {e}")
 
-        # 3. High-Speed Local Faster-Whisper with Domain Vocabulary Prompting
+        # 3. Opt-in platform Transcribe (benchmarked worse than whisper without a custom vocabulary)
+        if settings.STT_PROVIDER == "transcribe" and platform_aws_available():
+            try:
+                from backend.app.audio.transcribe_aws import transcribe_with_aws
+                text = await transcribe_with_aws(audio_bytes)
+                if text:
+                    return text
+            except Exception:
+                pass
+
+        # 4. High-Speed Local Faster-Whisper with Domain Vocabulary Prompting
         ext = ".webm"
         if "wav" in content_type or filename.endswith(".wav"):
             ext = ".wav"
@@ -416,11 +482,15 @@ class AudioService:
                     beam_size=5,
                     vad_filter=True,
                     vad_parameters=dict(min_silence_duration_ms=300),
+                    word_timestamps=True,
                 )
-                return " ".join([seg.text for seg in segments]).strip()
+                segs = list(segments)
+                words = [(w.word, float(w.start), float(w.end)) for seg in segs for w in (seg.words or [])]
+                return " ".join([seg.text for seg in segs]).strip(), words
 
-            result = await asyncio.to_thread(_transcribe)
-            return result
+            text, words = await asyncio.to_thread(_transcribe)
+            self_words.extend(words)
+            return text
         except Exception as e:
             logger.error(f"Local faster-whisper transcription error: {e}")
             raise

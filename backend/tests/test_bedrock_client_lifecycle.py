@@ -354,6 +354,9 @@ async def test_missing_bedrock_config_fails_closed_without_mock():
                 await ModelFactory.get_for_user(db_mock, "unconfigured_user", task_type="general")
             assert exc_info.value.code == "BEDROCK_CONFIG_REQUIRED"
             assert "/onboarding/bedrock" in exc_info.value.message
+            # A missing setup is a client problem (400 + link), not a bad gateway (was 502).
+            assert exc_info.value.status_code == 400
+            assert exc_info.value.details["setup_url"] == "/onboarding/bedrock"
         finally:
             os.environ["PYTEST_CURRENT_TEST"] = "1"
 

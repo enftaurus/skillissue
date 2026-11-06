@@ -27,3 +27,8 @@ pytest-asyncio>=0.23.0,<0.25.0
 edge-tts>=7.0.0,<8.0.0
 faster-whisper>=1.0.0,<2.0.0
 av<14
+
+# Live voice (Nova Sonic bidirectional streaming, ADR 0025)
+aws_sdk_bedrock_runtime==0.12.0
+awscrt>=0.28.0
+amazon-transcribe>=0.6.4
