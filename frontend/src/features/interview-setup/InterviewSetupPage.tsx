@@ -457,16 +457,37 @@ export const InterviewSetupPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-              Paste Job Description Text
-            </label>
+            <div className="flex items-center justify-between mb-2 gap-2">
+              <label htmlFor="jd-text" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Paste Job Description Text
+              </label>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    if (text.trim()) { setJdText(text); setExtractedJd(null); setError(''); }
+                    else setError('Your clipboard is empty. Copy the job description first.');
+                  } catch {
+                    setError('The browser blocked clipboard access. Click in the box and press Ctrl+V (Cmd+V on Mac).');
+                  }
+                }}
+                className="text-xs font-semibold px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+              >
+                Paste from clipboard
+              </button>
+            </div>
             <textarea
-              rows={6}
+              id="jd-text"
+              rows={10}
               value={jdText}
-              onChange={(e) => setJdText(e.target.value)}
-              placeholder="Paste full job description text here..."
-              className="w-full p-3.5 text-sm bg-white border border-slate-200/80 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 font-sans"
+              onChange={(e) => { setJdText(e.target.value); if (extractedJd) setExtractedJd(null); }}
+              placeholder="Paste the full job description here (Ctrl+V / Cmd+V), or use 'Paste from clipboard'."
+              className="w-full p-3.5 text-sm bg-white border border-slate-200/80 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 font-sans resize-y"
             />
+            <p className="text-[11px] text-slate-400 mt-1 text-right">
+              {jdText.length.toLocaleString()} characters{jdText.length > 0 && jdText.length < 30 ? ' (at least 30 needed)' : ''}
+            </p>
           </div>
 
           {!extractedJd ? (
