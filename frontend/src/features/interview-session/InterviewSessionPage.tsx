@@ -371,8 +371,9 @@ export const InterviewSessionPage: React.FC = () => {
       setInputText('');
       baseInputTextRef.current = '';
       pendingTurnIdRef.current = null;
-      if (assistantMsg.kind === 'wrapup') {
+      if (assistantMsg.kind === 'wrapup' || assistantMsg.kind === 'terminated') {
         setInterview((prev) => (prev ? { ...prev, status: 'completed', completed_at: new Date().toISOString() } : prev));
+        if (assistantMsg.kind === 'terminated') refreshInterview();
       }
 
       // Update state snapshot
@@ -901,6 +902,8 @@ export const InterviewSessionPage: React.FC = () => {
               const isAssistant = m.role === 'assistant';
               const isHintMsg =
                 m.content.startsWith('[Level') || m.content.startsWith('[Requested Level');
+              const isWarning = isAssistant && m.kind === 'conduct_warning';
+              const isTerminated = isAssistant && m.kind === 'terminated';
 
               return (
                 <div
@@ -916,12 +919,26 @@ export const InterviewSessionPage: React.FC = () => {
                         SOCRATIC HINT
                       </span>
                     )}
+                    {isWarning && (
+                      <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-semibold">
+                        WARNING
+                      </span>
+                    )}
+                    {isTerminated && (
+                      <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-semibold">
+                        INTERVIEW ENDED
+                      </span>
+                    )}
                   </div>
 
                   <div
                     className={`max-w-[85%] rounded-2xl p-4 sm:p-5 text-sm sm:text-base leading-relaxed shadow-xs ${
                       isAssistant
-                        ? isHintMsg
+                        ? isTerminated
+                          ? 'bg-rose-50 border-2 border-rose-300 text-rose-950'
+                          : isWarning
+                          ? 'bg-amber-50 border-2 border-amber-300 text-amber-950'
+                          : isHintMsg
                           ? 'bg-amber-50/80 border border-amber-200 text-amber-950'
                           : 'bg-slate-50 border border-slate-200/80 text-slate-900'
                         : 'bg-indigo-600 text-white shadow-sm'

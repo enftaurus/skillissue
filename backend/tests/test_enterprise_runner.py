@@ -275,3 +275,23 @@ async def test_enterprise_report_stays_hidden_from_candidate(client, offline_mod
     await client.post(f"/api/v1/enterprise/assessments/{tok}/submit-round", headers=ch, json={"round_index": 0, "round_type": "code_comprehension"})
     r = await client.get(f"/api/v1/enterprise/assessments/{tok}/report", headers=ch)
     assert r.status_code == 403 and r.json()["error"]["code"] == "RESULTS_HIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_assessment_interview_conduct_warns_then_terminates(client, offline_models):
+    rh, p = await _pipeline(client, rounds=[ROUNDS[2]])
+    ch, _ = await _user(client)
+    tok = (await client.post(f"/api/v1/enterprise/assessments/entry/{p['invite_token']}", headers=ch, json={})).json()["access_token"]
+    q1 = (await client.get(f"/api/v1/enterprise/assessments/{tok}/round", headers=ch)).json()["current_question"]
+    w = (await client.post(f"/api/v1/enterprise/assessments/{tok}/interview/answer", headers=ch,
+                           json={"answer": "I just copied the code from a friend"})).json()
+    assert w["transcript"][-1]["kind"] == "conduct_warning" and q1 in w["current_question"] and not w["interview_done"]
+    t = (await client.post(f"/api/v1/enterprise/assessments/{tok}/interview/answer", headers=ch,
+                           json={"answer": "whatever, this is bullshit"})).json()
+    assert t["terminated"] and t["interview_done"] and t["current_question"] is None
+    again = await client.post(f"/api/v1/enterprise/assessments/{tok}/interview/answer", headers=ch, json={"answer": "sorry"})
+    assert again.json()["error"]["code"] == "INTERVIEW_TERMINATED"
+    await client.post(f"/api/v1/enterprise/assessments/{tok}/submit-round", headers=ch, json={"round_index": 0, "round_type": "tough_interview"})
+    c = (await client.get(f"/api/v1/enterprise/pipelines/{p['id']}/leaderboard", headers=rh)).json()["candidates"][0]
+    assert c["round_results"]["0"]["score"] == 0.0 and c["round_results"]["0"]["details"]["terminated"]
+    assert "0" in c["integrity_signals"]["conduct"]

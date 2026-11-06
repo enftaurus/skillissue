@@ -144,9 +144,12 @@ async def live_voice_assessment(ws: WebSocket, token: str):
             provider = await EnterpriseService._provider(tdb, cand.pipeline)
             view = await runner.interview_turn(cand, cand.pipeline, transcript, provider)
             await tdb.commit()
+        last = (view.get("transcript") or [{}])[-1]
+        if view.get("terminated"):
+            return SimpleNamespace(content=last.get("question", ""), kind="terminated", id=None)
         if view.get("interview_done"):
             return SimpleNamespace(content="That's all my questions. Submit the round when you're ready.", kind="wrapup", id=None)
-        return SimpleNamespace(content=view.get("current_question") or "", kind="question", id=None)
+        return SimpleNamespace(content=view.get("current_question") or "", kind=last.get("kind") or "question", id=None)
 
     relay = relay_mod.VoiceRelay(ws, user_id, session_view, persona, send_message, voice=first.get("voice"))
     try:

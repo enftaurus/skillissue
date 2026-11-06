@@ -158,6 +158,8 @@ class Interview(Base):
     topic_statuses: Mapped[Dict[str, str]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set when the interviewer ended the interview under the conduct policy (backend/app/interviews/conduct.py).
+    termination_reason: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="interviews")
     messages: Mapped[List["InterviewMessage"]] = relationship("InterviewMessage", back_populates="interview", cascade="all, delete-orphan", order_by="InterviewMessage.created_at")

@@ -89,6 +89,10 @@ class EvaluationService:
         if not interview:
             raise EntityNotFoundError("Interview", interview_id)
 
+        real_answers = [m for m in interview.messages if m.role == "user" and getattr(m, "kind", "answer") in ("answer", "code_submit")]
+        if getattr(interview, "termination_reason", None) and not real_answers:
+            return await cls._conduct_only_evaluation(db, user_id, interview)
+
         if len(interview.messages) < 2:
             raise AppException("Interview has insufficient transcript to evaluate (at least 1 completed question/answer turn is required).", code="INSUFFICIENT_DATA")
 
@@ -229,6 +233,11 @@ class EvaluationService:
         evidence_excerpts = parsed.get("evidence_excerpts", [])
         suggested_corrections = parsed.get("suggested_corrections", [])
         uncertainty_notes = parsed.get("uncertainty_notes", [])
+        if getattr(interview, "termination_reason", None):
+            from backend.app.evaluations.conduct_penalty import apply_penalty
+            (overall_score, dimension_scores, weaknesses, evidence_excerpts, suggested_corrections,
+             uncertainty_notes) = apply_penalty(interview, overall_score, dimension_scores, weaknesses,
+                                                evidence_excerpts, suggested_corrections, uncertainty_notes)
 
         # Parse & verify question_feedback verbatim quotes strictly against candidate transcript for that specific turn
         from backend.app.interviews.service import InterviewService
@@ -419,6 +428,28 @@ class EvaluationService:
             response.estimated_cost_usd * (2 if second_tokens else 1)
         )
 
+        return evaluation
+
+    @classmethod
+    async def _conduct_only_evaluation(cls, db: AsyncSession, user_id: str, interview: Interview) -> Evaluation:
+        from backend.app.evaluations.conduct_penalty import conduct_only_fields
+        fields = conduct_only_fields(interview, get_rubric_for_category(interview.category))
+        transcript = "\n\n".join(f"{'Interviewer' if m.role == 'assistant' else 'Candidate'}: {m.content}" for m in interview.messages)
+        evaluation = (await db.execute(select(Evaluation).where(Evaluation.interview_id == interview.id,
+                                                                Evaluation.user_id == user_id))).scalar_one_or_none()
+        if evaluation is None:
+            evaluation = Evaluation(interview_id=interview.id, user_id=user_id)
+            db.add(evaluation)
+        for k, v in fields.items():
+            setattr(evaluation, k, v)
+        evaluation.status = "completed"
+        evaluation.stored_transcript = transcript
+        evaluation.raw_llm_response = ""
+        evaluation.tokens_used = 0
+        evaluation.model_identifier = "conduct-policy"
+        evaluation.credibility = {"confidence": {"level": "high", "reasons": ["Ended under the conduct policy; the replies are quoted verbatim."]}}
+        await db.commit()
+        await db.refresh(evaluation)
         return evaluation
 
     @classmethod

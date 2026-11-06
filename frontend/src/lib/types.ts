@@ -91,7 +91,7 @@ export interface InterviewMessage {
   content: string;
   question_index: number;
   is_follow_up: boolean;
-  kind?: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' | 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup' | 'closing' | 'candidate_question';
+  kind?: 'answer' | 'code_submit' | 'code_run' | 'hint_request' | 'meta' | 'question' | 'hint' | 'code_feedback' | 'repeat' | 'wrapup' | 'closing' | 'candidate_question' | 'misconduct' | 'conduct_warning' | 'terminated';
   created_at: string;
 }
 
@@ -106,6 +106,7 @@ export interface QuestionTurn {
 
 export interface Interview {
   id: string;
+  termination_reason?: string | null;
   mode: 'domain' | 'jd';
   category: 'technical' | 'behavioral' | 'dsa' | 'managerial';
   title: string;

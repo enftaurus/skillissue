@@ -213,6 +213,6 @@ class VoiceRelay:
         kind = getattr(msg, "kind", "question")
         await self.emit({"type": "turn", "user": transcript, "assistant": msg.content, "kind": kind,
                          "message_id": getattr(msg, "id", None)})
-        self.end_after_turn = kind == "wrapup"
+        self.end_after_turn = kind in ("wrapup", "terminated")
         self.last_commit = time.monotonic()
         await self.session.send_tool_result(ev.tool_use_id, {"say": speakable(msg.content), "end_call": self.end_after_turn})

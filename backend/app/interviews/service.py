@@ -261,6 +261,9 @@ class InterviewService:
             intent = classify_intent(content)
             if intent in ("repeat_question", "clarify"):
                 return await cls._answer_meta_request(db, user_id, interview, content, client_turn_id, intent)
+            gated = await cls._conduct_gate(db, user_id, interview, content, client_turn_id, delivery)
+            if gated is not None:
+                return gated
 
             last_assistant = next((m for m in reversed(interview.messages) if m.role == "assistant"), None)
             user_kind = "candidate_question" if getattr(last_assistant, "kind", None) == "closing" else "answer"
@@ -325,6 +328,52 @@ class InterviewService:
         return assistant_msg
 
     @classmethod
+    async def _conduct_gate(cls, db: AsyncSession, user_id: str, interview: Interview, content: str,
+                            client_turn_id: Optional[str], delivery: Optional[Dict[str, Any]]) -> Optional[InterviewMessage]:
+        """
+        Conduct policy (backend/app/interviews/conduct.py): warn once, then end the interview. Returns the
+        interviewer's reply when it handled the turn, or None to let the normal engine answer.
+        """
+        from backend.app.interviews import conduct
+        last_q = next((m.content for m in reversed(interview.messages)
+                       if m.role == "assistant" and getattr(m, "kind", "question") in ("question", "code_feedback", "conduct_warning")), "")
+        if "Back to my question:" in (last_q or ""):
+            last_q = last_q.split("Back to my question:", 1)[1].strip()
+
+        async def ask(system: str, prompt: str) -> str:
+            from langchain_core.messages import HumanMessage, SystemMessage
+            from backend.app.providers.model_client_factory import ModelClientFactory
+            model = await ModelClientFactory.get_chat_model(db, user_id, task_type="interviewer")
+            resp = await model.ainvoke([SystemMessage(content=system), HumanMessage(content=prompt)])
+            raw = resp.content
+            return raw if isinstance(raw, str) else str(raw)
+
+        verdict = await conduct.assess(content, last_q, ask)
+        warnings = sum(1 for m in interview.messages if m.role == "assistant" and getattr(m, "kind", None) == "conduct_warning")
+        action = conduct.decide(verdict, warnings)
+        if action == "continue":
+            return None
+        idx = len([m for m in interview.messages if m.role == "assistant"])
+        interview.messages.append(InterviewMessage(
+            interview_id=interview.id, role="user", content=content, client_turn_id=client_turn_id,
+            question_index=idx, is_follow_up=False, kind="misconduct", delivery=delivery,
+        ))
+        if action == "warn":
+            reply, kind = conduct.warning_text(verdict, last_q), "conduct_warning"
+        else:
+            reply, kind = conduct.termination_text(verdict), "terminated"
+            interview.status = "completed"
+            interview.completed_at = datetime.now(timezone.utc)
+            interview.termination_reason = conduct.termination_reason(verdict)
+        assistant_msg = InterviewMessage(interview_id=interview.id, role="assistant", content=reply,
+                                         question_index=idx + 1, is_follow_up=False, kind=kind)
+        interview.messages.append(assistant_msg)
+        logger.info(f"Conduct policy: interview {interview.id} -> {action} ({verdict.kind}: {verdict.reason})")
+        await db.commit()
+        await db.refresh(assistant_msg)
+        return assistant_msg
+
+    @classmethod
     async def _answer_meta_request(
         cls,
         db: AsyncSession,
@@ -380,7 +429,8 @@ class InterviewService:
         return assistant_msg
 
     # Exchanges that are not interview questions/answers (kept in the raw transcript, not paired).
-    _UNPAIRED_KINDS = {"meta", "repeat", "hint_request", "hint", "closing", "candidate_question", "wrapup"}
+    _UNPAIRED_KINDS = {"meta", "repeat", "hint_request", "hint", "closing", "candidate_question", "wrapup",
+                       "misconduct", "conduct_warning", "terminated"}
 
     @staticmethod
     def compute_grouped_transcript(messages: List[InterviewMessage]) -> List[dict]:

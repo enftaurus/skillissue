@@ -80,6 +80,7 @@ class InterviewResponse(BaseModel):
     hint_level_used: int = 0
     target_duration_minutes: int
     current_summary: str = ""
+    termination_reason: Optional[str] = None
     covered_topics: List[str] = []
     topic_statuses: Dict[str, str] = {}
     created_at: datetime

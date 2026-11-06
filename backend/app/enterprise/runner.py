@@ -164,10 +164,12 @@ def public_round(candidate: CandidateAssessment, pipeline: AssessmentPipeline, e
         out["files"] = entry.get("files") or {}
     elif t == "tough_interview":
         tr = entry.get("transcript") or []
-        out["transcript"] = [{"question": x["question"], "answer": x.get("answer")} for x in tr]
+        out["transcript"] = [{"question": x["question"], "answer": x.get("answer"), "kind": x.get("kind")} for x in tr]
         out["questions_total"] = entry["questions_total"]
-        out["current_question"] = tr[-1]["question"] if tr and tr[-1].get("answer") is None else None
-        out["interview_done"] = len(tr) >= entry["questions_total"] and all(x.get("answer") is not None for x in tr)
+        out["terminated"] = bool(entry.get("terminated"))
+        open_q = tr[-1]["question"] if tr and tr[-1].get("answer") is None and tr[-1].get("kind") != "terminated" else None
+        out["current_question"] = None if out["terminated"] else open_q
+        out["interview_done"] = out["terminated"] or (_real_questions(tr) >= entry["questions_total"] and open_q is None)
     return out
 
 
@@ -376,7 +378,7 @@ def _interview_context(candidate: CandidateAssessment, pipeline: AssessmentPipel
 async def _next_question(provider: Any, candidate, pipeline, rnd: Dict[str, Any], transcript: List[Dict[str, Any]]) -> str:
     from backend.app.interviews.agent.policy import enforce_single_question, strip_slop
     from backend.app.interviews.prompts import sanitize_untrusted_input
-    asked = {x["question"] for x in transcript}
+    asked = {x["question"] for x in transcript if not x.get("kind")}
     fallback = next((q for q in FALLBACK_QUESTIONS if q not in asked), FALLBACK_QUESTIONS[-1])
     if provider is None:
         return fallback
@@ -399,6 +401,20 @@ async def _next_question(provider: Any, candidate, pipeline, rnd: Dict[str, Any]
     return fallback
 
 
+def _real_questions(tr: List[Dict[str, Any]]) -> int:
+    """Conduct warnings and the termination line aren't interview questions."""
+    return sum(1 for x in tr if not x.get("kind"))
+
+
+async def _conduct_check(provider: Any, text: str, question: str):
+    from backend.app.interviews import conduct
+
+    async def ask(system: str, prompt: str) -> str:
+        r = await provider.generate_text(prompt=prompt, system_prompt=system, max_tokens=80, temperature=0.0)
+        return r.text or ""
+    return await conduct.assess(text, question, ask if provider is not None else None)
+
+
 async def interview_turn(candidate, pipeline, answer: Optional[str], provider: Any) -> Dict[str, Any]:
     entry = ensure_round_started(candidate, pipeline)
     rnd = enabled_rounds(pipeline)[candidate.current_round_index]
@@ -414,9 +430,28 @@ async def interview_turn(candidate, pipeline, answer: Optional[str], provider: A
             raise AppException("There's no open question to answer.", code="NO_OPEN_QUESTION")
         if not text:
             raise AppException("Say something first, even 'I don't know'.", code="EMPTY_ANSWER")
+        if e.get("terminated"):
+            raise AppException("The interviewer ended this interview. Submit the round.", code="INTERVIEW_TERMINATED", status_code=409)
         tr[-1]["answer"] = text[:MAX_ANSWER_CHARS]
         tr[-1]["answered_at"] = utcnow().isoformat()
-    if (not tr or tr[-1].get("answer") is not None) and len(tr) < e["questions_total"]:
+        # Conduct policy (backend/app/interviews/conduct.py): warn once, then end the interview.
+        from backend.app.interviews import conduct
+        asked = tr[-1]["question"].split("Back to my question:", 1)[-1].strip()
+        verdict = await _conduct_check(provider, text, asked)
+        action = conduct.decide(verdict, int(e.get("conduct_warnings") or 0))
+        if action != "continue":
+            tr[-1]["misconduct"] = verdict.kind
+            if action == "warn":
+                e["conduct_warnings"] = int(e.get("conduct_warnings") or 0) + 1
+                tr.append({"question": conduct.warning_text(verdict, asked), "answer": None, "kind": "conduct_warning",
+                           "asked_at": utcnow().isoformat()})
+            else:
+                e["terminated"] = conduct.termination_reason(verdict)
+                tr.append({"question": conduct.termination_text(verdict), "answer": None, "kind": "terminated",
+                           "asked_at": utcnow().isoformat()})
+            _save(candidate, state)
+            return public_round(candidate, pipeline, e)
+    if (not tr or tr[-1].get("answer") is not None) and _real_questions(tr) < e["questions_total"] and not e.get("terminated"):
         tr.append({"question": await _next_question(provider, candidate, pipeline, rnd, tr), "answer": None,
                    "asked_at": utcnow().isoformat()})
     _save(candidate, state)
@@ -434,9 +469,15 @@ GRADER_SYSTEM = (
 
 async def _score_interview(entry: Dict[str, Any], provider: Any, pipeline) -> Tuple[Optional[float], Dict[str, Any]]:
     from backend.app.interviews.prompts import sanitize_untrusted_input
-    tr = [x for x in entry.get("transcript") or [] if x.get("answer")]
+    tr = [x for x in entry.get("transcript") or [] if x.get("answer") and not x.get("misconduct")]
     details: Dict[str, Any] = {"transcript": entry.get("transcript") or [], "answered": len(tr),
-                               "questions_total": entry.get("questions_total")}
+                               "questions_total": entry.get("questions_total"),
+                               "conduct_warnings": int(entry.get("conduct_warnings") or 0)}
+    if entry.get("terminated"):
+        details.update({"terminated": entry["terminated"], "status": "terminated",
+                        "summary": f"The interviewer ended the interview: {entry['terminated']}.",
+                        "concerns": ["Interview ended under the conduct policy. In a real loop this is a rejection."]})
+        return 0.0, details
     if not tr:
         return 0.0, details
     if provider is None:

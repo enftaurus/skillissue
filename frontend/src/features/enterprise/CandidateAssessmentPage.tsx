@@ -36,7 +36,8 @@ type RoundData = {
   answers?: Record<string, { answer: string; follow_up: string | null; follow_up_answer?: string; done: boolean }>;
   project?: { title: string; description_markdown: string; instructions: string; repository_files: Record<string, string>; editable_files: string[]; active_file: string };
   files?: Record<string, string>;
-  transcript?: { question: string; answer: string | null }[]; current_question?: string | null;
+  transcript?: { question: string; answer: string | null; kind?: string | null }[]; current_question?: string | null;
+  terminated?: boolean;
   questions_total?: number; interview_done?: boolean;
 };
 
@@ -375,7 +376,7 @@ const InterviewRound: React.FC<{ round: RoundData; token: string; onRound: (r: R
         {round.questions_total} questions. The interviewer may ask about the code you wrote earlier.
         {voiceOk ? ' Talk it through on a voice call, or type.' : ' Answer like you would out loud.'}
       </p>
-      {voiceOk && !round.interview_done && (
+      {voiceOk && !round.interview_done && !round.terminated && (
         <div className={`flex items-center justify-between gap-3 p-3 rounded-2xl border transition-colors ${live ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white border-zinc-200'}`}>
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative w-10 h-10 shrink-0">
@@ -403,7 +404,7 @@ const InterviewRound: React.FC<{ round: RoundData; token: string; onRound: (r: R
           <div key={i} className="space-y-2 animate-fade-in">
             <div className="flex gap-2">
               <div className="w-7 h-7 rounded-full bg-zinc-900 text-lime-400 flex items-center justify-center shrink-0 text-[11px] font-bold">AI</div>
-              <p className="text-sm text-zinc-900 bg-white border border-zinc-200 rounded-2xl rounded-tl-sm px-3 py-2">{t.question}</p>
+              <p className={`text-sm rounded-2xl rounded-tl-sm px-3 py-2 whitespace-pre-wrap ${t.kind === 'terminated' ? 'bg-rose-50 border-2 border-rose-300 text-rose-950' : t.kind === 'conduct_warning' ? 'bg-amber-50 border-2 border-amber-300 text-amber-950' : 'bg-white border border-zinc-200 text-zinc-900'}`}>{t.question}</p>
             </div>
             {t.answer && <p className="ml-9 text-sm text-zinc-700 bg-lime-50/60 border border-lime-200/70 rounded-2xl rounded-tr-sm px-3 py-2 whitespace-pre-wrap">{t.answer}</p>}
           </div>
@@ -423,6 +424,8 @@ const InterviewRound: React.FC<{ round: RoundData; token: string; onRound: (r: R
             <Button size="sm" onClick={send} disabled={busy || !answer.trim()} className="gap-1 text-xs"><Send className="w-3 h-3" /> {busy ? 'Sending...' : 'Send'}</Button>
           </div>
         </div>
+      ) : round.terminated ? (
+        <p className="text-center text-sm text-rose-700">The interviewer ended this interview. Submit the round to continue.</p>
       ) : round.interview_done ? (
         <p className="text-center text-sm text-zinc-600">That's all the questions. Submit the round to finish.</p>
       ) : live ? (

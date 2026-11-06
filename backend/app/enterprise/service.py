@@ -557,6 +557,10 @@ class EnterpriseService:
             _bucket("tab_switches_by_round", dict)[str(req.round_index)] = max(0, min(10_000, ev["window_blurs"]))
         if overtime:
             _bucket("overtime_rounds", list).append(req.round_index)
+        if (details or {}).get("terminated"):
+            _bucket("conduct", dict)[str(req.round_index)] = details["terminated"]
+        elif (details or {}).get("conduct_warnings"):
+            _bucket("conduct_warnings", dict)[str(req.round_index)] = details["conduct_warnings"]
         if (details or {}).get("integrity_flags"):
             _bucket("sandbox_integrity", dict)[str(req.round_index)] = details["integrity_flags"]
         candidate.integrity_signals = signals
