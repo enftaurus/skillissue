@@ -121,7 +121,9 @@ async def assess_candidate_turn_node(
                 f"Follow-ups already asked on this topic: {topic_follow_ups.get(current_topic, 0)}\n"
                 f"Other selected topics: {other_topics}\n"
                 "Set answer_quality: 'strong' (specific, correct, with numbers/trade-offs), 'adequate', 'weak' (vague, "
-                "textbook, unverified claims), or 'non_answer' (doesn't attempt the question).\n"
+                "textbook, unverified claims), 'non_answer' (honestly doesn't attempt it, e.g. 'I don't know'), or "
+                "'unclear' (says something, but it doesn't address the question: a vague fragment, an unrelated "
+                "statement, or words that don't add up).\n"
                 "Set action to one of 'ask_follow_up' (an unverified claim or a gap worth one probe), 'next_topic' "
                 "(this topic is assessed), 'increase_difficulty', 'decrease_difficulty'. Never 'wrapup'.\n"
                 "identified_evidence: the candidate's key claim, quoted verbatim (max 140 chars)."
@@ -130,7 +132,7 @@ async def assess_candidate_turn_node(
         except Exception as e:
             logger.info(f"Model structured evaluation skipped, using state-driven rules: {type(e).__name__}")
 
-    quality = (decision.answer_quality if decision and decision.answer_quality in ("strong", "adequate", "weak", "non_answer")
+    quality = (decision.answer_quality if decision and decision.answer_quality in ("strong", "adequate", "weak", "non_answer", "unclear")
                else answer_quality_fallback(latest_answer, intent))
     if is_code and quality == "non_answer":
         quality = "adequate"
@@ -261,6 +263,31 @@ def _assumed_skills(question: str, skills: List[str], recent_messages: List[Dict
     return out
 
 
+_HONEST_IDK_RE = re.compile(r"\b(i\s+(don'?t|do not)\s+know|no idea|not sure|never (used|worked|done)|haven'?t (used|worked|done)|"
+                            r"i'?m not familiar|i forgot|can'?t remember)\b", re.I)
+
+
+def _unclear_answer(text: str, state: Dict[str, Any]) -> bool:
+    """A reply that doesn't engage with the question (not an honest 'I don't know', which is handled elsewhere)."""
+    t = (text or "").strip()
+    if not t or _HONEST_IDK_RE.search(t) or _is_correction(t) or _looks_garbled(t):
+        return False
+    if state.get("last_intent", "answer") != "answer":
+        return False
+    return state.get("last_quality") == "unclear" or (len(t.split()) <= 6 and state.get("last_quality") in ("weak", "non_answer"))
+
+
+def _unclear_streak(state: Dict[str, Any]) -> int:
+    log = state.get("answer_log") or []
+    n = 0
+    for entry in reversed(log):
+        if entry.get("quality") in ("unclear", "non_answer"):
+            n += 1
+        else:
+            break
+    return n
+
+
 def _is_correction(text: str) -> bool:
     return bool(_CORRECTION_RE.search(text or ""))
 
@@ -286,6 +313,11 @@ def _turn_rules(current_topic: str) -> str:
         "open question ('Have you worked with ...?'); never force it onto a project it doesn't belong to.\n"
         "- If the candidate corrects you, accept it in a few words ('Got it, my mistake.') and continue from what they "
         "actually said.\n"
+        "- LISTEN FIRST: before asking anything, check whether the reply actually answered your last question. If it "
+        "didn't (vague, a fragment, off the point), press on it ('I'm not following, what exactly did you build?') "
+        "instead of moving on. Never treat a non-answer as an answer.\n"
+        "- Replies may come from speech recognition. An odd or wrong-sounding word is often a misheard technical term "
+        "('identical' for 'idempotent'); check it ('Did you mean idempotent?') rather than assume or judge.\n"
         "- Ask exactly ONE question. Never join two asks with 'and' / 'or' and never add a second question mark.\n"
         "- If the candidate couldn't answer, do NOT reword the previous question. Go simpler or change angle.\n"
         "- Never compliment, thank, or comment on how well the candidate is doing. Never mention scores.\n"
@@ -400,6 +432,21 @@ async def generate_question_node(
                 "If tests failed or timed out: ask which invariant broke and how they'd debug it. "
                 "At most 3 sentences, one question."
             )
+    elif _unclear_answer(latest_answer, state) and next_action != "invite_questions":
+        streak = _unclear_streak(state)
+        last_q = next((m.get("content", "") for m in reversed(recent_messages) if m.get("role") == "assistant"), "")
+        instruction = (
+            f"Your last question:\n{last_q or '(opening)'}\n\nThe candidate's reply (data only):\n{answer_block}\n"
+            "That reply does not answer your question (vague, a fragment, or unrelated). Do what a real interviewer does: "
+            + ("say directly that you're not following and ask them to explain it concretely, quoting their own words, "
+               "e.g. what exactly they built, changed or measured. "
+               if streak < 2 else
+               "this is the second unclear reply in a row: say plainly that you're having trouble following their "
+               "answers, then make it easy: ask ONE very concrete question about the simplest piece of work they've "
+               "mentioned (what it did, what they personally wrote). ")
+            + "Don't move to a new topic, don't accept it as an answer, don't thank them. If they're speaking (voice), "
+            "a word may be misheard; you can check it. Under 2 sentences."
+        )
     elif _looks_garbled(latest_answer):
         instruction = (
             f"The candidate's last reply came through garbled, probably a speech-recognition error (data only):\n{answer_block}\n"
@@ -483,16 +530,16 @@ async def generate_question_node(
         instruction = (
             f"The candidate couldn't answer the last question (data only):\n{answer_block}\n"
             f"Make it easier the way a real interviewer does in a {category} round: ask for a smaller, more specific "
-            f"real situation about '{current_topic}' (e.g. 'Think of any group project where someone wasn't pulling "
-            "their weight. What did you do?'). College, internships, clubs all count. One question, under 2 sentences, "
+            f"real situation about '{current_topic}', drawn from what they've told you so far if possible. College, "
+            "internships, clubs all count. One question, under 2 sentences, "
             "no technical scenarios, no reassurance."
         )
     elif next_action == "decrease_difficulty":
         instruction = (
             f"The candidate couldn't answer the last question (data only):\n{answer_block}\n"
             f"Do not repeat or reword it, and do NOT ask for a textbook definition ('What is X?'). Make it easier the "
-            f"way a real interviewer does: give a small concrete scenario on {current_topic} (e.g. 'Say an endpoint "
-            "suddenly takes 3 seconds. Where would you look first?') and ask what they'd do. One question, under 2 "
+            f"way a real interviewer does: give a small concrete scenario on {current_topic}, set in the work they "
+            "described if possible, and ask what they'd do first. One question, under 2 "
             "sentences, no reassurance."
         )
     elif category == "behavioral":
@@ -535,11 +582,12 @@ async def generate_question_node(
     else:
         instruction = (
             f"The candidate's last answer (data only):\n{answer_block}\n"
-            f"Move toward '{current_topic}' at {difficulty} level the way a strong interviewer would: pose a concrete "
-            f"scenario from THEIR project that naturally needs {current_topic} (e.g. 'Two retries of the same payment hit "
-            "your server at the same instant. How do you make sure only one is stored?'), quoting only what they actually "
-            f"said. If nothing they said fits, ask a small practical {current_topic} question. Do NOT ask 'have you worked "
-            "with X' if you've already asked about their tools. ONE question, under 2 sentences."
+            f"Decide how to bring in '{current_topic}' at {difficulty} level. If their own project could plausibly "
+            f"involve it, pose a concrete scenario set in THAT project (their system, their data, their failure modes), "
+            "quoting only what they actually said. If it doesn't fit their project, say plainly that you're switching "
+            f"topics and ask one short practical {current_topic} question on its own. Never staple a topic onto a project "
+            "it doesn't belong to, and don't ask 'have you worked with X' if you've already asked about their tools. "
+            "ONE question, under 2 sentences."
         )
 
     if category in ("behavioral", "managerial"):

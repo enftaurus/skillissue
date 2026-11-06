@@ -26,7 +26,7 @@ class AdaptiveDecision(BaseModel):
     suggested_topic: Optional[str] = Field(default=None, description="Topic to pivot to if changing topics")
     identified_evidence: Optional[str] = Field(default=None, description="Evidence or claim extracted from candidate answer")
     topic_status: Optional[str] = Field(default=None, description="Status update for current topic: 'assessed' | 'needs_follow_up' | 'in_progress'")
-    answer_quality: Optional[str] = Field(default=None, description="'strong' | 'adequate' | 'weak' | 'non_answer'")
+    answer_quality: Optional[str] = Field(default=None, description="'strong' | 'adequate' | 'weak' | 'non_answer' | 'unclear' (the reply doesn't address the question: vague, a fragment, or unrelated)")
 
 class InterviewAgentState(TypedDict, total=False):
     """

@@ -1023,6 +1023,19 @@ export const InterviewSessionPage: React.FC = () => {
                   <div className="h-full bg-indigo-600 transition-all duration-75" style={{ width: `${Math.round(liveLevel * 100)}%` }} />
                 </div>
               </div>
+              {liveCaptions.length < 2 && (
+                <details open className="text-[11px] text-slate-600">
+                  <summary className="cursor-pointer font-semibold text-slate-700">For an accurate transcript</summary>
+                  <ul className="mt-1 grid sm:grid-cols-2 gap-x-4 gap-y-0.5 list-disc pl-4">
+                    <li>Sit in a quiet room; close fans, TV and other tabs playing audio.</li>
+                    <li>Wear headphones so the interviewer's voice doesn't loop into your mic.</li>
+                    <li>Keep the mic close and speak at a normal pace, in full sentences.</li>
+                    <li>Pause for about 3 seconds when you've finished an answer.</li>
+                    <li>Say technical terms clearly; if a word is misheard, say "I meant …".</li>
+                    <li>Need time to think? Say "give me a moment" instead of going silent.</li>
+                  </ul>
+                </details>
+              )}
               {liveCaptions.length > 0 && (
                 <div className="space-y-1 text-xs text-slate-700">
                   {liveCaptions.map((c, i) => (

@@ -291,7 +291,8 @@ def is_rambling(text: str, quality: str) -> bool:
 
 _SLOP_SENTENCE_RE = re.compile(
     r"\b(great (answer|question|job|point|explanation)|excellent|fantastic|awesome|amazing|wonderful|impressive|"
-    r"well done|nice work|thanks for sharing|thank you for sharing|that'?s (a )?(great|good|fascinating|interesting)|"
+    r"well done|nice work|thanks for sharing|thank you for sharing|thanks? (you )?for (your )?(honesty|being honest|that)|"
+    r"appreciate (your|the) (honesty|candou?r)|good (answer|point)|that'?s (a )?(great|good|fascinating|interesting)|"
     r"let'?s dive|delve|i appreciate|journey|it'?s important to note|feel free to)\b", re.I)
 
 
