@@ -655,7 +655,7 @@ export interface PipelineLeaderboard {
 export interface SimulationRound {
   round_number: number;
   name: string;
-  type: 'oa_dsa' | 'ai_project' | 'tough_interview';
+  type: 'oa_dsa' | 'ai_project' | 'code_comprehension' | 'tough_interview';
   time_limit: number;
   problem: string;
   description: string;
@@ -664,6 +664,7 @@ export interface SimulationRound {
 export interface PresetSimulation {
   id: string;
   company: string;
+  company_slug?: string;
   title: string;
   tier: 'gold' | 'silver' | 'bronze';
   logo_icon: string;

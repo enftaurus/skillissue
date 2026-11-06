@@ -156,6 +156,12 @@ def build_interviewer_system_prompt(
                 "- If Behavioral/Managerial: Probe bias for impact, unblocking teammates, and rapid iteration under shifting priorities."
             )
 
+        if not any(k in comp_lower for k in ("google", "uber", "openai", "amazon", "meta")):
+            from backend.app.tracks.company_context import calibration_block, company_by_name
+            comp = company_by_name(company_name)
+            if comp:
+                prompt += calibration_block(comp, category)
+
     # Anti-cheating cross-examination of submitted OA code (Loaded from server-side record, sanitized & delimited)
     if oa_submitted_code:
         clean_code = sanitize_untrusted_input(oa_submitted_code, max_chars=3000)

@@ -48,3 +48,20 @@ lost data:
 - AI-graded rounds need the recruiter to connect a model. The portal warns when none is connected.
 - The old anonymous name+email entry is gone. `scripts/verify_enterprise_assessment_playwright.py` covers the full
   recruiter → candidate → leaderboard path in a browser.
+
+## Addendum: company hiring simulations (2026-11-06)
+The Google, Uber and OpenAI "simulations" on Company Tracks were cards whose button opened the generic interview
+setup, and they named problems that don't exist in the curated bank. They are now personal practice drives on this
+runner (`backend/app/enterprise/practice.py`):
+- The user owns the pipeline, so AI rounds use their own model.
+- Unfinished attempts resume.
+- Practice pipelines never appear in recruiter or admin lists.
+- After the last round the candidate gets the full report, including comprehension answer keys
+  (`GET /enterprise/assessments/{token}/report`). Enterprise drives return `RESULTS_HIDDEN`.
+
+Every simulation round now names content that exists and is graded.
+
+Company mock interviews from tracks pass `company_slug`. All 52 registry companies get calibration built from the
+registry (description, community tips, frequent problem topics), not just the five with hand-written prompts. The
+company is detected only from titles the server wrote, so a skill named "Oracle" doesn't trigger Oracle calibration.
+Personas run a "<Company>-style round" and never claim to work at the real company.

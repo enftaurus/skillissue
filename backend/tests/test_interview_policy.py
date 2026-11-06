@@ -160,7 +160,10 @@ async def test_repeat_request_does_not_consume_a_turn(client):
 def test_persona_is_stable_per_interview_and_slop_is_stripped():
     from backend.app.interviews.agent.policy import pick_persona, strip_slop, is_rambling
     assert pick_persona("abc-123", "technical") == pick_persona("abc-123", "technical")
-    assert "Google" in pick_persona("abc", "dsa", "Google")["team"]
+    g = pick_persona("abc", "dsa", "Google")
+    assert g["company"] == "Google" and "Google" not in g["team"]  # never claims to work at the real company
+    from backend.app.interviews.agent.policy import persona_prompt
+    assert "Google-style mock round" in persona_prompt(g, "dsa", 20) and "don't say you work at Google" in persona_prompt(g, "dsa", 20)
     assert strip_slop("Great answer! That's a fascinating point. How did you measure it?") == "How did you measure it?"
     assert strip_slop("Great answer!") == "Great answer!"  # never strip the only content
     assert is_rambling("word " * 160, "adequate")

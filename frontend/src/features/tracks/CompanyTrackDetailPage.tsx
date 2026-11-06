@@ -59,9 +59,11 @@ export const CompanyTrackDetailPage: React.FC = () => {
     try {
       const res = await api.post<any>('/interviews/domain', {
         category,
-        domain_skills: [track.name, ...customSkills],
+        company_slug: track.slug,
+        domain_skills: customSkills.length ? customSkills : [track.name],
         target_role: track.role_title,
-        difficulty: track.tier === 'gold' ? 'hard' : 'intermediate',
+        // Interview difficulties are beginner | intermediate | advanced | staff ('hard' silently meant easy/medium).
+        difficulty: track.tier === 'gold' ? 'advanced' : 'intermediate',
       });
       SpeechHandler.unlockAudioContext();
       navigate(`/interviews/${res.id}`);

@@ -19,12 +19,22 @@ _COMPANIES = ["google", "uber", "openai", "meta", "amazon", "apple", "netflix", 
 
 
 def detect_company(interview: Interview, jd: Optional[JobDescription] = None) -> Optional[str]:
-    """Company calibration source: JD company first, then whole-word matches in title/role/skills."""
+    """
+    Company calibration source, most explicit first: the JD's company, a company mock interview (title written by
+    tracks.company_context), then legacy whole-word matches on role/skills for the big names.
+    """
+    from backend.app.tracks.company_context import company_by_name, company_from_title
     if jd is not None and getattr(jd, "company", None):
+        c = company_by_name(jd.company)
+        if c:
+            return c["name"]
         for comp in _COMPANIES:
             if re.search(rf"\b{comp}\b", jd.company.lower()):
                 return comp.capitalize()
-    blob = f"{interview.title or ''} {interview.target_role or ''} {' '.join(interview.domain_skills or [])}".lower()
+    c = company_from_title(interview.title)
+    if c:
+        return c["name"]
+    blob = f"{interview.target_role or ''} {' '.join(interview.domain_skills or [])}".lower()
     for comp in _COMPANIES:
         if re.search(rf"\b{comp}\b", blob):
             return comp.capitalize()
@@ -110,7 +120,9 @@ class InterviewAgentService:
         if interview.category == "dsa":
             persona = pick_persona(interview.id or "", "dsa", comp_name)
             initial_question = (
-                f"Hi, I'm {persona['name']}, {persona['title']} on {persona['team']}. Plan for the next "
+                f"Hi, I'm {persona['name']}, {persona['title']} on {persona['team']}. "
+                + (f"This is a {comp_name}-style coding round. " if comp_name else "")
+                + f"Plan for the next "
                 f"{interview.target_duration_minutes or 20} minutes: one coding problem, we talk it through, then you can "
                 "ask me anything. Before the problem, tell me a bit about yourself and which DSA topics you're strongest "
                 "and weakest at."

@@ -236,3 +236,42 @@ async def test_interview_round_with_model_is_adaptive_and_graded(client, monkeyp
     assert res["score"] == 40.0 and res["details"]["summary"] == "Solid on hashing."
     grader_prompt = next(pr for sp, pr in prompts if "grade a technical interview" in sp)
     assert f"<untrusted_answer>{injection}" in grader_prompt  # candidate text is fenced as data
+
+
+@pytest.mark.asyncio
+async def test_company_simulation_is_a_real_practice_drive_with_a_report(client, offline_models):
+    ch, _ = await _user(client)
+    sims = (await client.get("/api/v1/tracks/simulations", headers=ch)).json()
+    uber = next(s for s in sims if s["id"] == "uber-sde-sim")
+    assert [r["type"] for r in uber["rounds"]] == ["oa_dsa", "ai_project", "tough_interview"]
+    start = (await client.post("/api/v1/tracks/simulations/uber-sde-sim/start", headers=ch)).json()
+    again = (await client.post("/api/v1/tracks/simulations/uber-sde-sim/start", headers=ch)).json()
+    assert again["access_token"] == start["access_token"] and again["resumed"] is True
+    tok = start["access_token"]
+    view = (await client.get(f"/api/v1/enterprise/assessments/{tok}", headers=ch)).json()
+    assert view["is_practice"] is True and len(view["rounds"]) == 3
+    r1 = (await client.get(f"/api/v1/enterprise/assessments/{tok}/round", headers=ch)).json()
+    assert [p["id"] for p in r1["problems"]] == ["number-of-islands", "course-schedule"]
+    early = await client.get(f"/api/v1/enterprise/assessments/{tok}/report", headers=ch)
+    assert early.json()["error"]["code"] == "NOT_FINISHED"
+    for i, t in enumerate(["oa_dsa", "ai_project", "tough_interview"]):
+        await client.get(f"/api/v1/enterprise/assessments/{tok}/round", headers=ch)
+        r = await client.post(f"/api/v1/enterprise/assessments/{tok}/submit-round", headers=ch, json={"round_index": i, "round_type": t})
+        assert r.status_code == 200, r.text
+    rep = (await client.get(f"/api/v1/enterprise/assessments/{tok}/report", headers=ch)).json()
+    assert [r["round_type"] for r in rep["rounds"]] == ["oa_dsa", "ai_project", "tough_interview"]
+    assert rep["rounds"][0]["score"] == 0.0  # nothing attempted
+    # A new attempt after finishing starts fresh.
+    fresh = (await client.post("/api/v1/tracks/simulations/uber-sde-sim/start", headers=ch)).json()
+    assert fresh["access_token"] != tok and fresh["resumed"] is False
+
+
+@pytest.mark.asyncio
+async def test_enterprise_report_stays_hidden_from_candidate(client, offline_models):
+    rh, p = await _pipeline(client, rounds=[ROUNDS[1]])
+    ch, _ = await _user(client)
+    tok = (await client.post(f"/api/v1/enterprise/assessments/entry/{p['invite_token']}", headers=ch, json={})).json()["access_token"]
+    await client.get(f"/api/v1/enterprise/assessments/{tok}/round", headers=ch)
+    await client.post(f"/api/v1/enterprise/assessments/{tok}/submit-round", headers=ch, json={"round_index": 0, "round_type": "code_comprehension"})
+    r = await client.get(f"/api/v1/enterprise/assessments/{tok}/report", headers=ch)
+    assert r.status_code == 403 and r.json()["error"]["code"] == "RESULTS_HIDDEN"

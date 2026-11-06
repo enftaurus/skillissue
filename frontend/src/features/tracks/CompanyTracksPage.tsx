@@ -48,6 +48,21 @@ export const CompanyTracksPage: React.FC = () => {
   const [activeMainTab, setActiveMainTab] = useState<'packs' | 'simulations' | 'comprehension'>('packs');
   const [selectedTier, setSelectedTier] = useState<'all' | 'gold' | 'silver' | 'bronze'>('all');
   const navigate = useNavigate();
+  const [startingSim, setStartingSim] = useState<string | null>(null);
+  const [simError, setSimError] = useState('');
+
+  const startSimulation = async (simId: string) => {
+    setStartingSim(simId);
+    setSimError('');
+    try {
+      const res = await api.post<{ access_token: string }>(`/tracks/simulations/${simId}/start`, {});
+      navigate(`/assess/take/${res.access_token}`);
+    } catch (e: any) {
+      setSimError(e?.message || 'Could not start the simulation.');
+    } finally {
+      setStartingSim(null);
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -82,7 +97,7 @@ export const CompanyTracksPage: React.FC = () => {
             Company Career Tracks &amp; Placement Simulations
           </h1>
           <p className="text-sm sm:text-base text-zinc-600 leading-relaxed">
-            Practice realistic company question pools across <span className="font-semibold text-zinc-900">50+ top tech companies</span> or attempt full 3-round hiring simulations (OA &rarr; Systems Project &rarr; Cross-Exam Oral Interview) for Google, Uber, and OpenAI.
+            Practice realistic company question pools across <span className="font-semibold text-zinc-900">50+ top tech companies</span> or sit a full, timed hiring simulation for Google, Uber or OpenAI: every round is graded on real tests, and you get the full report at the end.
             Every pack features <span className="font-semibold text-zinc-900">2–3 questions unlocked on Day 1</span>.
           </p>
         </div>
@@ -131,7 +146,7 @@ export const CompanyTracksPage: React.FC = () => {
           }`}
         >
           <Play className="w-4 h-4 text-lime-400" />
-          Placement Simulations (Full 3-Round Exams)
+          Hiring Simulations
           <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-lime-500 text-zinc-950 font-bold">
             NEW
           </span>
@@ -146,7 +161,7 @@ export const CompanyTracksPage: React.FC = () => {
           }`}
         >
           <Code2 className="w-4 h-4 text-indigo-500" />
-          Google Code Comprehension (Beta)
+          Code Comprehension
         </button>
       </div>
 
@@ -319,11 +334,12 @@ export const CompanyTracksPage: React.FC = () => {
             <div className="flex items-center gap-3">
               <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0" />
               <span>
-                <strong>Oral Cross-Examination Integrity Protocol:</strong> Round 3 technical interviewers will directly inspect the code you submitted in Round 1 OA and probe your design decisions.
+                Timed and graded like the real thing: hidden tests, a real repository, unfamiliar code to read, and an interviewer who asks about the code you wrote. Unfinished attempts resume where you left off.
               </span>
             </div>
           </div>
 
+          {simError && <p className="text-xs text-rose-600">{simError}</p>}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {simulations.map((sim) => {
               const Icon = ICON_MAP[sim.logo_icon] || Building2;
@@ -344,8 +360,8 @@ export const CompanyTracksPage: React.FC = () => {
                           <p className="text-xs text-zinc-500">{sim.title}</p>
                         </div>
                       </div>
-                      <Badge variant="warning" className="font-mono text-[10px]">
-                        GOLD MINE
+                      <Badge variant="warning" className="font-mono text-[10px] uppercase">
+                        {sim.tier}
                       </Badge>
                     </div>
 
@@ -355,7 +371,7 @@ export const CompanyTracksPage: React.FC = () => {
 
                     <div className="flex items-center gap-2 text-xs font-mono text-zinc-500">
                       <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                      <span>{sim.duration_minutes} Minutes Total • 3 Rounds</span>
+                      <span>{sim.duration_minutes} minutes · {sim.rounds.length} rounds</span>
                     </div>
 
                     {/* Rounds Sequence */}
@@ -374,7 +390,8 @@ export const CompanyTracksPage: React.FC = () => {
                               {round.time_limit}m
                             </span>
                           </div>
-                          <p className="text-[11px] text-zinc-500 line-clamp-1">{round.description}</p>
+                          <p className="text-[11px] font-mono text-zinc-700">{round.problem}</p>
+                          <p className="text-[11px] text-zinc-500 line-clamp-2">{round.description}</p>
                         </div>
                       ))}
                     </div>
@@ -384,10 +401,11 @@ export const CompanyTracksPage: React.FC = () => {
                     <Button
                       variant="primary"
                       className="w-full justify-center bg-zinc-900 hover:bg-zinc-800 text-white gap-2 text-xs"
-                      onClick={() => navigate('/interviews/new')}
+                      onClick={() => startSimulation(sim.id)}
+                      disabled={!!startingSim}
                     >
                       <Play className="w-3.5 h-3.5 text-lime-400" />
-                      <span>Attempt {sim.company} Simulation</span>
+                      <span>{startingSim === sim.id ? 'Starting...' : `Start ${sim.company} simulation`}</span>
                     </Button>
                   </div>
                 </Card>
@@ -397,63 +415,29 @@ export const CompanyTracksPage: React.FC = () => {
         </div>
       )}
 
-      {/* TAB 3: GOOGLE CODE COMPREHENSION (BETA) */}
+      {/* TAB 3: CODE COMPREHENSION (real, graded round) */}
       {activeMainTab === 'comprehension' && (
-        <Card className="p-8 border-zinc-200 rounded-2xl bg-white shadow-xs max-w-4xl mx-auto space-y-6">
-          <div className="flex items-center justify-between pb-4 border-b border-zinc-200">
-            <div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="font-mono text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200">
-                  BETA FEATURE
-                </Badge>
-                <span className="text-xs text-zinc-500 font-mono">Google-Style Code Comprehension</span>
-              </div>
-              <h2 className="text-xl font-bold text-zinc-900 mt-1">
-                Subtle Bug Spotting &amp; Concurrency Review
-              </h2>
+        <Card className="p-8 border-zinc-200 rounded-2xl bg-white shadow-xs max-w-3xl mx-auto space-y-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <span className="text-xs text-zinc-500 font-mono">Code comprehension</span>
+              <h2 className="text-xl font-bold text-zinc-900">Read code you didn't write. Find what breaks.</h2>
+              <p className="text-sm text-zinc-600 leading-relaxed">
+                Strong interviewers increasingly test reading over writing: explain unfamiliar production code, trace its
+                output without running it, and point at the exact line that fails in production. Nine timed codebases,
+                graded against verified answer keys, with a reviewer follow-up when you're close.
+              </p>
             </div>
-            <Code2 className="w-8 h-8 text-indigo-600" />
+            <Code2 className="w-8 h-8 text-lime-600 shrink-0" />
           </div>
-
-          <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed">
-            Google interviewers often evaluate senior and campus candidates not just on writing code from scratch, but on their ability to inspect complex production code, trace edge cases, and detect insidious race conditions or memory leaks under scale.
-          </p>
-
-          <div className="bg-zinc-900 rounded-xl p-4 text-xs font-mono text-lime-400 overflow-x-auto">
-            <pre>{`// Challenge Snippet: Double-Checked Locking in In-Memory KV Store
-class TokenBucketStore {
-    private volatile Bucket instance = null;
-
-    public Bucket getBucket(String key) {
-        if (instance == null) {
-            synchronized (TokenBucketStore.class) {
-                if (instance == null) {
-                    instance = new Bucket(key); // Question: Can this leak uninitialized memory under multi-core ARM architectures?
-                }
-            }
-        }
-        return instance;
-    }
-}`}</pre>
+          <div className="flex flex-wrap gap-2 text-[11px] font-mono text-zinc-600">
+            {['caching', 'rate limiting', 'concurrency', 'retries', 'pagination', 'consistent hashing', 'async'].map((t) => (
+              <span key={t} className="px-2 py-0.5 rounded bg-zinc-100 border border-zinc-200">{t}</span>
+            ))}
           </div>
-
-          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
-            <span className="font-bold flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              Evaluation Question:
-            </span>
-            <p>
-              Explain whether this implementation guarantees thread safety across JVM memory models, or if instruction reordering can publish a partially initialized object reference to concurrent reader threads.
-            </p>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => navigate('/interviews/new')}
-              className="text-xs"
-            >
-              Practice in Oral Interview
+          <div className="flex justify-end">
+            <Button onClick={() => navigate('/comprehension')} className="gap-2 text-xs">
+              Start a comprehension round <Play className="w-3.5 h-3.5 text-lime-400" />
             </Button>
           </div>
         </Card>

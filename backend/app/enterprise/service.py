@@ -161,7 +161,7 @@ class EnterpriseService:
 
         query = query.order_by(AssessmentPipeline.created_at.desc())
         result = await db.execute(query)
-        pipelines = list(result.scalars().all())
+        pipelines = [p for p in result.scalars().all() if not (p.oa_config or {}).get("practice")]
 
         responses = []
         for p in pipelines:
@@ -343,6 +343,7 @@ class EnterpriseService:
             token_expires_at=candidate.token_expires_at,
             status="completed" if candidate.status in ("completed", "flagged") else "in_progress",
             current_round_index=candidate.current_round_index, rounds=rounds,
+            is_practice=bool((pipeline.oa_config or {}).get("practice")),
             created_at=candidate.created_at, completed_at=candidate.completed_at,
         )
 
@@ -454,6 +455,11 @@ class EnterpriseService:
             out = runner.public_round(candidate, candidate.pipeline, entry)
         await db.commit()
         return out
+
+    @classmethod
+    async def practice_report(cls, db: AsyncSession, user: User, token: str) -> Dict[str, Any]:
+        from backend.app.enterprise.practice import practice_report
+        return practice_report(await cls._owned(db, user, token))
 
     @classmethod
     async def run_dsa(cls, db: AsyncSession, user: User, token: str, req: DsaRunRequest) -> Dict[str, Any]:

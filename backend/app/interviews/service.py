@@ -54,12 +54,20 @@ class InterviewService:
                 raise EntityNotFoundError("Resume", data.resume_id)
 
         title = f"{data.category.capitalize()} Interview: {', '.join(data.domain_skills[:3])}"
+        picker_skills = list(data.domain_skills)
+        if data.company_slug:
+            from backend.app.tracks.company_context import company_title, get_company, picker_skills as company_skills
+            company = get_company(data.company_slug)
+            if company is None:
+                raise EntityNotFoundError("Company", data.company_slug)
+            title = company_title(company, data.category)
+            picker_skills = company_skills(company) + picker_skills
         coding_prob_id = data.coding_problem_id
         if data.category == "dsa" and not coding_prob_id:
             # Only curated problems have a full statement and real test cases. Live Codeforces
             # stubs have neither, so the interviewer can't discuss them and empty code "passes".
             from backend.app.coding.problems import pick_curated_interview_problem
-            coding_prob_id = pick_curated_interview_problem(data.domain_skills, data.difficulty)
+            coding_prob_id = pick_curated_interview_problem(picker_skills, data.difficulty)
 
         interview = Interview(
             user_id=user_id,

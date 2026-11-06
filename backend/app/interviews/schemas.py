@@ -10,6 +10,8 @@ class InterviewCreateDomain(BaseModel):
     resume_id: Optional[str] = None
     coding_problem_id: Optional[str] = None
     target_duration_minutes: Optional[int] = 20
+    # Company mock interview from a company track (registry slug).
+    company_slug: Optional[str] = Field(default=None, pattern="^[a-z0-9-]{2,40}$")
 
 class InterviewCreateJd(BaseModel):
     category: str = Field(default="technical", pattern="^(technical|behavioral|dsa|managerial)$")

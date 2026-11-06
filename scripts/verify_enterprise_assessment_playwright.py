@@ -126,8 +126,10 @@ def main():
                 "I check the complement before inserting, so an element never pairs with itself.",
                 "On empty or single-element input the loop never finds a pair and prints nothing."]
         for text in expl:
-            box = cp.locator("textarea").last
-            if not box.is_visible():
+            box = cp.locator("textarea[placeholder^='Explain']")
+            try:
+                box.wait_for(state="visible", timeout=60000)
+            except Exception:
                 break
             box.fill(text)
             cp.get_by_role("button", name=re.compile("Next Question|Submit All Explanations")).click()

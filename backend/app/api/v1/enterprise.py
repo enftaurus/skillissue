@@ -144,6 +144,11 @@ async def interview_answer(token: str, req: InterviewAnswerRequest, user: User =
                            db: AsyncSession = Depends(get_db)):
     return await EnterpriseService.interview_answer(db, user, token, req)
 
+@router.get("/assessments/{token}/report")
+async def practice_report(token: str, user: User = Depends(get_current_active_user), db: AsyncSession = Depends(get_db)):
+    """Full results, only for the candidate's own practice simulation. Enterprise results stay with the hiring team."""
+    return await EnterpriseService.practice_report(db, user, token)
+
 @router.post("/assessments/{token}/submit-round", response_model=CandidateExamView)
 async def submit_candidate_round(
     token: str,

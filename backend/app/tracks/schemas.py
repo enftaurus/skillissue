@@ -74,7 +74,7 @@ class SolveCompanyProblemResponse(BaseModel):
 class SimulationRound(BaseModel):
     round_number: int
     name: str
-    type: str  # 'oa_dsa', 'ai_project', 'tough_interview'
+    type: str  # 'oa_dsa', 'ai_project', 'code_comprehension', 'tough_interview'
     time_limit: int
     problem: str
     description: str
@@ -82,6 +82,7 @@ class SimulationRound(BaseModel):
 class PresetSimulationResponse(BaseModel):
     id: str
     company: str
+    company_slug: Optional[str] = None
     title: str
     tier: str
     logo_icon: str

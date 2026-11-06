@@ -8,6 +8,7 @@ but never a score, verdict, rubric or integrity signal. Those go only to the rec
 import asyncio
 import json
 import random
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -388,7 +389,10 @@ async def _next_question(provider: Any, candidate, pipeline, rnd: Dict[str, Any]
                                          system_prompt=INTERVIEWER_SYSTEM.format(minutes=rnd.get("time_limit_minutes", 20),
                                                                                  role=pipeline.target_role))
         q = strip_slop(enforce_single_question((r.text or "").strip().strip('"')))
-        if 10 <= len(q) <= 600 and "?" in q and q not in asked:
+        # Interviewers also ask in the imperative ("Describe how you'd ..."); that's a question too.
+        is_prompt = "?" in q or re.match(r"^(describe|explain|walk|tell|talk|design|give|compare|sketch|outline|suppose|imagine|"
+                                          r"say|consider|how|what|why|which|when|where)\b", q, re.I)
+        if 10 <= len(q) <= 600 and is_prompt and q not in asked:
             return q
     except Exception as e:
         logger.warning(f"Assessment interviewer fell back to the question bank: {type(e).__name__}")

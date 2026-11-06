@@ -22,6 +22,7 @@ type ExamView = {
   id: string; pipeline_id: string; pipeline_title?: string; target_role?: string; candidate_name: string;
   candidate_email: string; access_token: string; status: 'entry_required' | 'in_progress' | 'completed';
   current_round_index: number; rounds: RoundMeta[]; is_invite_token?: boolean; requires_login?: boolean;
+  is_practice?: boolean;
 };
 type Problem = {
   id: string; title: string; difficulty: string; description: string; input_format: string; output_format: string;
@@ -365,6 +366,83 @@ const InterviewRound: React.FC<{ round: RoundData; token: string; onRound: (r: R
   );
 };
 
+/* Practice simulations only: the candidate's own full report, with answer keys. */
+const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)}%`);
+
+const PracticeReport: React.FC<{ token: string; title?: string }> = ({ token, title }) => {
+  const [rep, setRep] = useState<any>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    api.get(`/enterprise/assessments/${token}/report`).then(setRep).catch((e) => setError(errText(e)));
+  }, [token]);
+  if (error) return <Card className="p-6 text-sm text-rose-700">{error}</Card>;
+  if (!rep) return <div className="h-64 rounded-2xl bg-zinc-100 animate-pulse" />;
+  return (
+    <div className="space-y-4 max-w-4xl mx-auto animate-fade-in">
+      <Card className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-mono text-zinc-500 uppercase">Simulation report</p>
+          <h2 className="text-xl font-bold text-zinc-950">{title}</h2>
+          <p className="text-xs text-zinc-500">Graded the same way a hiring team would see it. Unscored rounds don't count toward the total.</p>
+        </div>
+        <div className="text-right">
+          <p className="text-4xl font-extrabold font-mono text-zinc-950 tabular-nums">{pct(rep.composite_score)}</p>
+          <p className="text-[11px] text-zinc-500">overall</p>
+        </div>
+      </Card>
+      {rep.rounds.map((r: any) => {
+        const d = r.details || {};
+        return (
+          <Card key={r.index} className="p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-bold text-sm text-zinc-900 flex items-center gap-2">{ICONS[r.round_type]} {r.name}</h3>
+              <span className="font-mono font-bold text-lg text-zinc-950">{r.status === 'not_evaluated' ? 'not evaluated' : pct(r.score)}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-zinc-100 overflow-hidden">
+              <div className="h-full bg-lime-500 transition-all duration-700" style={{ width: `${Math.max(0, Math.min(100, r.score || 0))}%` }} />
+            </div>
+            {d.problems && Object.entries(d.problems).map(([pid, p]: [string, any]) => (
+              <p key={pid} className="text-xs text-zinc-600 font-mono">
+                {pid}: {p.status === 'not_attempted' ? 'not attempted' : `${p.tests_passed}/${p.tests_total} hidden tests passed (${p.language})`}
+              </p>
+            ))}
+            {typeof d.passed_tests === 'number' && <p className="text-xs text-zinc-600 font-mono">{d.passed_tests}/{d.total_tests} repository tests passed</p>}
+            {d.status === 'not_attempted' && <p className="text-xs text-zinc-500">Not attempted.</p>}
+            {d.per_question && d.answer_key && (
+              <div className="space-y-2">
+                {Object.entries(d.per_question).map(([q, v]: [string, any]) => (
+                  <div key={q} className="text-xs">
+                    <p className="font-semibold text-zinc-800">{q.toUpperCase()} · {Math.round(v * 100)}%</p>
+                    {d.answer_key.questions?.[q]?.expected_output && <p className="font-mono text-zinc-600">Expected output: {d.answer_key.questions[q].expected_output}</p>}
+                    {(d.answer_key.questions?.[q]?.key_points || []).length > 0 && (
+                      <ul className="list-disc pl-4 text-zinc-600">{d.answer_key.questions[q].key_points.map((k: string, i: number) => <li key={i}>{k}</li>)}</ul>
+                    )}
+                  </div>
+                ))}
+                {d.answer_key.bug_lines?.length > 0 && (
+                  <p className="text-xs text-rose-700 font-mono">Bug: {d.answer_key.bug_lines.map((b: any) => `${b.file}:L${b.line}`).join(', ')}</p>
+                )}
+              </div>
+            )}
+            {d.summary && <p className="text-sm text-zinc-700">{d.summary}</p>}
+            {(d.strengths?.length > 0 || d.concerns?.length > 0) && (
+              <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                {d.strengths?.length > 0 && <ul className="space-y-1"><li className="font-semibold text-emerald-700">Held up</li>{d.strengths.map((x: string, i: number) => <li key={i} className="text-zinc-600">{x}</li>)}</ul>}
+                {d.concerns?.length > 0 && <ul className="space-y-1"><li className="font-semibold text-rose-700">Didn't</li>{d.concerns.map((x: string, i: number) => <li key={i} className="text-zinc-600">{x}</li>)}</ul>}
+              </div>
+            )}
+            {r.status === 'not_evaluated' && <p className="text-xs text-zinc-500">Connect an AI model in Settings to get interview grading.</p>}
+            {r.overtime && <p className="text-xs text-amber-700">Submitted after the time limit.</p>}
+          </Card>
+        );
+      })}
+      <div className="flex justify-center gap-2">
+        <Link to="/tracks"><Button variant="outline">Back to simulations</Button></Link>
+      </div>
+    </div>
+  );
+};
+
 /* A render error in one round must not blank the exam: the candidate keeps the header, timer and submit. */
 class RoundBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -567,12 +645,14 @@ export const CandidateAssessmentPage: React.FC = () => {
       {header}
       {blurToast && (
         <div role="status" className="fixed top-16 right-4 z-50 bg-amber-500 text-white px-4 py-2.5 rounded-xl shadow-lg text-xs font-medium animate-fade-in">
-          Focus left the assessment window. This is logged for the hiring team.
+          {view.is_practice ? 'Focus left the window. In a real assessment this is reported to the hiring team.' : 'Focus left the assessment window. This is logged for the hiring team.'}
         </div>
       )}
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-4">
         {stepper}
-        {view.status === 'completed' ? (
+        {view.status === 'completed' && view.is_practice ? (
+          <PracticeReport token={view.access_token} title={view.pipeline_title} />
+        ) : view.status === 'completed' ? (
           <Card className="p-10 text-center space-y-4 max-w-xl mx-auto animate-fade-in">
             <div className="w-16 h-16 rounded-full bg-lime-50 border border-lime-200 flex items-center justify-center mx-auto"><CheckCircle2 className="w-8 h-8 text-lime-700" /></div>
             <h2 className="text-2xl font-bold text-zinc-950">Submitted</h2>

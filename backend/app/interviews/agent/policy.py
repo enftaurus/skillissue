@@ -266,8 +266,8 @@ def pick_persona(seed: str, category: str, company: Optional[str] = None) -> Dic
     """Deterministic per interview, so the interviewer keeps one identity across turns and restarts."""
     options = _PERSONAS.get(category) or _PERSONAS["technical"]
     name, title, team = options[sum(ord(c) for c in (seed or "x")) % len(options)]
-    org = f"{team} at {company}" if company else team
-    return {"name": name, "title": title, "team": org}
+    # The persona never claims to work at a real company; company mock rounds are "<Company>-style" (see persona_prompt).
+    return {"name": name, "title": title, "team": team, "company": company or ""}
 
 
 def persona_prompt(persona: Dict[str, str], category: str, minutes: int) -> str:
@@ -278,6 +278,9 @@ def persona_prompt(persona: Dict[str, str], category: str, minutes: int) -> str:
         "('Okay.', 'Got it.', 'Right, so you used X.') but never evaluate the answer out loud. Refer back to things "
         "the candidate said earlier when it helps. If asked about the team or role, answer briefly and plausibly in "
         "character without inventing confidential specifics."
+        + (f" This is a {persona['company']}-style mock round: ask what a {persona['company']} interviewer would ask "
+           f"and hold their bar, but don't say you work at {persona['company']} or introduce yourself as one of their "
+           f"employees. Say it's a {persona['company']}-style round if it comes up." if persona.get("company") else "")
     )
 
 

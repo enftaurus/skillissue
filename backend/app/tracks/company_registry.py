@@ -1040,114 +1040,86 @@ COMPANIES_50: List[Dict[str, Any]] = [
     }
 ]
 
-# PRESET PLACEMENT SIMULATIONS (Flagship Multi-Round Assessment Bundles)
+# PRESET PLACEMENT SIMULATIONS: personal practice drives run by the assessment runner (ADR 0027).
+# Every round names content that actually exists and is graded (curated problems with hidden tests, project test
+# suites, comprehension bank items). `config` is passed straight to the runner.
 PRESET_SIMULATIONS = [
     {
         "id": "google-sde-sim",
         "company": "Google",
-        "title": "Google SDE Comprehensive Hiring Simulation",
+        "company_slug": "google",
+        "title": "Google SDE Hiring Simulation",
         "tier": "gold",
         "logo_icon": "Search",
-        "tagline": "3-Round Full Hiring Assessment (OA → Distributed Project → Google Scale Cross-Exam)",
-        "duration_minutes": 85,
+        "tagline": "Hard OA → read unfamiliar distributed code → Google-style technical interview",
         "rounds": [
-            {
-                "round_number": 1,
-                "name": "Round 1: Hard DSA Online Assessment",
-                "type": "oa_dsa",
-                "time_limit": 30,
-                "problem": "Longest Increasing Path in a Matrix",
-                "description": "Solve dynamic programming with DFS graph memoization under strict runtime limits."
-            },
-            {
-                "round_number": 2,
-                "name": "Round 2: Systems Coding Project",
-                "type": "ai_project",
-                "time_limit": 30,
-                "problem": "Async Task Queue with Dead Letter Queue",
-                "description": "Implement thread-safe async queue with exponential backoff and Pytest assertions."
-            },
-            {
-                "round_number": 3,
-                "name": "Round 3: Google Scale & Googleyness Technical Interview",
-                "type": "tough_interview",
-                "time_limit": 25,
-                "problem": "Oral Cross-Examination + Google Distributed Architecture",
-                "description": "Interviewer examines your Round 1 code for cheating/copy-paste, then grills you on scaling to 1 Billion users."
-            }
-        ]
+            {"round_number": 1, "name": "Online assessment", "type": "oa_dsa", "time_limit": 40,
+             "problem": "Trapping Rain Water · Course Schedule",
+             "description": "Two problems against hidden tests. State complexity before you code.",
+             "config": {"problem_ids": ["trapping-rain-water", "course-schedule"]}},
+            {"round_number": 2, "name": "Code comprehension", "type": "code_comprehension", "time_limit": 20,
+             "problem": "Consistent hash ring",
+             "description": "Read a hash ring without running it: explain it, trace it, find the bug.",
+             "config": {"item_id": "consistent-hash"}},
+            {"round_number": 3, "name": "Technical interview", "type": "tough_interview", "time_limit": 25,
+             "problem": "Your OA code, then scale",
+             "description": "Defends your round 1 code (complexity, edge cases), then pushes on scale and trade-offs.",
+             "config": {"questions_count": 5}},
+        ],
     },
     {
         "id": "uber-sde-sim",
         "company": "Uber",
-        "title": "Uber SDE Backend & Dispatch Simulation",
+        "company_slug": "uber",
+        "title": "Uber Backend Hiring Simulation",
         "tier": "gold",
         "logo_icon": "Car",
-        "tagline": "3-Round Full Hiring Assessment (Graph OA → Rate Limiter → Dispatch Cross-Exam)",
-        "duration_minutes": 85,
+        "tagline": "Graph OA → rate limiter in a real repo → Uber-style concurrency interview",
         "rounds": [
-            {
-                "round_number": 1,
-                "name": "Round 1: Uber Concurrency & Graph OA",
-                "type": "oa_dsa",
-                "time_limit": 30,
-                "problem": "Alien Dictionary & Escape the Spreading Fire",
-                "description": "Topological sorting and multi-source BFS under dynamic obstacle spread."
-            },
-            {
-                "round_number": 2,
-                "name": "Round 2: Systems Coding Project",
-                "type": "ai_project",
-                "time_limit": 30,
-                "problem": "Distributed Rate Limiter (Token Bucket & Sliding Window)",
-                "description": "Build high-throughput rate limiter with Redis-like semantics and concurrent lock safety."
-            },
-            {
-                "round_number": 3,
-                "name": "Round 3: Uber Geospatial Dispatch & Concurrency Interview",
-                "type": "tough_interview",
-                "time_limit": 25,
-                "problem": "Round 1 Code Verification + Geospatial Surge Dispatching",
-                "description": "Defend your algorithmic choices in Round 1 and architect driver dispatching under 500k QPS."
-            }
-        ]
+            {"round_number": 1, "name": "Graph online assessment", "type": "oa_dsa", "time_limit": 35,
+             "problem": "Number of Islands · Course Schedule",
+             "description": "BFS/DFS and topological ordering against hidden tests.",
+             "config": {"problem_ids": ["number-of-islands", "course-schedule"]}},
+            {"round_number": 2, "name": "Project: distributed rate limiter", "type": "ai_project", "time_limit": 30,
+             "problem": "Distributed Rate Limiter",
+             "description": "Make the repository's test suite pass: token bucket semantics and concurrency safety.",
+             "config": {"project_id": "distributed-rate-limiter"}},
+            {"round_number": 3, "name": "Technical interview", "type": "tough_interview", "time_limit": 25,
+             "problem": "Your code, then dispatch at scale",
+             "description": "Defends your OA code, then concurrency, idempotency and real-time dispatch trade-offs.",
+             "config": {"questions_count": 5}},
+        ],
     },
     {
         "id": "openai-ai-engineer-sim",
         "company": "OpenAI",
-        "title": "OpenAI AI Systems Engineer Simulation",
+        "company_slug": "openai",
+        "title": "OpenAI Engineer Hiring Simulation",
         "tier": "gold",
         "logo_icon": "Sparkles",
-        "tagline": "3-Round Full Hiring Assessment (Matrix Optimization → Async Queue → OpenAI Scale Interview)",
-        "duration_minutes": 85,
+        "tagline": "Design + DP OA → async job queue repo → read async code → OpenAI-style interview",
         "rounds": [
-            {
-                "round_number": 1,
-                "name": "Round 1: Matrix / Trie Optimization OA",
-                "type": "oa_dsa",
-                "time_limit": 30,
-                "problem": "LRU Cache with Memory Budget & Stream of Characters",
-                "description": "Design sub-millisecond memory-bounded token lookups and prefix matching."
-            },
-            {
-                "round_number": 2,
-                "name": "Round 2: Systems Coding Project",
-                "type": "ai_project",
-                "time_limit": 30,
-                "problem": "Async Worker & GPU Batching Engine",
-                "description": "Build high-throughput batching queue with priority job preemption and health checks."
-            },
-            {
-                "round_number": 3,
-                "name": "Round 3: OpenAI Scale LLM Streaming & Alignment Interview",
-                "type": "tough_interview",
-                "time_limit": 25,
-                "problem": "Round 1 Code Cross-Examination + 'Why OpenAI?' & 100M Token Streaming",
-                "description": "Rigorous questioning on token streaming architectures, hallucination detection, and OpenAI mission alignment."
-            }
-        ]
-    }
+            {"round_number": 1, "name": "Online assessment", "type": "oa_dsa", "time_limit": 35,
+             "problem": "LRU Cache · Word Break",
+             "description": "A design problem and a DP problem against hidden tests.",
+             "config": {"problem_ids": ["lru-cache", "word-break"]}},
+            {"round_number": 2, "name": "Project: async job queue", "type": "ai_project", "time_limit": 30,
+             "problem": "Async Job Queue",
+             "description": "Retries, backoff and dead-lettering until the repository's tests pass.",
+             "config": {"project_id": "async-job-queue"}},
+            {"round_number": 3, "name": "Code comprehension", "type": "code_comprehension", "time_limit": 15,
+             "problem": "Async fan-out",
+             "description": "Why is this 'concurrent' code slow? Read it, time it in your head, fix it.",
+             "config": {"item_id": "async-fanout"}},
+            {"round_number": 4, "name": "Technical interview", "type": "tough_interview", "time_limit": 25,
+             "problem": "Your code, then serving at scale",
+             "description": "Defends your OA code, then batching, streaming latency and failure handling.",
+             "config": {"questions_count": 5}},
+        ],
+    },
 ]
+for _sim in PRESET_SIMULATIONS:
+    _sim["duration_minutes"] = sum(r["time_limit"] for r in _sim["rounds"])
 
 class CompanyRegistry:
     @classmethod

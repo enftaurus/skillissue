@@ -65,6 +65,7 @@ class CandidateExamView(BaseModel):
     rounds: List[Dict[str, Any]] = []
     is_invite_token: bool = False
     requires_login: bool = False
+    is_practice: bool = False
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
