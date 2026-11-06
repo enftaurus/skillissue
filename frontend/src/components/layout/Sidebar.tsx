@@ -21,6 +21,7 @@ import {
   Building2,
   BarChart3,
   Brain,
+  FileText,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -108,6 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { label: 'Hiring Exam', path: '/enterprise', icon: Building2, badge: 'PORTAL', roles: ['recruiter', 'admin'] },
     { label: 'Admin Analytics', path: '/admin/analytics', icon: BarChart3, badge: 'MULTI-TENANT', roles: ['admin'] },
     { label: 'Admin Funnel', path: '/admin/funnel', icon: BarChart3, roles: ['admin'] },
+    { label: 'Reports', path: '/reports', icon: FileText, roles: ['candidate', 'recruiter', 'admin'] },
     { label: 'Skills & Data', path: '/progress', icon: TrendingUp, shortcut: '⌘5', roles: ['candidate', 'recruiter', 'admin'] },
   ];
 

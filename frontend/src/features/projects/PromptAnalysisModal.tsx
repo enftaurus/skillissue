@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -74,7 +75,8 @@ export const PromptAnalysisModal: React.FC<PromptAnalysisModalProps> = ({
 
   const amateurCount = data.evaluated_prompts.filter((p) => p.is_amateurish).length;
 
-  return (
+  // Portal to <body>: inside an animated page container the overlay's z-index can't rise above the sidebar.
+  return createPortal(
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-4xl w-full border border-slate-200/80 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
@@ -329,5 +331,5 @@ export const PromptAnalysisModal: React.FC<PromptAnalysisModalProps> = ({
         </div>
       </div>
     </div>
-  );
+  , document.body);
 };

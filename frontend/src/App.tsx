@@ -14,6 +14,7 @@ import { PlanlyPage } from './features/improvement-plan/PlanlyPage';
 import { ProgressAnalyticsPage } from './features/progress/ProgressAnalyticsPage';
 import { CodingPracticePage } from './features/coding/CodingPracticePage';
 import { CodeComprehensionPage } from './features/comprehension/CodeComprehensionPage';
+import { ReportsPage, ProjectReportPage } from './features/reports/ReportsPage';
 import { LandingPage } from './features/landing/LandingPage';
 import { ProjectCatalogPage } from './features/projects/ProjectCatalogPage';
 import { ProjectWorkspacePage } from './features/projects/ProjectWorkspacePage';
@@ -281,6 +282,8 @@ export const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+            <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
+            <Route path="/reports/projects/:id" element={<ProtectedRoute><ProjectReportPage /></ProtectedRoute>} />
             <Route
               path="/tracks"
               element={
