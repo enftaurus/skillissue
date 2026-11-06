@@ -55,13 +55,22 @@ class InterviewService:
 
         title = f"{data.category.capitalize()} Interview: {', '.join(data.domain_skills[:3])}"
         picker_skills = list(data.domain_skills)
+        from backend.app.tracks.company_context import (company_by_name, company_title, get_company,
+                                                        picker_skills as company_skills)
+        company = None
+        company_name = (data.company_name or "").replace("\x00", "").strip() or None
         if data.company_slug:
-            from backend.app.tracks.company_context import company_title, get_company, picker_skills as company_skills
             company = get_company(data.company_slug)
             if company is None:
                 raise EntityNotFoundError("Company", data.company_slug)
+        elif company_name:
+            company = company_by_name(company_name)
+        if company:
+            company_name = company["name"]
             title = company_title(company, data.category)
             picker_skills = company_skills(company) + picker_skills
+        elif company_name:
+            title = f"{company_name} · {data.category.capitalize()} mock interview"
         coding_prob_id = data.coding_problem_id
         if data.category == "dsa" and not coding_prob_id:
             # Only curated problems have a full statement and real test cases. Live Codeforces
@@ -81,6 +90,8 @@ class InterviewService:
             resume_id=data.resume_id,
             coding_problem_id=coding_prob_id,
             target_duration_minutes=data.target_duration_minutes or 20,
+            company_name=company_name,
+            experience_level=data.experience_level,
         )
         db.add(interview)
         await db.flush()
@@ -147,9 +158,11 @@ class InterviewService:
             if not resume:
                 raise EntityNotFoundError("Resume", data.resume_id)
 
-        title = f"JD Interview: {jd.title}"
-        if jd.company:
-            title += f" @ {jd.company}"
+        company_name = (data.company_name or "").replace("\x00", "").strip() or (jd.company or "").strip() or None
+        experience_level = data.experience_level or (jd.extracted_experience or None)
+        title = f"JD Interview: {jd.extracted_role or jd.title}"
+        if company_name:
+            title += f" @ {company_name}"
 
         coding_prob_id = data.coding_problem_id
         if data.category == "dsa" and not coding_prob_id:
@@ -171,6 +184,8 @@ class InterviewService:
             resume_id=data.resume_id,
             coding_problem_id=coding_prob_id,
             target_duration_minutes=data.target_duration_minutes or 20,
+            company_name=company_name,
+            experience_level=experience_level,
         )
         db.add(interview)
         await db.flush()

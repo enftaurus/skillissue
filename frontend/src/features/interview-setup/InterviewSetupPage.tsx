@@ -59,6 +59,16 @@ export const InterviewSetupPage: React.FC = () => {
   const isNonTechnical = category === 'behavioral' || category === 'managerial';
   const [difficulty, setDifficulty] = useState<'junior' | 'intermediate' | 'advanced'>('intermediate');
   const [targetRole, setTargetRole] = useState('Software Engineer');
+  const [companyName, setCompanyName] = useState('');
+  const [experience, setExperience] = useState<'fresher' | 'junior' | 'mid' | 'senior'>('fresher');
+  const [companyOptions, setCompanyOptions] = useState<string[]>([]);
+  useEffect(() => {
+    api.get<{ name: string }[]>('/tracks/companies').then((c) => setCompanyOptions(c.map((x) => x.name))).catch(() => {});
+  }, []);
+  // Difficulty follows experience (the interview engine and problem picker use it).
+  useEffect(() => {
+    setDifficulty(experience === 'fresher' ? 'junior' : experience === 'junior' ? 'intermediate' : 'advanced');
+  }, [experience]);
   const [duration, setDuration] = useState(20);
 
   // Domain Mode State
@@ -136,6 +146,8 @@ export const InterviewSetupPage: React.FC = () => {
         raw_text: jdText,
       });
       setExtractedJd(res);
+      if (res.company) setCompanyName(res.company);
+      if ((res as any).extracted_experience) setExperience((res as any).extracted_experience);
     } catch (err: any) {
       setError(err.message || 'Failed to extract requirements from JD.');
     } finally {
@@ -182,6 +194,8 @@ export const InterviewSetupPage: React.FC = () => {
           // Behavioural/managerial rounds ignore tech skills on the server too; send a neutral label.
           domain_skills: isNonTechnical ? [category === 'behavioral' ? 'Behavioral' : 'Leadership'] : selectedSkills,
           target_role: targetRole,
+          company_name: companyName.trim() || undefined,
+          experience_level: experience,
           difficulty,
           resume_id: uploadedResume?.id,
           coding_problem_id: category === 'dsa' && selectedCfProblemId ? selectedCfProblemId : undefined,
@@ -199,6 +213,8 @@ export const InterviewSetupPage: React.FC = () => {
           category,
           jd_id: extractedJd.id,
           difficulty,
+          company_name: companyName.trim() || undefined,
+          experience_level: experience,
           resume_id: uploadedResume?.id,
           coding_problem_id: category === 'dsa' && selectedCfProblemId ? selectedCfProblemId : undefined,
           target_duration_minutes: duration,
@@ -471,6 +487,12 @@ export const InterviewSetupPage: React.FC = () => {
                 </span>
                 <Badge variant="indigo">Verified from JD</Badge>
               </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
+                <span><span className="text-slate-500">Role:</span> <strong>{extractedJd.extracted_role || extractedJd.title}</strong></span>
+                {extractedJd.company && <span><span className="text-slate-500">Company:</span> <strong>{extractedJd.company}</strong></span>}
+                {(extractedJd as any).extracted_experience && <span><span className="text-slate-500">Level:</span> <strong className="capitalize">{(extractedJd as any).extracted_experience}</strong></span>}
+              </div>
+              <p className="text-[11px] text-slate-500">The interview stays within this JD's responsibilities and skills.</p>
               <div className="flex flex-wrap gap-1.5">
                 {extractedJd.extracted_skills.map((s) => (
                   <Badge key={s} variant="zinc" size="sm" className="text-xs">
@@ -599,29 +621,53 @@ export const InterviewSetupPage: React.FC = () => {
 
       {/* Parameters: Difficulty & Duration */}
       <Card className="p-6 sm:p-7 rounded-2xl border border-slate-200/80 shadow-xs grid grid-cols-1 sm:grid-cols-2 gap-6">
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
-            Target Difficulty Level
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { id: 'junior', label: 'Junior / Intern' },
-              { id: 'intermediate', label: 'Mid-Level' },
-              { id: 'advanced', label: 'Senior / Staff' },
-            ].map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                onClick={() => setDifficulty(d.id as any)}
-                className={`py-2.5 px-2 text-xs font-medium rounded-xl border text-center transition-all ${
-                  difficulty === d.id
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-semibold'
-                    : 'bg-white text-slate-700 border-slate-200/80 hover:bg-slate-50'
-                }`}
-              >
-                {d.label}
-              </button>
-            ))}
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="target-company" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              Target company <span className="normal-case font-normal">(optional)</span>
+            </label>
+            <input
+              id="target-company"
+              list="company-options"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder="e.g. Google, Razorpay, or any company"
+              maxLength={120}
+              className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-200/80 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+            />
+            <datalist id="company-options">
+              {companyOptions.map((c) => <option key={c} value={c} />)}
+            </datalist>
+            <p className="text-[11px] text-slate-500 mt-1">The interviewer calibrates to how this company interviews.{mode === 'jd' && extractedJd?.company ? ' Taken from the JD; edit if needed.' : ''}</p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+              Your experience for this role
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: 'fresher', label: 'Fresher', sub: '0–1 yrs / campus' },
+                { id: 'junior', label: 'Junior', sub: '1–3 yrs' },
+                { id: 'mid', label: 'Mid-level', sub: '3–6 yrs' },
+                { id: 'senior', label: 'Senior', sub: '6+ yrs' },
+              ].map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  onClick={() => setExperience(x.id as any)}
+                  aria-pressed={experience === x.id}
+                  className={`py-2 px-2 rounded-xl border text-center transition-all ${
+                    experience === x.id
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-white text-slate-700 border-slate-200/80 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="block text-xs font-semibold">{x.label}</span>
+                  <span className={`block text-[10px] ${experience === x.id ? 'text-indigo-100' : 'text-slate-500'}`}>{x.sub}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">Sets question depth and what counts as a strong answer.{mode === 'jd' && (extractedJd as any)?.extracted_experience ? ' Taken from the JD; change it to match you.' : ''}</p>
           </div>
         </div>
 

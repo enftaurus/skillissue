@@ -24,6 +24,10 @@ def detect_company(interview: Interview, jd: Optional[JobDescription] = None) ->
     tracks.company_context), then legacy whole-word matches on role/skills for the big names.
     """
     from backend.app.tracks.company_context import company_by_name, company_from_title
+    chosen = (getattr(interview, "company_name", None) or "").strip()
+    if chosen:  # picked explicitly at setup (or taken from the JD)
+        c = company_by_name(chosen)
+        return c["name"] if c else chosen
     if jd is not None and getattr(jd, "company", None):
         c = company_by_name(jd.company)
         if c:
@@ -60,6 +64,7 @@ def build_full_system_prompt(
         resume_projects=resume.projects_context if resume else None,
         resume_text=resume.extracted_text if resume else None,
         company_name=comp_name,
+        experience_level=getattr(interview, "experience_level", None) or (getattr(jd, "extracted_experience", None) if jd else None),
     )
     persona = pick_persona(interview.id or "", interview.category, comp_name)
     return prompt + persona_prompt(persona, interview.category, interview.target_duration_minutes or 20)

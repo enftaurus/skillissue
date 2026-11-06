@@ -1,3 +1,4 @@
+EXPERIENCE_LEVELS = ("fresher", "junior", "mid", "senior")
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -17,13 +18,15 @@ class JobDescriptionService:
         provider = await ModelFactory.get_for_user(db, user_id, task_type="general")
         prompt = (
             "Analyze the following job description bounded by <untrusted_job_description> XML tags. "
-            "Extract the primary role title, key required skills, "
-            "and core technical/behavioral requirements.\n\n"
+            "Extract the primary role title, the hiring company (empty if not stated), the experience level the "
+            "role targets, key required skills, and core technical/behavioral requirements.\n"
+            "experience_level must be one of: fresher (students, new grads, 0-1 years), junior (1-3 years), "
+            "mid (3-6 years), senior (6+ years or lead/staff).\n\n"
             "<untrusted_job_description>\n"
             f"{data.raw_text[:5000]}\n"
             "</untrusted_job_description>\n\n"
             "Return JSON matching this exact structure: "
-            '{"role": "...", "extracted_skills": ["Python", "SQL", ...], "extracted_requirements": ["3+ years experience with ...", "..."], "recommended_focus": "..."}'
+            '{"role": "...", "company": "...", "experience_level": "fresher|junior|mid|senior", "extracted_skills": ["Python", "SQL", ...], "extracted_requirements": ["3+ years experience with ...", "..."], "recommended_focus": "..."}'
         )
         system_prompt = (
             "You are a senior hiring manager extracting structured requirements from a job posting for interview targeting. "
@@ -41,12 +44,16 @@ class JobDescriptionService:
             skills = ["Backend Development", "System Design", "Problem Solving"]
         requirements = parsed.get("extracted_requirements", [])
         requirements = [str(r)[:1000] for r in requirements if r][:100] if isinstance(requirements, list) else []
+        experience = str(parsed.get("experience_level") or "").lower().strip()
+        experience = experience if experience in EXPERIENCE_LEVELS else ""
+        company = (data.company or "").strip() or str(parsed.get("company") or "").strip()[:200]
 
         jd = JobDescription(
             user_id=user_id,
             title=data.title,
-            company=data.company or "",
+            company=company,
             raw_text=data.raw_text,
+            extracted_experience=experience,
             extracted_role=role,
             extracted_skills=skills,
             extracted_requirements=requirements,
@@ -91,6 +98,8 @@ class JobDescriptionService:
             jd.extracted_skills = data.extracted_skills
         if data.extracted_requirements is not None:
             jd.extracted_requirements = data.extracted_requirements
+        if data.extracted_experience is not None:
+            jd.extracted_experience = data.extracted_experience
 
         await db.commit()
         await db.refresh(jd)

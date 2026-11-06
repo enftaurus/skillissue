@@ -131,6 +131,7 @@ class JobDescription(Base):
     extracted_role: Mapped[str] = mapped_column(String(200), default="")
     extracted_skills: Mapped[List[str]] = mapped_column(JSON, default=list)
     extracted_requirements: Mapped[List[str]] = mapped_column(JSON, default=list)
+    extracted_experience: Mapped[str] = mapped_column(String(30), default="")  # fresher | junior | mid | senior
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     user: Mapped["User"] = relationship("User", back_populates="job_descriptions")
@@ -158,6 +159,9 @@ class Interview(Base):
     topic_statuses: Mapped[Dict[str, str]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Target company (registry name or free text) and the candidate's experience band, chosen at setup or from a JD.
+    company_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    experience_level: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)  # fresher | junior | mid | senior
     # Set when the interviewer ended the interview under the conduct policy (backend/app/interviews/conduct.py).
     termination_reason: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
 

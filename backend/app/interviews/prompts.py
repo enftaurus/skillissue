@@ -60,6 +60,27 @@ def wrap_untrusted_answer(text: Optional[str], max_chars: int = 4000) -> str:
     return f"<untrusted_candidate_answer>\n{sanitize_untrusted_input(text, max_chars=max_chars)}\n</untrusted_candidate_answer>"
 
 
+EXPERIENCE_GUIDE = {
+    "fresher": ("FRESHER / CAMPUS (0-1 years)", "Expect college projects, internships and fundamentals, not production war "
+                "stories. Probe understanding of what they built and core CS concepts (data structures, OOP, DBMS, OS, "
+                "networking basics). Don't ask about leading teams or running large production systems."),
+    "junior": ("JUNIOR (1-3 years)", "Expect hands-on feature work in a team. Probe how they implemented, tested and debugged "
+               "their own work, and the basics of the systems they touched. Light design questions only."),
+    "mid": ("MID-LEVEL (3-6 years)", "Expect ownership of features or services end to end. Probe design decisions, trade-offs, "
+            "production incidents, performance and reliability of systems they owned."),
+    "senior": ("SENIOR (6+ years)", "Expect system-level ownership and technical leadership. Probe architecture, scale, failure "
+               "modes, cross-team decisions, mentoring and how they raise the bar."),
+}
+
+
+def experience_block(level: Optional[str], category: str) -> str:
+    g = EXPERIENCE_GUIDE.get((level or "").lower())
+    if not g:
+        return ""
+    return (f"\n\nCANDIDATE LEVEL: {g[0]}. {g[1]} Set question depth and the bar for a strong answer to this level; "
+            "don't hold a fresher to senior expectations or let a senior get away with fresher-level answers.")
+
+
 def build_interviewer_system_prompt(
     category: str,
     target_role: str,
@@ -74,6 +95,7 @@ def build_interviewer_system_prompt(
     company_name: Optional[str] = None,
     oa_problem_title: Optional[str] = None,
     oa_submitted_code: Optional[str] = None,
+    experience_level: Optional[str] = None,
 ) -> str:
     from backend.app.interviews.constants import NON_TECHNICAL_CATEGORIES, category_scope_rule
     non_technical = (category or "").lower() in NON_TECHNICAL_CATEGORIES
@@ -176,8 +198,17 @@ def build_interviewer_system_prompt(
             comp = company_by_name(company_name)
             if comp:
                 prompt += calibration_block(comp, category)
+            else:
+                prompt += (f"\n\nCOMPANY CONTEXT: the candidate is preparing for {sanitize_untrusted_input(company_name, 100)}. "
+                           "Calibrate to how that kind of company interviews for this role (its domain, scale and likely "
+                           "stack), using only well-known public facts. Never claim to work there or invent internal details.")
 
     prompt += category_scope_rule((category or "").lower())
+    prompt += experience_block(experience_level, (category or "").lower())
+    if (jd_role or jd_skills or jd_requirements) and not non_technical:
+        prompt += ("\n\nJOB DESCRIPTION SCOPE (HARD RULE): this interview is for the job description above. Every question "
+                   "must relate to its responsibilities, required skills or the candidate's experience relevant to them. "
+                   "Don't drift into areas the JD doesn't need. Prioritise the requirements the JD lists first.")
 
     # Anti-cheating cross-examination of submitted OA code (Loaded from server-side record, sanitized & delimited)
     if oa_submitted_code:

@@ -12,10 +12,16 @@ class InterviewCreateDomain(BaseModel):
     target_duration_minutes: Optional[int] = 20
     # Company mock interview from a company track (registry slug).
     company_slug: Optional[str] = Field(default=None, pattern="^[a-z0-9-]{2,40}$")
+    # Target company chosen at setup: a registry company name or any other company (free text).
+    company_name: Optional[str] = Field(default=None, max_length=120)
+    experience_level: Optional[str] = Field(default=None, pattern="^(fresher|junior|mid|senior)$")
 
 class InterviewCreateJd(BaseModel):
     category: str = Field(default="technical", pattern="^(technical|behavioral|dsa|managerial)$")
     jd_id: str
+    # Overrides for what was extracted from the JD (the candidate can correct them before starting).
+    company_name: Optional[str] = Field(default=None, max_length=120)
+    experience_level: Optional[str] = Field(default=None, pattern="^(fresher|junior|mid|senior)$")
     difficulty: Optional[str] = "intermediate"
     resume_id: Optional[str] = None
     coding_problem_id: Optional[str] = None
@@ -81,6 +87,8 @@ class InterviewResponse(BaseModel):
     target_duration_minutes: int
     current_summary: str = ""
     termination_reason: Optional[str] = None
+    company_name: Optional[str] = None
+    experience_level: Optional[str] = None
     covered_topics: List[str] = []
     topic_statuses: Dict[str, str] = {}
     created_at: datetime

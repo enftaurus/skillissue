@@ -81,6 +81,7 @@ export interface JobDescription {
   extracted_role: string;
   extracted_skills: string[];
   extracted_requirements: string[];
+  extracted_experience?: string;
   created_at: string;
 }
 
