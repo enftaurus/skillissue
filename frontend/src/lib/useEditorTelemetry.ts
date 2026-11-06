@@ -104,7 +104,7 @@ export function useEditorTelemetry({
     try {
       const headers: Record<string, string> = {};
       if (candidateToken) {
-        headers['Authorization'] = `Bearer ${candidateToken}`;
+        headers['X-Assessment-Token'] = candidateToken;
       }
       await api.post('/telemetry/editor', payload, { headers });
     } catch (err) {

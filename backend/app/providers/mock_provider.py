@@ -180,11 +180,10 @@ class MockProvider(BaseProvider):
         if "<candidate_code>" in prompt and ("write follow-up questions" in sys_lower or "one rationale" in prompt_lower or "one mutation" in prompt_lower):
             code_match = re.search(r"<candidate_code>(.*?)</candidate_code>", prompt, re.DOTALL)
             code_text = code_match.group(1) if code_match else ""
-            tokens = re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]{2,}\b", code_text)
-            tokens = [t for t in tokens if t not in {"def", "class", "return", "import", "from", "for", "while", "if", "else", "elif", "in", "and", "or", "not"}]
-            ref1 = tokens[0] if tokens else "solve"
-            ref2 = tokens[1] if len(tokens) > 1 else ref1
-            ref3 = tokens[2] if len(tokens) > 2 else ref2
+            # Ask about names the candidate defined (not `sys` from `import sys`).
+            from backend.app.integrity.explanation_service import ExplanationService
+            ref1, ref2 = ExplanationService._salient_identifiers(code_text)
+            ref3 = ref1
 
             is_single = bool(re.search(r"write\s+1\s+question", prompt_lower))
             if is_single:

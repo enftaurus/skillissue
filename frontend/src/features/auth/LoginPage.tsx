@@ -6,6 +6,13 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Sparkles } from 'lucide-react';
 
+// Only same-site paths: "/x" but never "//evil.com" or "/\\evil.com".
+const safeNext = (): string | null => {
+  const n = new URLSearchParams(window.location.search).get('next');
+  return n && n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') ? n : null;
+};
+
+
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -24,7 +31,10 @@ export const LoginPage: React.FC = () => {
       await login(email, password);
       const stored = localStorage.getItem('skillissue_user');
       const parsed = stored ? JSON.parse(stored) : null;
-      if (parsed?.role === 'recruiter') {
+      const next = safeNext();
+      if (next) {
+        navigate(next);
+      } else if (parsed?.role === 'recruiter') {
         navigate('/enterprise');
       } else if (parsed?.role === 'admin') {
         navigate('/admin/analytics');
@@ -86,7 +96,7 @@ export const LoginPage: React.FC = () => {
           <div className="mt-6 pt-5 border-t border-slate-100 flex flex-col gap-2 text-center">
             <p className="text-xs sm:text-sm text-slate-500">
               Don&apos;t have an account?{' '}
-              <Link to="/register" className="font-semibold text-indigo-600 hover:text-indigo-700">
+              <Link to={`/register${window.location.search}`} className="font-semibold text-indigo-600 hover:text-indigo-700">
                 Register for free
               </Link>
             </p>

@@ -627,7 +627,7 @@ export interface CandidateAssessment {
   round_results: Record<string, any>;
   composite_score?: number | null;
   integrity_signals: {
-    window_blurs?: number;
+    window_blurs?: number | Record<string, number>;
     copy_paste_count?: number;
     speech_code_divergence?: number;
     status?: string;
@@ -636,6 +636,8 @@ export interface CandidateAssessment {
   rounds: RoundConfig[];
   token_expires_at?: string | null;
   is_invite_token?: boolean;
+  requires_login?: boolean;
+  rank?: number | null;
   created_at: string;
   completed_at?: string;
 }

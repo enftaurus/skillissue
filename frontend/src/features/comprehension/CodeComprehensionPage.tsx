@@ -158,7 +158,7 @@ const Catalog: React.FC = () => {
 
 /* ----------------------------------------------------------------------------- session */
 
-const CodeViewer: React.FC<{
+export const CodeViewer: React.FC<{
   files: Record<string, string>;
   onLineClick: (file: string, line: number) => void;
   bugLines: { file: string; line: number }[];

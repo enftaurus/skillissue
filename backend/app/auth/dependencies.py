@@ -59,3 +59,17 @@ async def get_current_recruiter_user(
         raise AuthorizationError("Recruiter or administrative privileges required")
     return current_user
 
+
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    db: AsyncSession = Depends(get_db)
+):
+    """The signed-in active user, or None for anonymous requests (and for bad tokens)."""
+    if not credentials or not credentials.credentials:
+        return None
+    try:
+        user = await get_current_user(credentials, db)
+    except Exception:
+        return None
+    return user if user.is_active else None

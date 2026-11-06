@@ -45,8 +45,47 @@ class CandidateInviteRequest(BaseModel):
     candidate_email: EmailStr
 
 class CandidateEntryRequest(BaseModel):
-    candidate_name: str = Field(min_length=2, max_length=150)
-    candidate_email: EmailStr
+    # The candidate is the signed-in user; the email always comes from the account, never from this body.
+    candidate_name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    candidate_email: Optional[EmailStr] = None
+
+
+class CandidateExamView(BaseModel):
+    """What a candidate may see about their own assessment: progress, never results (ADR 0027)."""
+    id: str = ""
+    pipeline_id: str
+    pipeline_title: Optional[str] = None
+    target_role: Optional[str] = None
+    candidate_name: str = ""
+    candidate_email: str = ""
+    access_token: str = ""
+    token_expires_at: Optional[datetime] = None
+    status: str  # entry_required | in_progress | completed
+    current_round_index: int = 0
+    rounds: List[Dict[str, Any]] = []
+    is_invite_token: bool = False
+    requires_login: bool = False
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+
+class DsaRunRequest(BaseModel):
+    problem_id: str = Field(max_length=120)
+    language: str = Field(pattern="^(python|java|cpp)$")
+    code: str = Field(max_length=65000)
+
+
+class ProjectRunRequest(BaseModel):
+    files: Dict[str, str]
+
+
+class ComprehensionAnswerRequest(BaseModel):
+    question_id: str = Field(max_length=20)
+    answer: str = Field(max_length=4000)
+
+
+class InterviewAnswerRequest(BaseModel):
+    answer: Optional[str] = Field(default=None, max_length=4000)
 
 class CandidateAssessmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -68,12 +107,13 @@ class CandidateAssessmentResponse(BaseModel):
     integrity_signals: Dict[str, Any] = {}
     rounds: List[Dict[str, Any]] = []
     is_invite_token: bool = False
+    rank: Optional[int] = None
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
 class CandidateSubmitRoundRequest(BaseModel):
-    round_index: int
-    round_type: str
+    round_index: int = Field(ge=0, le=20)
+    round_type: str = Field(max_length=40)
     resume_text: Optional[str] = None
     oa_problem_title: Optional[str] = None
     oa_submitted_code: Optional[str] = None
@@ -88,4 +128,5 @@ class PipelineLeaderboardResponse(BaseModel):
     completed_candidates: int
     average_score: Optional[float] = None
     candidates: List[CandidateAssessmentResponse] = []
+    rankings: List[Dict[str, Any]] = []
 

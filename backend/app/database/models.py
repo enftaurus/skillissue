@@ -520,6 +520,10 @@ class CandidateAssessment(Base):
     candidate_name: Mapped[str] = mapped_column(String(150), nullable=False)
     candidate_email: Mapped[str] = mapped_column(String(255), nullable=False)
     access_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    # The signed-in account taking the assessment. Results are never shown to this user (ADR 0027).
+    candidate_user_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Server-side per-round state: assigned problems/items, timers, interview transcript, answers. Never sent raw.
+    round_state: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True, default=dict)
     token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="invited")  # 'invited', 'in_progress', 'completed', 'flagged'
     resume_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
