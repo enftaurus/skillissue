@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("PLANLY_OFFLINE_LINKS", "1")  # no network in tests; curated links verified by scripts/verify_plan_resources.py
 import pytest_asyncio
 from typing import AsyncGenerator
 import httpx

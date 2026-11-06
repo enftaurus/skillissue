@@ -6,6 +6,7 @@ class CreateCustomPlanRequest(BaseModel):
     topic: str = Field(min_length=2, max_length=150, description="What you want to learn, e.g. Operating Systems, DBMS, DSA, System Design")
     goal: str = Field(default="interview_prep", pattern="^(fundamentals|interview_prep|mastery)$")
     daily_study_minutes: int = Field(default=45, ge=15, le=180)
+    total_days: int = Field(default=7, ge=3, le=60, description="How many study sessions the learner commits to")
     schedule_days: List[str] = Field(default=["monday", "tuesday", "wednesday", "thursday", "friday"])
     current_level: str = Field(default="intermediate", pattern="^(beginner|intermediate|advanced)$")
     deadline: Optional[datetime] = None

@@ -75,6 +75,7 @@ export const PlanlyPage: React.FC = () => {
   const [customTopic, setCustomTopic] = useState<string>('');
   const [customGoal, setCustomGoal] = useState<'fundamentals' | 'interview_prep' | 'mastery'>('interview_prep');
   const [customMinutes, setCustomMinutes] = useState<number>(45);
+  const [customTotalDays, setCustomTotalDays] = useState<number>(7);
   const [customDays, setCustomDays] = useState<string[]>([
     'monday',
     'tuesday',
@@ -387,6 +388,7 @@ export const PlanlyPage: React.FC = () => {
         topic: customTopic.trim(),
         goal: customGoal,
         daily_study_minutes: customMinutes,
+        total_days: customTotalDays,
         schedule_days: customDays,
         current_level: customLevel,
       });
@@ -419,6 +421,28 @@ export const PlanlyPage: React.FC = () => {
       alert(err.message || 'Failed to import backlog item into sprint.');
     } finally {
       setImportingId(null);
+    }
+  };
+
+  // Learning queue: priority first, then oldest first. Same order the server dequeues in.
+  const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+  const queue = backlogItems
+    .filter((i: any) => i.status === 'queued')
+    .sort((a: any, b: any) => (PRIORITY_RANK[a.priority] ?? 2) - (PRIORITY_RANK[b.priority] ?? 2)
+      || new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const [dequeuing, setDequeuing] = useState(false);
+  const handleStartNext = async () => {
+    if (!plan) return;
+    setDequeuing(true);
+    try {
+      const updated = await api.post<Plan>(`/plans/${plan.id}/queue/next`, {});
+      setPlan(updated);
+      loadBacklog();
+      setActiveTab('sprint');
+    } catch (err: any) {
+      alert(err.message || 'Could not take the next topic from the queue.');
+    } finally {
+      setDequeuing(false);
     }
   };
 
@@ -1154,6 +1178,29 @@ export const PlanlyPage: React.FC = () => {
       {/* LEARNING BACKLOG VIEW */}
       {activeTab === 'backlog' && (
         <div className="space-y-6">
+          {/* Up next: the learning queue */}
+          <Card className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-ink">Up next ({queue.length} queued)</h3>
+                <p className="text-xs text-ink-muted">High priority first, then oldest first. When you finish your plan, the next topic is added automatically; skipped topics go back in the queue.</p>
+              </div>
+              <Button size="sm" onClick={handleStartNext} disabled={!plan || !queue.length || dequeuing} className="text-xs shrink-0">
+                {dequeuing ? 'Adding...' : 'Start next topic'}
+              </Button>
+            </div>
+            {queue.length > 0 && (
+              <ol className="space-y-1">
+                {queue.slice(0, 5).map((i: any, idx: number) => (
+                  <li key={i.id} className="flex items-center gap-2 text-xs">
+                    <span className="w-5 h-5 rounded-full bg-white border border-indigo-200 flex items-center justify-center font-mono text-[10px] text-indigo-700">{idx + 1}</span>
+                    <span className="font-medium text-ink">{i.topic}</span>
+                    <span className="text-[10px] uppercase font-mono text-ink-muted">{i.priority}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Card>
           {/* Backlog Filter Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1379,6 +1426,28 @@ export const PlanlyPage: React.FC = () => {
               onChange={(e) => setCustomMinutes(Number(e.target.value))}
               className="w-full accent-indigo-600"
             />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-ink-muted uppercase tracking-wider">
+                How many study days?
+              </label>
+              <span className="font-mono font-bold text-indigo-600">{customTotalDays} days</span>
+            </div>
+            <input
+              type="range"
+              min={3}
+              max={60}
+              step={1}
+              value={customTotalDays}
+              onChange={(e) => setCustomTotalDays(Number(e.target.value))}
+              className="w-full accent-indigo-600"
+              aria-label="Number of study days"
+            />
+            <p className="text-[11px] text-ink-muted mt-1">
+              {customTotalDays} sessions × {customMinutes} min = {Math.round((customTotalDays * customMinutes) / 60 * 10) / 10} hours total
+            </p>
           </div>
 
           <div>

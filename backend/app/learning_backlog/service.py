@@ -26,7 +26,11 @@ class LearningBacklogService:
         if topic:
             query = query.where(func.lower(LearningBacklogItem.topic).contains(topic.lower()))
 
-        query = query.order_by(LearningBacklogItem.created_at.desc())
+        if status == "queued":
+            from backend.app.plans.service import PlanService
+            query = query.order_by(*PlanService.queue_order())  # the order "Start next" will take them
+        else:
+            query = query.order_by(LearningBacklogItem.created_at.desc())
         result = await db.execute(query)
         return list(result.scalars().all())
 

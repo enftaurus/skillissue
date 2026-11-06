@@ -135,6 +135,12 @@ async def get_suggested_backlog(
     """Surfaces queued backlog items relevant to this sprint as suggestions."""
     return await PlanService.get_suggested_backlog(db, current_user.id, plan_id)
 
+@router.post("/{plan_id}/queue/next", response_model=PlanResponse)
+async def dequeue_next(plan_id: str, count: int = 1, current_user: User = Depends(get_current_active_user),
+                       db: AsyncSession = Depends(get_db)):
+    """Move the next topic(s) from the learning queue (priority, then oldest first) into this plan."""
+    return await PlanService.dequeue_next(db, current_user.id, plan_id, count)
+
 @router.post("/{plan_id}/backlog-items", response_model=PlanResponse)
 async def attach_backlog_items_to_plan(
     plan_id: str,

@@ -12,6 +12,33 @@ from backend.app.providers.factory import ModelFactory
 from backend.app.core.errors import EntityNotFoundError, AppException
 from backend.app.core.logging import logger
 
+from backend.app.plans.resources import resolve_for_tasks
+
+
+def fit_tasks(tasks: Any, days: int, daily_minutes: int, topic: str) -> List[Dict[str, Any]]:
+    """Exactly `days` sessions, numbered 1..days, none longer than the daily budget."""
+    tasks = [t for t in (tasks if isinstance(tasks, list) else []) if isinstance(t, dict) and t.get("title")][:days]
+    phases = [("Fundamentals", "concept"), ("Core mechanisms", "concept"), ("Guided practice", "practice"),
+              ("Edge cases & failure modes", "practice"), ("Hands-on coding", "coding"), ("Spaced revision", "concept")]
+    while len(tasks) < days:
+        i = len(tasks)
+        if i == days - 1 and days >= 3:
+            name, kind = "Checkpoint mock interview", "reassessment"
+        else:
+            name, kind = phases[i % len(phases)]
+        tasks.append({"title": f"{topic}: {name}", "subtopic": name, "task_type": kind,
+                      "description": f"{name} for {topic}. Work through the linked material, then write a short summary "
+                                     "in your own words and one question you still have.", "external_resources": []})
+    for i, t in enumerate(tasks, 1):
+        t["day_number"] = i
+        try:
+            m = int(t.get("estimated_minutes") or daily_minutes)
+        except (TypeError, ValueError):
+            m = daily_minutes
+        t["estimated_minutes"] = max(10, min(daily_minutes, m))
+    return tasks
+
+
 def sanitize_external_resources(resources: Any) -> List[Dict[str, str]]:
     """Sanitize external resources to strictly permit http:// and https:// URLs, preventing XSS."""
     if not isinstance(resources, list):
@@ -97,6 +124,7 @@ class PlanService:
 
         start_dt = data.start_date or datetime.now(timezone.utc)
         daily_minutes = data.daily_study_minutes or 45
+        total_days = data.total_days
 
         provider = await ModelFactory.get_for_user(db, user_id, task_type="planning")
         prompt = (
@@ -104,7 +132,9 @@ class PlanService:
             f"Goal: {data.goal}. Current Level: {data.current_level}.\n"
             f"Daily study availability: {daily_minutes} minutes/day.\n"
             f"Preferred study schedule days: {', '.join(data.schedule_days)}.\n\n"
-            "Break the topic into a structured progression across 7-10 sessions:\n"
+            f"The learner will study for exactly {total_days} sessions of {daily_minutes} minutes. Return exactly {total_days} tasks, "
+            f"one per session (day_number 1..{total_days}), each with estimated_minutes <= {daily_minutes}.\n"
+            "Progression:\n"
             "1. Prerequisites & fundamentals\n"
             "2. Core architectural concepts & mechanisms\n"
             "3. Guided practice & implementation details\n"
@@ -123,7 +153,7 @@ class PlanService:
             '      "description": "...",\n'
             '      "task_type": "concept",\n'
             f'      "estimated_minutes": {daily_minutes},\n'
-            '      "external_resources": [{"title": "Official Documentation", "url": "https://...", "type": "documentation"}]\n'
+            '      "external_resources": [{"title": "...", "url": "https://<official docs or a well-known page you are certain exists>", "type": "documentation"}]\n'
             '    }\n'
             '  ]\n'
             '}'
@@ -145,6 +175,9 @@ class PlanService:
                 {"day_number": 6, "title": f"{data.topic}: Spaced Revision", "subtopic": "Review", "description": "Review trade-offs, flashcards, and summary notes.", "task_type": "concept", "estimated_minutes": daily_minutes, "external_resources": []},
                 {"day_number": 7, "title": f"{data.topic}: Mock Assessment Checkpoint", "subtopic": "Assessment", "description": f"Conduct a targeted 15-minute diagnostic interview on {data.topic}.", "task_type": "reassessment", "estimated_minutes": daily_minutes, "external_resources": []},
             ]
+
+        tasks_data = fit_tasks(tasks_data, total_days, daily_minutes, data.topic)
+        resources = await resolve_for_tasks(tasks_data, data.topic)
 
         # Calculate scheduled calendar dates matching user's schedule_days
         schedule_days_lower = [d.lower() for d in data.schedule_days] if data.schedule_days else ["monday", "tuesday", "wednesday", "thursday", "friday"]
@@ -183,7 +216,7 @@ class PlanService:
 
         for idx, t_data in enumerate(tasks_data):
             task_date = task_dates[idx] if idx < len(task_dates) else start_dt + timedelta(days=idx)
-            sanitized_resources = sanitize_external_resources(t_data.get("external_resources", []))
+            sanitized_resources = resources[idx]
             task = PlanTask(
                 plan_id=plan.id,
                 day_number=t_data.get("day_number", idx + 1),
@@ -272,7 +305,9 @@ class PlanService:
 
         title = parsed.get("title") or f"{effective_days}-Day Technical Improvement Roadmap"
         target_skills = parsed.get("target_skills") or ["Database Optimization", "System Reliability", "Async Concurrency"]
-        tasks_data = parsed.get("tasks", [])
+        tasks_data = fit_tasks(parsed.get("tasks", []), effective_days, daily_minutes,
+                               ", ".join((evaluation.weaknesses or [])[:2]) or target_role)
+        resources = await resolve_for_tasks(tasks_data, " ".join((evaluation.weaknesses or []) + (evaluation.missing_concepts or [])))
 
         plan = Plan(
             user_id=user_id,
@@ -291,7 +326,7 @@ class PlanService:
         await db.flush()
 
         for idx, t_data in enumerate(tasks_data, start=1):
-            sanitized_resources = sanitize_external_resources(t_data.get("external_resources", []))
+            sanitized_resources = resources[idx - 1]
             task_date = start_dt + timedelta(days=idx - 1)
             task = PlanTask(
                 plan_id=plan.id,
@@ -349,8 +384,27 @@ class PlanService:
             topic = plan.target_skills[0]
             await cls._update_user_skill_from_task(db, user_id, topic, plan.id, task.id)
 
+        from backend.app.database.models import LearningBacklogItem
+        if status == "skipped" and plan and task.title.startswith("Deep Dive: "):
+            # A skipped queue topic goes back into the queue instead of disappearing.
+            item = (await db.execute(select(LearningBacklogItem).where(
+                LearningBacklogItem.user_id == user_id, LearningBacklogItem.planned_plan_id == plan.id,
+                LearningBacklogItem.status == "planned"))).scalars().all()
+            for it in item:
+                if task.title.startswith(f"Deep Dive: {it.topic}"):
+                    it.status, it.planned_plan_id = "queued", None
+                    break
+
+        refill = bool(plan and is_completed and plan.status == "active" and all(t.is_completed or t.status == "skipped" for t in plan.tasks))
         await db.commit()
         await db.refresh(task)
+        if refill:
+            # Plan finished: pull the next topic from the queue so there's always something scheduled.
+            try:
+                await cls.dequeue_next(db, user_id, plan.id, 1)
+                await db.refresh(task)
+            except AppException:
+                pass
         return task
 
     @classmethod
@@ -622,6 +676,27 @@ class PlanService:
             })
         return suggestions
 
+    @staticmethod
+    def queue_order():
+        """Priority first (high > medium > low), then FIFO by when the topic was queued."""
+        from sqlalchemy import case
+        from backend.app.database.models import LearningBacklogItem
+        rank = case((LearningBacklogItem.priority == "high", 0), (LearningBacklogItem.priority == "medium", 1), else_=2)
+        return [rank, LearningBacklogItem.created_at.asc()]
+
+    @classmethod
+    async def dequeue_next(cls, db: AsyncSession, user_id: str, plan_id: str, count: int = 1) -> Plan:
+        """Take the front of the learning queue into this plan."""
+        from backend.app.database.models import LearningBacklogItem
+        await cls.get_plan_by_id(db, user_id, plan_id)
+        ids = (await db.execute(select(LearningBacklogItem.id).where(
+            LearningBacklogItem.user_id == user_id, LearningBacklogItem.status == "queued")
+            .order_by(*cls.queue_order()).limit(max(1, min(count, 10))))).scalars().all()
+        if not ids:
+            raise AppException("Your learning queue is empty. Add a topic or finish an interview to queue weaknesses.",
+                               code="QUEUE_EMPTY", status_code=409)
+        return await cls.attach_backlog_items(db, user_id, plan_id, list(ids))
+
     @classmethod
     async def attach_backlog_items(
         cls,
@@ -649,6 +724,11 @@ class PlanService:
 
         max_day = max([t.day_number for t in plan.tasks] or [0])
         start_dt = plan.start_date or datetime.now(timezone.utc)
+        # Keep queue order (ids may arrive in any order).
+        rank = {"high": 0, "medium": 1}
+        items.sort(key=lambda i: (rank.get(i.priority, 2), i.created_at))
+        item_resources = await resolve_for_tasks(
+            [{"title": i.topic, "subtopic": i.subtopic, "description": i.reason or ""} for i in items], plan.topic or "")
 
         plan_id_str = plan.id
         for idx, item in enumerate(items):
@@ -669,6 +749,7 @@ class PlanService:
                 scheduled_date=task_date,
                 status="upcoming",
                 is_completed=False,
+                external_resources=item_resources[idx],
             )
             db.add(task)
             plan.tasks.append(task)
