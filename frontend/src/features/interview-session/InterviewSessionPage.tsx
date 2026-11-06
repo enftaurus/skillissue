@@ -159,31 +159,34 @@ export const InterviewSessionPage: React.FC = () => {
           savedAutoSpeak = null;
         }
         const willAutoSpeak = savedAutoSpeak !== null ? savedAutoSpeak === 'true' : true;
-        // Live voice starts on its own unless the candidate turned it off ("End live voice").
-        let livePref: string | null = null;
+        // Live voice starts by itself for every interview (unless ended for this interview). The live interviewer
+        // speaks the pending question itself, so the question isn't read twice.
+        let liveOff = false;
         try {
-          livePref = localStorage.getItem('skillissue_live_voice');
+          liveOff = sessionStorage.getItem(`skillissue_live_off_${data.id}`) === '1';
         } catch {
-          livePref = null;
+          liveOff = false;
         }
-        const autoLive = livePref !== 'off' && data.status === 'in_progress' && liveVoiceSupported() && !autoLiveStartedRef.current;
-        const startLiveSoon = () => {
-          if (!autoLive) return;
+        // Browsers only allow audio after a click on the page; after a hard reload there isn't one yet.
+        const hasGesture = (navigator as any).userActivation ? (navigator as any).userActivation.hasBeenActive : true;
+        const autoLive = !liveOff && data.status === 'in_progress' && liveVoiceSupported() && !autoLiveStartedRef.current;
+        if (autoLive && hasGesture) {
           autoLiveStartedRef.current = true;
-          startLiveRef.current?.();
-        };
-        let spoke = false;
-        if (willAutoSpeak && data.status === 'in_progress' && msgs.length > 0) {
-          const lastMsg = msgs[msgs.length - 1];
-          if (lastMsg.role === 'assistant' && lastMsg.content && !spokenMessageIdsRef.current.has(lastMsg.id)) {
-            spokenMessageIdsRef.current.add(lastMsg.id);
-            setIsSpeaking(true);
-            spoke = true;
-            // The mic opens the moment the interviewer finishes reading the question.
-            SpeechHandler.speak(lastMsg.content, () => { setIsSpeaking(false); startLiveSoon(); }, getSelectedVoice());
+          spokenMessageIdsRef.current.add(msgs[msgs.length - 1]?.id);
+          setTimeout(() => startLiveRef.current?.(), 0);
+        } else {
+          if (autoLive && !hasGesture) {
+            setMicNotice('Click "Live voice" (top bar) to talk to the interviewer. Your browser needs one click before it can play audio.');
+          }
+          if (willAutoSpeak && data.status === 'in_progress' && msgs.length > 0) {
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg.role === 'assistant' && lastMsg.content && !spokenMessageIdsRef.current.has(lastMsg.id)) {
+              spokenMessageIdsRef.current.add(lastMsg.id);
+              setIsSpeaking(true);
+              SpeechHandler.speak(lastMsg.content, () => setIsSpeaking(false), getSelectedVoice());
+            }
           }
         }
-        if (!spoke) startLiveSoon();
 
         if (data.category === 'dsa') {
           setShowCodeEditor(true);
@@ -443,7 +446,7 @@ export const InterviewSessionPage: React.FC = () => {
 
   const startLiveVoice = async () => {
     if (!id || liveActive || liveClientRef.current) return;
-    try { localStorage.setItem('skillissue_live_voice', 'on'); } catch { /* private mode */ }
+    try { sessionStorage.removeItem(`skillissue_live_off_${id}`); } catch { /* private mode */ }
     SpeechHandler.stopSpeaking();
     setIsSpeaking(false);
     if (isListening) speechHandlerRef.current?.stop();
@@ -477,7 +480,8 @@ export const InterviewSessionPage: React.FC = () => {
   startLiveRef.current = () => { startLiveVoice(); };
 
   const stopLiveVoice = () => {
-    try { localStorage.setItem('skillissue_live_voice', 'off'); } catch { /* private mode */ }
+    // Ending the call only turns auto-start off for this interview.
+    try { if (id) sessionStorage.setItem(`skillissue_live_off_${id}`, '1'); } catch { /* private mode */ }
     liveClientRef.current?.stop();
     liveClientRef.current = null;
     refreshInterview();

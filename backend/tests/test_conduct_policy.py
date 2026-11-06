@@ -99,3 +99,13 @@ async def test_honest_struggle_is_not_misconduct(client):
     for text in ("I don't know", "Sorry, I'm a bit nervous. I think you'd use an index?", "Could you repeat the question?"):
         r = (await client.post(f"/api/v1/interviews/{iid}/message", headers=h, json={"content": text})).json()
         assert r.get("kind") not in ("conduct_warning", "terminated"), (text, r)
+
+
+@pytest.mark.asyncio
+async def test_harsh_stories_are_not_rudeness_toward_the_interviewer():
+    async def says_unprofessional(system, prompt):
+        return '{"conduct": "unprofessional", "certain": true, "reason": "rude and contemptuous toward interviewer"}'
+    for story in ("i really kicked him out i fired him from the team", "i kicked him out of the team i am a dictator",
+                  "I shouted at him in front of everyone"):
+        assert (await conduct.assess(story, "What did you do?", says_unprofessional)).kind == conduct.OK, story
+    assert (await conduct.assess("this question is stupid and so are you", "q", says_unprofessional)).kind == conduct.UNPROFESSIONAL

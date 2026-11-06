@@ -113,11 +113,17 @@ class VoiceRelay:
             return
         _ACTIVE_USERS[self.user_id] = time.time()
         try:
-            last_q = next((m.content for m in reversed(self.interview.messages) if m.role == "assistant"), "")
+            last_q = next((m.content for m in reversed(self.interview.messages) if m.role == "assistant"
+                           and getattr(m, "kind", "question") not in ("repeat",)), "")
+            resumed = any(m.role == "user" for m in self.interview.messages)
+            opening = speakable(last_q) or "Hi, thanks for joining. Tell me a bit about yourself."
+            if resumed and last_q:
+                # Reconnecting mid-interview: don't replay the introduction, just pick the thread back up.
+                opening = "Okay, we're back. Picking up where we left off. " + speakable(last_q.split("\n\n")[-1])
             await self.session.open(
                 build_voice_system_prompt(self.persona, self.interview.category,
                                           self.interview.target_duration_minutes or 20),
-                speakable(last_q) or "Hi, thanks for joining. Tell me a bit about yourself.",
+                opening,
             )
             await self.emit({"type": "ready", "voice": self.session.voice,
                              "quota_seconds": int(remaining_quota_seconds(self.user_id))})

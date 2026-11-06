@@ -42,8 +42,11 @@ CLASSIFIER_SYSTEM = (
     "{\"conduct\": \"ok\" | \"off_topic\" | \"unprofessional\", \"certain\": true | false, \"reason\": \"<8 words>\"}.\n"
     "off_topic: the reply has nothing to do with the interview, work, study or engineering at all: jokes, trolling, "
     "chit-chat about food, movies, sports or weather, flirting, nonsense, deliberately silly answers.\n"
-    "unprofessional: rude, mocking or contemptuous toward the interviewer or the process, or admitting they cheated "
-    "(copied, or had AI or another person produce their answer).\n"
+    "unprofessional: rude, mocking or contemptuous TOWARD THE INTERVIEWER OR THE INTERVIEW ITSELF, or admitting they "
+    "cheated on this interview (copied, or had AI or another person produce their answer).\n"
+    "NEVER unprofessional: describing their own past actions or decisions, however harsh, wrong or questionable "
+    "(firing or removing someone, arguing, being strict, calling themselves bossy). That is exactly what the interview "
+    "assesses; the grader will judge it, not you.\n"
     "ok (the default): anything about the candidate's own work, studies, projects, code, tools or experience, even if "
     "it misses the question, is vague, short or modest; wrong answers; 'I don't know'; nervousness; asking to repeat or "
     "clarify; questions about the role, team or company; brief polite small talk. If unsure, answer ok with certain "
@@ -58,6 +61,11 @@ _WORK_RE = re.compile(
     r"cache|query|function|test|user|company|role|manager|lead|deadline|client|customer|job|work|worked|working)"
     r"(s|es|ed|ing)?\b",
     re.I)
+
+
+# Rudeness "toward the interviewer" has to actually be aimed at them or the process.
+_ADDRESSED_RE = re.compile(r"\b(you|your|you're|ur|u|this\s+(question|interview|round|test|platform|app)|interviewer|"
+                           r"these\s+questions|this\s+is\s+(stupid|dumb|useless|boring|a\s+joke))\b", re.I)
 
 
 @dataclass
@@ -102,8 +110,13 @@ async def assess(text: str, question: str, ask: Optional[Callable[[str, str], Aw
             return Verdict()  # only act on clear cases
         if kind == OFF_TOPIC and _WORK_RE.search(text or ""):
             return Verdict()  # talks about their work or study: on topic for conduct purposes
+        reason = str(data.get("reason", ""))[:120]
+        if kind == UNPROFESSIONAL and not _ADDRESSED_RE.search(text or "") and not re.search(r"cheat|cop(y|ied)|ai\b|chatgpt", reason, re.I):
+            # A model verdict alone flips between calls on harsh-but-genuine stories ("I fired him"). Only rudeness
+            # actually aimed at the interviewer or the interview counts; cheating admissions are caught above.
+            return Verdict()
         if kind in (OFF_TOPIC, UNPROFESSIONAL):
-            return Verdict(kind, str(data.get("reason", ""))[:120])
+            return Verdict(kind, reason)
     except Exception as e:
         logger.info(f"Conduct check skipped: {type(e).__name__}")
     return Verdict()
