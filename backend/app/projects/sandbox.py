@@ -138,7 +138,9 @@ def _bwrap_command(bwrap_bin: str, job_dir: str, report_rel: str) -> List[str]:
     if sys.prefix != os.path.realpath(sys.prefix) and not sys.prefix.startswith("/usr"):
         cmd += ["--ro-bind", sys.prefix, sys.prefix]
     cmd += [
-        "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+        # Empty /proc instead of a fresh procfs: works inside Docker without systempaths=unconfined and hides
+        # every /proc/<pid> entry from candidate code (ADR 0026).
+        "--tmpfs", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
         "--bind", job_dir, SANDBOX_WORKDIR, "--chdir", SANDBOX_WORKDIR,
         "--clearenv",
         "--setenv", "PATH", "/usr/bin:/bin",

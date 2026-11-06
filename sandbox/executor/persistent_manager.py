@@ -50,8 +50,8 @@ class PersistentSandboxManager:
         self.bwrap_bin = shutil.which("bwrap")
         self.python_bin = "/usr/bin/python3" if os.path.exists("/usr/bin/python3") else (shutil.which("python3") or sys.executable)
         self.gpp_bin = shutil.which("g++")
-        self.javac_bin = shutil.which("javac")
-        self.java_bin = shutil.which("java")
+        self.javac_bin = os.path.realpath(shutil.which("javac")) if shutil.which("javac") else None
+        self.java_bin = os.path.realpath(shutil.which("java")) if shutil.which("java") else None
 
         if self.isolate_bin:
             self.runtime = "isolate"
@@ -80,10 +80,21 @@ class PersistentSandboxManager:
         cleaned = raw_output.replace(job_dir, "/sandbox")
         return cleaned[:MAX_COMPILE_OUTPUT_CHARS]
 
-    def _wrap_bwrap(self, cmd: List[str], job_dir: str, max_procs: int = 64) -> List[str]:
+    def _java_home(self) -> Optional[str]:
+        if not self.javac_bin:
+            return None
+        return os.path.dirname(os.path.dirname(os.path.realpath(self.javac_bin)))
+
+    def _wrap_bwrap(self, cmd: List[str], job_dir: str, max_procs: int = 64,
+                    env: Optional[Dict[str, str]] = None) -> List[str]:
         """
         Wrap command with hardened Bubblewrap isolation and process limiting.
         Applies ulimit -u (RLIMIT_NPROC) specifically to the unprivileged UID (65534).
+
+        /proc is an empty tmpfs, not a fresh procfs. Container runtimes mask parts of /proc, so the kernel refuses a
+        new procfs mount inside the sandbox unless the container is started with systempaths=unconfined. An empty
+        /proc works everywhere and exposes strictly less (no /proc/<pid>/environ, maps, mounts or cgroups) (ADR 0026).
+        The environment is cleared and rebuilt so the executor's own variables (EXECUTOR_SECRET) never reach the job.
         """
         if not self.bwrap_bin:
             return cmd
@@ -95,14 +106,24 @@ class PersistentSandboxManager:
             "--new-session",
             "--ro-bind", "/", "/",
             "--dev", "/dev",
-            "--proc", "/proc",
+            "--tmpfs", "/proc",
             "--tmpfs", "/tmp",
             "--bind", job_dir, job_dir,
             "--chdir", job_dir,
             "--unshare-net",
             "--uid", "65534",
             "--gid", "65534",
+            "--clearenv",
         ]
+        job_env = dict(env or {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": job_dir, "TMPDIR": "/tmp"})
+        java_home = self._java_home()
+        if java_home:
+            # Without procfs the dynamic loader can't resolve $ORIGIN via /proc/self/exe, so the JDK's own
+            # libraries (libjli.so) must be on the search path explicitly.
+            job_env["LD_LIBRARY_PATH"] = f"{java_home}/lib:{java_home}/lib/server"
+            job_env["JAVA_HOME"] = java_home
+        for k, v in job_env.items():
+            bwrap_prefix += ["--setenv", k, v]
         bash_wrapper = [
             "/bin/bash",
             "-c",
@@ -200,14 +221,14 @@ class PersistentSandboxManager:
 
         isolated_env = {
             "PATH": "/usr/local/bin:/usr/bin:/bin",
-            "LANG": "en_US.UTF-8",
-            "LC_ALL": "en_US.UTF-8",
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
             "PYTHONUNBUFFERED": "1",
             "HOME": job_dir,
             "TMPDIR": "/tmp",
         }
 
-        cmd = self._wrap_bwrap(run_cmd, job_dir)
+        cmd = self._wrap_bwrap(run_cmd, job_dir, env=isolated_env)
 
         def _set_resource_limits():
             os.setsid()

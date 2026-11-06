@@ -33,11 +33,13 @@ services:
       dockerfile: sandbox/executor/Dockerfile
     container_name: skillissue-executor
     restart: unless-stopped
-    cap_add:
-      - SYS_ADMIN
+    # Runs as uid 10001 (see Dockerfile). No added capabilities and no procfs mount needed (ADR 0026).
+    # seccomp/apparmor unconfined remain because Docker's default profiles block user-namespace creation and the
+    # sandbox's private mounts. Production uses gVisor/Kata instead (compose.prod.yaml).
     security_opt:
       - seccomp=unconfined
       - apparmor=unconfined
+    pids_limit: 512
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       SANDBOX_SECURITY_PROFILE: ${SANDBOX_SECURITY_PROFILE:-local_docker_dev}

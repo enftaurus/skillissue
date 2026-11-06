@@ -41,3 +41,4 @@ This directory contains records of all architectural, infrastructural, and secur
 2. Follow standard ADR sections: Title, Date, Status, Context, Decision, Alternatives Considered, Rationale, Consequences & Trade-offs, Related Requirements.
 3. Update this index.
 4. When a past decision is modified, mark the previous record as `Superseded by NNNN` rather than rewriting historical records.
+| [0026](0026-sandbox-without-procfs-and-non-root-executor.md) | Sandbox Without procfs, Non-Root Executor | 2026-11-06 | Accepted | Empty tmpfs /proc so bubblewrap works in Docker without systempaths=unconfined; cleared env; executor runs as uid 10001 so RLIMIT_NPROC stops fork bombs; SYS_ADMIN dropped. |

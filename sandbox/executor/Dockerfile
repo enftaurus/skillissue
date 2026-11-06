@@ -34,6 +34,11 @@ ENV PATH="/app/venv/bin:$PATH" \
     PYTHONPATH=/app \
     PORT=8001
 
+# Run as an unprivileged user. Under root, bubblewrap's user namespace maps the job back to kernel uid 0, which the
+# kernel exempts from RLIMIT_NPROC, so `ulimit -u` would not stop a fork bomb. As uid 10001 the limit holds (ADR 0026).
+RUN useradd --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin executor
+USER 10001:10001
+
 EXPOSE 8001
 
 CMD ["uvicorn", "sandbox.executor.main:app", "--host", "0.0.0.0", "--port", "8001"]

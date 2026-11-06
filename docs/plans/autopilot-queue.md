@@ -61,7 +61,7 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
       cheap; add 2 more projects.
 - [x] 4e. Evaluator credibility: "dispute this finding" with transcript evidence (re-judged, logged),
       visible evaluator confidence; evaluator consistency check (two runs, flag divergence).
-- [-] 4f. (BLOCKED: needs the product owner's infrastructure decision; autopilot must not attempt this) Docker executor project mode (out-of-process harness) so project runs work in production.
+- [x] 4f. (done interactively: empty /proc, non-root executor, ADR 0026) Docker executor project mode (out-of-process harness) so project runs work in production.
 
 ### 6. Code comprehension round (USP, Google-level)
 - [x] 6a. New interview category `code_comprehension`: candidate gets an unfamiliar, realistic
@@ -112,3 +112,4 @@ or `.env`; keep live-LLM/voice spend small (short scripted runs only).
 - 2026-11-06 05:30 IST: 7b done. Page-shaped shimmer skeletons (dashboard, evaluation, progress, Planly, interview room), global :focus-visible ring + focus-visible on buttons, route fade-in. Smoke test of 12 routes: 0 page/console errors.
 - 2026-11-06 05:45 IST: interactive session done for now. Remaining open: 5a (re-run scripts/evals/edge_probe.py, fix anything found). 4f is marked [-] (blocked on owner decision, skipped by the runner).
 - 2026-11-06 (autopilot): 5a second sweep. Probe extended to backlog/JDs/plans/resumes/explanation checks/tracks/enterprise/telemetry/analytics/providers (~60 cases). Fixed E9-E13 (QA report Round 3b): NUL in query/path 500, concurrent queue-weakness stored 4 rows (+ MultipleResultsFound 500 afterwards), unbounded/overlong backlog+JD fields 500, unclamped JD model output, missing-provider 502 -> 400. Re-run: 0 findings. Provider-backed interview section not run (no SKILLISSUE_EVAL_EMAIL unattended). 5a stays open for the next batch.
+- 2026-11-06 IST: 4f DONE (owner chose 'restructure the sandbox'). Empty tmpfs /proc in both runners, cleared env, Java lib path, executor as uid 10001 (fixes RLIMIT_NPROC no-op under root), SYS_ADMIN dropped, pids_limit. ADR 0026.
