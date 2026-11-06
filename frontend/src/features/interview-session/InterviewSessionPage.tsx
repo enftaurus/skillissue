@@ -73,6 +73,8 @@ export const InterviewSessionPage: React.FC = () => {
   const [liveCaptions, setLiveCaptions] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
   const [liveLevel, setLiveLevel] = useState(0);
   const liveActive = liveState === 'connecting' || liveState === 'listening' || liveState === 'interviewer';
+  const autoLiveStartedRef = useRef(false);
+  const startLiveRef = useRef<(() => void) | null>(null);
 
   const toggleAutoSpeak = () => {
     const next = !autoSpeak;
@@ -157,14 +159,31 @@ export const InterviewSessionPage: React.FC = () => {
           savedAutoSpeak = null;
         }
         const willAutoSpeak = savedAutoSpeak !== null ? savedAutoSpeak === 'true' : true;
+        // Live voice starts on its own unless the candidate turned it off ("End live voice").
+        let livePref: string | null = null;
+        try {
+          livePref = localStorage.getItem('skillissue_live_voice');
+        } catch {
+          livePref = null;
+        }
+        const autoLive = livePref !== 'off' && data.status === 'in_progress' && liveVoiceSupported() && !autoLiveStartedRef.current;
+        const startLiveSoon = () => {
+          if (!autoLive) return;
+          autoLiveStartedRef.current = true;
+          startLiveRef.current?.();
+        };
+        let spoke = false;
         if (willAutoSpeak && data.status === 'in_progress' && msgs.length > 0) {
           const lastMsg = msgs[msgs.length - 1];
           if (lastMsg.role === 'assistant' && lastMsg.content && !spokenMessageIdsRef.current.has(lastMsg.id)) {
             spokenMessageIdsRef.current.add(lastMsg.id);
             setIsSpeaking(true);
-            SpeechHandler.speak(lastMsg.content, () => setIsSpeaking(false), getSelectedVoice());
+            spoke = true;
+            // The mic opens the moment the interviewer finishes reading the question.
+            SpeechHandler.speak(lastMsg.content, () => { setIsSpeaking(false); startLiveSoon(); }, getSelectedVoice());
           }
         }
+        if (!spoke) startLiveSoon();
 
         if (data.category === 'dsa') {
           setShowCodeEditor(true);
@@ -422,7 +441,8 @@ export const InterviewSessionPage: React.FC = () => {
   };
 
   const startLiveVoice = async () => {
-    if (!id || liveActive) return;
+    if (!id || liveActive || liveClientRef.current) return;
+    try { localStorage.setItem('skillissue_live_voice', 'on'); } catch { /* private mode */ }
     SpeechHandler.stopSpeaking();
     setIsSpeaking(false);
     if (isListening) speechHandlerRef.current?.stop();
@@ -439,7 +459,10 @@ export const InterviewSessionPage: React.FC = () => {
       return;
     }
     const client = new LiveVoiceClient(id, {
-      onState: setLiveState,
+      onState: (st) => {
+        setLiveState(st);
+        if (st === 'ended' || st === 'error') liveClientRef.current = null;  // allow restarting the call
+      },
       onLevel: setLiveLevel,
       onCaption: (role, text) => setLiveCaptions((prev) => [...prev.slice(-5), { role, text }]),
       onTurn: () => refreshInterview(),
@@ -450,7 +473,10 @@ export const InterviewSessionPage: React.FC = () => {
     await client.start(token);
   };
 
+  startLiveRef.current = () => { startLiveVoice(); };
+
   const stopLiveVoice = () => {
+    try { localStorage.setItem('skillissue_live_voice', 'off'); } catch { /* private mode */ }
     liveClientRef.current?.stop();
     liveClientRef.current = null;
     refreshInterview();

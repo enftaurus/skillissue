@@ -168,3 +168,18 @@ def test_persona_is_stable_per_interview_and_slop_is_stripped():
     assert strip_slop("Great answer!") == "Great answer!"  # never strip the only content
     assert is_rambling("word " * 160, "adequate")
     assert not is_rambling("I used a hash map.", "weak")
+
+
+def test_behavioral_rounds_never_carry_tech_skills():
+    from backend.app.interviews.constants import interview_topics, BEHAVIORAL_TOPICS
+    from backend.app.interviews.prompts import build_interviewer_system_prompt
+    assert interview_topics("behavioral", ["Python", "PostgreSQL"]) == BEHAVIORAL_TOPICS
+    assert interview_topics("technical", ["Python"]) == ["Python"]
+    p = build_interviewer_system_prompt(category="behavioral", target_role="SWE", difficulty="intermediate",
+                                        domain_skills=["Python", "PostgreSQL"], resume_skills=["Redis", "Kafka"],
+                                        company_name="Uber")
+    for leak in ("Selected Practice Skills", "Candidate Resume Skills", "PostgreSQL", "Kafka", "geospatial", "H3"):
+        assert leak not in p, leak
+    assert "BEHAVIORAL round" in p and "NEVER ask technical" in p
+    t = build_interviewer_system_prompt(category="technical", target_role="SWE", difficulty="intermediate", domain_skills=["Python"])
+    assert "Python" in t and "ROUND SCOPE" not in t

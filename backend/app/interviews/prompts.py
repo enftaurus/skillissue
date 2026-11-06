@@ -75,6 +75,11 @@ def build_interviewer_system_prompt(
     oa_problem_title: Optional[str] = None,
     oa_submitted_code: Optional[str] = None,
 ) -> str:
+    from backend.app.interviews.constants import NON_TECHNICAL_CATEGORIES, category_scope_rule
+    non_technical = (category or "").lower() in NON_TECHNICAL_CATEGORIES
+    if non_technical:
+        # Tech skill lists pull behavioural rounds toward "explain Postgres indexing". Keep projects for stories only.
+        domain_skills, jd_skills, resume_skills = None, None, None
     context_parts = []
     if jd_role or jd_skills or jd_requirements:
         context_parts.append(f"Target Job Description: {jd_role or target_role}")
@@ -101,7 +106,9 @@ def build_interviewer_system_prompt(
         if project_summaries:
             context_parts.append(f"Candidate Projects: {'; '.join(project_summaries)}")
 
-    scope_context = " | ".join(context_parts) if context_parts else "General engineering fundamentals."
+    scope_context = " | ".join(context_parts) if context_parts else (
+        "The candidate's real past work: ownership, collaboration, conflict, failure, ambiguity and impact."
+        if non_technical else "General engineering fundamentals.")
 
     prompt = SYSTEM_INTERVIEWER_PROMPT_TEMPLATE.format(
         category=category.upper(),
@@ -156,11 +163,20 @@ def build_interviewer_system_prompt(
                 "- If Behavioral/Managerial: Probe bias for impact, unblocking teammates, and rapid iteration under shifting priorities."
             )
 
+        if non_technical:
+            # Keep only the behavioural half of hand-written calibration blocks.
+            head, _, tail = prompt.rpartition("COMPANY CALIBRATION:")
+            if _ and "If Behavioral/Managerial:" in tail:
+                first_line = tail.split("\n", 1)[0]
+                beh = tail[tail.index("If Behavioral/Managerial:"):].split("\n", 1)[0]
+                prompt = head + "COMPANY CALIBRATION:" + first_line + "\n- " + beh
         if not any(k in comp_lower for k in ("google", "uber", "openai", "amazon", "meta")):
             from backend.app.tracks.company_context import calibration_block, company_by_name
             comp = company_by_name(company_name)
             if comp:
                 prompt += calibration_block(comp, category)
+
+    prompt += category_scope_rule((category or "").lower())
 
     # Anti-cheating cross-examination of submitted OA code (Loaded from server-side record, sanitized & delimited)
     if oa_submitted_code:

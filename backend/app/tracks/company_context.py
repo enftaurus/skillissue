@@ -80,7 +80,7 @@ def calibration_block(company: Dict[str, Any], category: str) -> str:
     ]
     if category in ("dsa", "technical") and topics:
         lines.append(f"Their most frequent problem areas: {topics}. Prefer follow-ups in these areas.")
-    if tips:
+    if tips and category in ("dsa", "technical"):
         lines.append("Candidate-reported interview patterns (use as calibration, don't quote them):\n" + tips)
     lines.append(f"Behave like a {company['name']} interviewer would, but never claim to work there or use internal names.")
     return "\n".join(lines)

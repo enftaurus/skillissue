@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import {
   AlertTriangle, ArrowRight, Boxes, Brain, Building2, CheckCircle2, Clock, Code2, FileText, Lock, Mic, Play,
-  Send, ShieldAlert, ShieldCheck, XCircle,
+  MicOff, PhoneOff, Send, ShieldAlert, ShieldCheck, XCircle,
 } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -14,6 +14,7 @@ import { SimpleMarkdown } from '../../components/ui/SimpleMarkdown';
 import { useEditorTelemetry } from '../../lib/useEditorTelemetry';
 import { ExplanationCheckModal } from '../coding/ExplanationCheckModal';
 import { CodeViewer } from '../comprehension/CodeComprehensionPage';
+import { LiveVoiceClient, LiveVoiceState, liveVoiceSupported } from '../../lib/liveVoice';
 
 /* Candidates see the work and their own sample runs. Scores and verdicts exist only on the hiring team's side. */
 
@@ -318,12 +319,49 @@ const ProjectRound: React.FC<{
   );
 };
 
+const VOICE_LABEL: Record<LiveVoiceState, string> = {
+  idle: 'Voice off', connecting: 'Connecting...', listening: 'Listening. Speak when ready.',
+  interviewer: 'Interviewer speaking', ended: 'Call ended', error: 'Voice unavailable',
+};
+
 const InterviewRound: React.FC<{ round: RoundData; token: string; onRound: (r: RoundData) => void }> = ({ round, token, onRound }) => {
   const [answer, setAnswer] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [voiceState, setVoiceState] = useState<LiveVoiceState>('idle');
+  const [liveCaption, setLiveCaption] = useState('');
+  const [level, setLevel] = useState(0);
+  const [voiceOk, setVoiceOk] = useState(false);
+  const client = useRef<LiveVoiceClient | null>(null);
   const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [round.transcript?.length]);
+  useEffect(() => { end.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [round.transcript?.length, liveCaption]);
+  useEffect(() => {
+    if (!liveVoiceSupported()) return;
+    api.get<{ enabled: boolean }>('/voice/status').then((v) => setVoiceOk(Boolean(v.enabled))).catch(() => setVoiceOk(false));
+  }, []);
+  useEffect(() => () => { client.current?.stop(); }, []);
+
+  const refresh = useCallback(async () => {
+    try { onRound(await api.get<RoundData>(`/enterprise/assessments/${token}/round`)); } catch { /* keep current view */ }
+  }, [token, onRound]);
+
+  const startVoice = async () => {
+    setError('');
+    const jwt = localStorage.getItem('skillissue_token') || '';
+    const c = new LiveVoiceClient(`/api/v1/voice/assessment/${token}`, {
+      onState: setVoiceState,
+      onLevel: setLevel,
+      onCaption: (role, text) => { if (role === 'user') setLiveCaption((p) => (p ? `${p} ${text}` : text)); },
+      onTurn: () => { setLiveCaption(''); refresh(); },
+      onCompleted: () => { setLiveCaption(''); refresh(); },
+      onError: (_code, message) => { setError(message); setVoiceState('error'); },
+    });
+    client.current = c;
+    await c.start(jwt);
+  };
+  const stopVoice = () => { client.current?.stop(); client.current = null; setVoiceState('idle'); setLiveCaption(''); refresh(); };
+  const live = voiceState === 'connecting' || voiceState === 'listening' || voiceState === 'interviewer';
+
   const send = async () => {
     if (!answer.trim()) return;
     setBusy(true); setError('');
@@ -334,8 +372,32 @@ const InterviewRound: React.FC<{ round: RoundData; token: string; onRound: (r: R
   return (
     <div className="max-w-3xl mx-auto space-y-3">
       <p className="text-[11px] text-zinc-500 text-center">
-        {round.questions_total} questions. The interviewer may ask about the code you wrote earlier. Answer like you would out loud.
+        {round.questions_total} questions. The interviewer may ask about the code you wrote earlier.
+        {voiceOk ? ' Talk it through on a voice call, or type.' : ' Answer like you would out loud.'}
       </p>
+      {voiceOk && !round.interview_done && (
+        <div className={`flex items-center justify-between gap-3 p-3 rounded-2xl border transition-colors ${live ? 'bg-zinc-900 border-zinc-900 text-white' : 'bg-white border-zinc-200'}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative w-10 h-10 shrink-0">
+              {live && <span className="absolute inset-0 rounded-full bg-lime-400/40 animate-ping" style={{ animationDuration: '1.6s', opacity: voiceState === 'listening' ? Math.max(0.2, level) : 0.15 }} />}
+              <div className={`relative w-10 h-10 rounded-full flex items-center justify-center ${live ? 'bg-lime-400 text-zinc-900' : 'bg-zinc-100 text-zinc-700'}`}>
+                <Mic className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{live ? VOICE_LABEL[voiceState] : 'Voice interview'}</p>
+              <p className={`text-[11px] truncate ${live ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                {live ? 'Speak naturally; you can interrupt. Use headphones to avoid echo.' : 'Amazon Nova Sonic: hears you and talks back in real time.'}
+              </p>
+            </div>
+          </div>
+          {live ? (
+            <Button size="sm" variant="outline" onClick={stopVoice} className="gap-1.5 text-xs bg-white text-zinc-900"><PhoneOff className="w-3.5 h-3.5" /> End call</Button>
+          ) : (
+            <Button size="sm" onClick={startVoice} className="gap-1.5 text-xs"><Mic className="w-3.5 h-3.5" /> Start voice call</Button>
+          )}
+        </div>
+      )}
       <div className="space-y-3">
         {tr.map((t, i) => (
           <div key={i} className="space-y-2 animate-fade-in">
@@ -346,9 +408,12 @@ const InterviewRound: React.FC<{ round: RoundData; token: string; onRound: (r: R
             {t.answer && <p className="ml-9 text-sm text-zinc-700 bg-lime-50/60 border border-lime-200/70 rounded-2xl rounded-tr-sm px-3 py-2 whitespace-pre-wrap">{t.answer}</p>}
           </div>
         ))}
+        {liveCaption && (
+          <p className="ml-9 text-sm text-zinc-500 italic bg-zinc-50 border border-dashed border-zinc-200 rounded-2xl rounded-tr-sm px-3 py-2">{liveCaption}</p>
+        )}
         <div ref={end} />
       </div>
-      {round.current_question ? (
+      {round.current_question && !live ? (
         <div className="space-y-2">
           <textarea rows={4} value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="Your answer"
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
@@ -358,9 +423,11 @@ const InterviewRound: React.FC<{ round: RoundData; token: string; onRound: (r: R
             <Button size="sm" onClick={send} disabled={busy || !answer.trim()} className="gap-1 text-xs"><Send className="w-3 h-3" /> {busy ? 'Sending...' : 'Send'}</Button>
           </div>
         </div>
-      ) : (
-        round.interview_done && <p className="text-center text-sm text-zinc-600">That's all the questions. Submit the round to finish.</p>
-      )}
+      ) : round.interview_done ? (
+        <p className="text-center text-sm text-zinc-600">That's all the questions. Submit the round to finish.</p>
+      ) : live ? (
+        <p className="text-center text-[11px] text-zinc-400 font-mono flex items-center justify-center gap-1.5"><MicOff className="w-3 h-3" /> Typing is paused during the call. End the call to type.</p>
+      ) : null}
       {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>
   );

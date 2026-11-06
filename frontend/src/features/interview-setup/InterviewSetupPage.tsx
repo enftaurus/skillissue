@@ -56,6 +56,7 @@ export const InterviewSetupPage: React.FC = () => {
   // Mode: 'domain' or 'jd'
   const [mode, setMode] = useState<'domain' | 'jd'>('domain');
   const [category, setCategory] = useState<'technical' | 'behavioral' | 'dsa' | 'managerial'>('technical');
+  const isNonTechnical = category === 'behavioral' || category === 'managerial';
   const [difficulty, setDifficulty] = useState<'junior' | 'intermediate' | 'advanced'>('intermediate');
   const [targetRole, setTargetRole] = useState('Software Engineer');
   const [duration, setDuration] = useState(20);
@@ -170,7 +171,7 @@ export const InterviewSetupPage: React.FC = () => {
       let interview: Interview;
 
       if (mode === 'domain') {
-        if (selectedSkills.length === 0) {
+        if (!isNonTechnical && selectedSkills.length === 0) {
           setError('Please select at least one skill to practice.');
           setIsLoading(false);
           return;
@@ -178,7 +179,8 @@ export const InterviewSetupPage: React.FC = () => {
 
         interview = await api.post<Interview>('/interviews/domain', {
           category,
-          domain_skills: selectedSkills,
+          // Behavioural/managerial rounds ignore tech skills on the server too; send a neutral label.
+          domain_skills: isNonTechnical ? [category === 'behavioral' ? 'Behavioral' : 'Leadership'] : selectedSkills,
           target_role: targetRole,
           difficulty,
           resume_id: uploadedResume?.id,
@@ -366,7 +368,21 @@ export const InterviewSetupPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Skill Selector */}
+          {/* Skill Selector: technical and DSA rounds only. Behavioural/managerial rounds cover competencies, not tech. */}
+          {isNonTechnical ? (
+            <div className="rounded-xl border border-surface-border bg-surface-subtle p-4 space-y-2">
+              <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider">What this round covers</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(category === 'behavioral'
+                  ? ['Ownership', 'Conflict & collaboration', 'Failure & learning', 'Ambiguity', 'Impact & communication']
+                  : ['People leadership', 'Delivery & prioritisation', 'Stakeholders', 'Trade-off calls', 'Feedback & growth']
+                ).map((t) => (
+                  <span key={t} className="text-xs px-2 py-1 rounded-lg bg-white border border-surface-border text-ink">{t}</span>
+                ))}
+              </div>
+              <p className="text-xs text-ink-muted">No technical questions. Bring real stories: what you did, why, and what happened.</p>
+            </div>
+          ) : (
           <div>
             <label className="block text-xs font-semibold text-ink-muted uppercase tracking-wider mb-2">
               Select {category === 'dsa' ? 'Algorithmic Topics' : 'Skills'} to Practice ({selectedSkills.length} selected)
@@ -404,6 +420,7 @@ export const InterviewSetupPage: React.FC = () => {
               </Button>
             </form>
           </div>
+          )}
         </Card>
       ) : (
         /* JD Mode Form */

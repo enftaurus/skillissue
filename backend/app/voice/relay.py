@@ -28,8 +28,10 @@ _ACTIVE_USERS: Dict[str, float] = {}
 _USAGE_SECONDS: Dict[Tuple[str, str], float] = {}
 
 SESSION_FACTORY: Callable[..., Any] = SonicSession  # overridable in tests
-SETTLE_SECONDS = 0.9      # quiet time after the candidate stops before we commit their turn
-MAX_SETTLE_WAIT = 8.0
+# Quiet time after the candidate stops before we commit their turn. Candidates pause to think mid-answer, so this is
+# deliberately longer than Sonic's own endpointing; speaking again resets it.
+SETTLE_SECONDS = settings.VOICE_END_OF_TURN_SECONDS
+MAX_SETTLE_WAIT = 30.0
 
 
 def remaining_quota_seconds(user_id: str) -> float:

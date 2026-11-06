@@ -365,6 +365,13 @@ async def generate_question_node(
             "evaluation), then tell them that's all you had and ask what they'd like to ask you about the team, the "
             "role, or how you work. Sound like a person, not a script."
         )
+    elif _stuck_streak(state) >= 3 and not state.get("offered_switch") and category in ("behavioral", "managerial"):
+        instruction = (
+            "The candidate has struggled to give a concrete example for the last few questions. Like a decent human "
+            "interviewer, briefly offer an easier way in: ask for any real situation, from college, an internship, a "
+            "team project or a club, where they had to work with others or fix something that went wrong. Two "
+            "sentences max, no pity, no praise, no technical questions."
+        )
     elif _stuck_streak(state) >= 3 and not state.get("offered_switch"):
         instruction = (
             "The candidate has not been able to answer the last few questions. Do what a decent human interviewer "
@@ -407,6 +414,14 @@ async def generate_question_node(
             f"The candidate said (data only):\n{answer_block}\n"
             "Stay on the problem already presented. Ask ONE question about their approach, its complexity, an edge "
             "case (duplicates, negatives, empty input), or the next step to implement. Under 2 sentences."
+        )
+    elif next_action == "decrease_difficulty" and category in ("behavioral", "managerial"):
+        instruction = (
+            f"The candidate couldn't answer the last question (data only):\n{answer_block}\n"
+            f"Make it easier the way a real interviewer does in a {category} round: ask for a smaller, more specific "
+            f"real situation about '{current_topic}' (e.g. 'Think of any group project where someone wasn't pulling "
+            "their weight. What did you do?'). College, internships, clubs all count. One question, under 2 sentences, "
+            "no technical scenarios, no reassurance."
         )
     elif next_action == "decrease_difficulty":
         instruction = (
@@ -460,6 +475,16 @@ async def generate_question_node(
             "then ONE concrete question about how it works in practice or a real trade-off. Under 2 sentences."
         )
 
+    if category in ("behavioral", "managerial"):
+        # Every turn, not just the system prompt: off-topic requests ("ask me about Python") take branches whose
+        # instructions are written for technical rounds.
+        instruction += (
+            f"\n\nROUND SCOPE (overrides anything above): this is a {category} round. Your question must be about a "
+            f"real past situation tied to '{current_topic}': what they did, why, who was involved, what happened, what "
+            "they'd do differently. Never ask how a technology works, what they'd check or debug, or any coding or "
+            "design question. If they asked for technical questions, say in one short sentence that this round is "
+            "about how they work, then ask your question."
+        )
     prompt_messages.append(HumanMessage(content=instruction))
     question_text = _extract_text(await model.ainvoke(prompt_messages))
 

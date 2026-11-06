@@ -107,8 +107,9 @@ class InterviewAgentService:
         task_type = "coding" if interview.category == "dsa" else "interviewer"
         model = await ModelClientFactory.get_chat_model(db, user_id, task_type=task_type)
 
-        current_topic = interview.domain_skills[0] if interview.domain_skills else "System Architecture"
-        domain_skills = interview.domain_skills or [current_topic]
+        from backend.app.interviews.constants import interview_topics
+        domain_skills = interview_topics(interview.category, interview.domain_skills)
+        current_topic = domain_skills[0]
         topic_statuses = {
             skill: ("in_progress" if skill == current_topic else "not_started")
             for skill in domain_skills
@@ -304,7 +305,8 @@ class InterviewAgentService:
                 logger.info(f"Checkpoint retrieval fallback: {e}")
 
             turn_count = candidate_turns
-            domain_skills = interview.domain_skills or ["System Architecture"]
+            from backend.app.interviews.constants import interview_topics
+            domain_skills = interview_topics(interview.category, interview.domain_skills)
             covered_topics = prior_state.get("covered_topics") or interview.covered_topics or []
             current_topic = prior_state.get("current_topic") or (domain_skills[0] if domain_skills else "System Architecture")
             running_summary = prior_state.get("running_summary") or interview.current_summary or ""
@@ -340,7 +342,8 @@ class InterviewAgentService:
                 "phase": "closing" if _awaiting_candidate_questions(interview) else "active",
                 "coding_problem_id": interview.coding_problem_id,
                 # Older checkpoints predate these keys: rebuild instead of silently dropping context.
-                "system_prompt": prior_state.get("system_prompt")
+                # Behavioural/managerial always rebuild so the scope guard applies to interviews already in progress.
+                "system_prompt": (None if interview.category in ("behavioral", "managerial") else prior_state.get("system_prompt"))
                 or build_full_system_prompt(interview, domain_skills, resume, jd, detect_company(interview, jd)),
                 "topic_follow_ups": prior_state.get("topic_follow_ups") or {},
                 "topic_struggles": prior_state.get("topic_struggles") or {},

@@ -55,10 +55,12 @@ class Settings(BaseSettings):
     PLATFORM_VOICE_ENABLED: bool = True  # Polly TTS / Transcribe STT via the server's own AWS credentials
     STT_PROVIDER: str = "whisper"  # "whisper" (default, benchmarked best) | "transcribe" (opt-in, platform AWS)
     TRANSCRIBE_LANGUAGE: str = "en-IN"  # Indian English handles both Indian and US accents well
+    TRANSCRIBE_VOCABULARY: str = "skillissue-tech-en-IN"  # custom vocabulary (aws transcribe create-vocabulary); "" to disable
     SONIC_MODEL_ID: str = "amazon.nova-2-5-sonic"
     SONIC_REGION: str = "us-east-1"
     SONIC_DEFAULT_VOICE: str = "matthew"
     VOICE_DAILY_MINUTES: int = 60
+    VOICE_END_OF_TURN_SECONDS: float = 2.5  # silence that ends a candidate's answer; thinking pauses are shorter
     VOICE_SESSION_MAX_MINUTES: int = 30
 
     # Codeforces API

@@ -94,7 +94,9 @@ export class LiveVoiceClient {
     URL.revokeObjectURL(url);
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    this.ws = new WebSocket(`${proto}://${window.location.host}/api/v1/voice/ws/${this.interviewId}`);
+    // An interview id, or a full API path such as /api/v1/voice/assessment/{token}.
+    const path = this.interviewId.startsWith('/') ? this.interviewId : `/api/v1/voice/ws/${this.interviewId}`;
+    this.ws = new WebSocket(`${proto}://${window.location.host}${path}`);
     this.ws.onopen = () => this.ws?.send(JSON.stringify({ type: 'auth', token, voice }));
     this.ws.onmessage = (ev) => this.handle(JSON.parse(ev.data));
     this.ws.onclose = () => {

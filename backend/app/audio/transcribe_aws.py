@@ -41,10 +41,14 @@ async def transcribe_pcm(pcm: bytes, language_code: Optional[str] = None) -> str
                     final.append(result.alternatives[0].transcript)
 
     client = TranscribeStreamingClient(region=settings.SONIC_REGION)
+    kwargs = {}
+    if settings.TRANSCRIBE_VOCABULARY and (language_code or settings.TRANSCRIBE_LANGUAGE) == settings.TRANSCRIBE_LANGUAGE:
+        kwargs["vocabulary_name"] = settings.TRANSCRIBE_VOCABULARY  # technical terms: Redis, idempotency, trie, ...
     stream = await client.start_stream_transcription(
         language_code=language_code or settings.TRANSCRIBE_LANGUAGE,
         media_sample_rate_hz=16000,
         media_encoding="pcm",
+        **kwargs,
     )
 
     async def _send():

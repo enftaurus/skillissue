@@ -179,3 +179,14 @@ async def test_duplicate_tool_call_for_same_utterance_is_silent():
     assert results["t1"]["say"] == "Why Postgres over MySQL here?" or results["t2"]["say"] == "Why Postgres over MySQL here?"
     assert "" in (results["t1"]["say"], results["t2"]["say"])
     assert not any("interrupted" in p.get("text", "") for p in ws.sent)
+
+
+def test_assessment_voice_ws_requires_auth(monkeypatch):
+    from backend.app.main import app
+    client = TestClient(app)
+    with client.websocket_connect("/api/v1/voice/assessment/some-token") as ws:
+        ws.send_json({"type": "auth", "token": "not-a-jwt"})
+        assert ws.receive_json()["code"] == "AUTH_REQUIRED"
+    monkeypatch.setattr(settings, "VOICE_LIVE_ENABLED", False)
+    with client.websocket_connect("/api/v1/voice/assessment/some-token") as ws:
+        assert ws.receive_json()["code"] == "VOICE_DISABLED"
