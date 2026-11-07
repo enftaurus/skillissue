@@ -5,8 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class InterviewCreateDomain(BaseModel):
     category: str = Field(default="technical", pattern="^(technical|behavioral|dsa|managerial)$")
     domain_skills: List[str] = Field(min_length=1)
-    target_role: Optional[str] = "Software Engineer"
-    difficulty: Optional[str] = "intermediate"
+    target_role: Optional[str] = Field(default="Software Engineer", max_length=150)
+    difficulty: Optional[str] = Field(default="intermediate", max_length=20)
     resume_id: Optional[str] = None
     coding_problem_id: Optional[str] = None
     target_duration_minutes: Optional[int] = 20
@@ -22,7 +22,7 @@ class InterviewCreateJd(BaseModel):
     # Overrides for what was extracted from the JD (the candidate can correct them before starting).
     company_name: Optional[str] = Field(default=None, max_length=120)
     experience_level: Optional[str] = Field(default=None, pattern="^(fresher|junior|mid|senior)$")
-    difficulty: Optional[str] = "intermediate"
+    difficulty: Optional[str] = Field(default="intermediate", max_length=20)
     resume_id: Optional[str] = None
     coding_problem_id: Optional[str] = None
     target_duration_minutes: Optional[int] = 20

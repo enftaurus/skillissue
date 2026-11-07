@@ -52,6 +52,11 @@ async def main():
         check("create interview: 500 skills", await c.post("/interviews/domain", headers=a, json={"category": "technical", "domain_skills": ["s"] * 500}))
         check("create interview: duration 0", await c.post("/interviews/domain", headers=a, json={"category": "technical", "domain_skills": ["x"], "target_duration_minutes": 0}))
         check("create interview: duration 10000", await c.post("/interviews/domain", headers=a, json={"category": "technical", "domain_skills": ["x"], "target_duration_minutes": 10000}))
+        # E14: long skills/role/difficulty used to overflow interviews.title/target_role/difficulty columns.
+        check("create interview: 3 x 150-char skills", await c.post("/interviews/domain", headers=a, json={"category": "technical", "domain_skills": ["s" * 150] * 3, "company_name": "C" * 120}), ok_codes={201, 400})
+        check("create interview: 151-char target_role", await c.post("/interviews/domain", headers=a, json={"category": "technical", "domain_skills": ["x"], "target_role": "T" * 151}))
+        check("create interview: 21-char difficulty", await c.post("/interviews/domain", headers=a, json={"category": "technical", "domain_skills": ["x"], "difficulty": "d" * 21}))
+        check("reports: foreign project report", await c.get(f"/reports/projects/{uuid.uuid4()}", headers=a))
         fake = str(uuid.uuid4())
         check("message to nonexistent interview", await c.post(f"/interviews/{fake}/message", headers=a, json={"content": "hi"}))
         check("message: empty content", await c.post(f"/interviews/{fake}/message", headers=a, json={"content": ""}))

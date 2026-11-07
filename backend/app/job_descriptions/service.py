@@ -37,16 +37,16 @@ class JobDescriptionService:
         parsed = response.parsed_json or {}
 
         # Model output is untrusted: clamp to the column sizes / sane list lengths.
-        role = str(parsed.get("role") or data.title)[:200]
+        role = str(parsed.get("role") or data.title).replace("\x00", "")[:200]
         skills = parsed.get("extracted_skills", [])
-        skills = [str(s)[:200] for s in skills if s][:100] if isinstance(skills, list) else []
+        skills = [str(s).replace("\x00", "")[:200] for s in skills if s][:100] if isinstance(skills, list) else []
         if not skills:
             skills = ["Backend Development", "System Design", "Problem Solving"]
         requirements = parsed.get("extracted_requirements", [])
-        requirements = [str(r)[:1000] for r in requirements if r][:100] if isinstance(requirements, list) else []
+        requirements = [str(r).replace("\x00", "")[:1000] for r in requirements if r][:100] if isinstance(requirements, list) else []
         experience = str(parsed.get("experience_level") or "").lower().strip()
         experience = experience if experience in EXPERIENCE_LEVELS else ""
-        company = (data.company or "").strip() or str(parsed.get("company") or "").strip()[:200]
+        company = (data.company or "").strip() or str(parsed.get("company") or "").replace("\x00", "").strip()[:200]
 
         jd = JobDescription(
             user_id=user_id,

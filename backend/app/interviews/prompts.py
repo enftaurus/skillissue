@@ -81,6 +81,11 @@ def experience_block(level: Optional[str], category: str) -> str:
             "don't hold a fresher to senior expectations or let a senior get away with fresher-level answers.")
 
 
+def _has_word(text: str, word: str) -> bool:
+    """Whole-word match, so 'Metabase' or 'Tuberlabs' don't get Meta/Uber calibration."""
+    return re.search(rf"\b{re.escape(word)}\b", text) is not None
+
+
 def build_interviewer_system_prompt(
     category: str,
     target_role: str,
@@ -153,33 +158,33 @@ def build_interviewer_system_prompt(
     # Company-specific flavor tailored by category
     if company_name:
         comp_lower = company_name.lower()
-        if "google" in comp_lower:
+        if _has_word(comp_lower, "google"):
             prompt += (
                 f"\n\nCOMPANY CALIBRATION: GOOGLE ({category.upper()} ROUND)\n"
                 "- Require rigorous big-O time and space complexity explanations before answering.\n"
                 "- Ask about boundary conditions: integer overflow, memory leaks, extreme scale.\n"
                 "- If Behavioral/Managerial: Probe 'Googleyness'—intellectual humility, navigating ambiguity without ego, data-driven consensus."
             )
-        elif "uber" in comp_lower:
+        elif _has_word(comp_lower, "uber"):
             prompt += (
                 f"\n\nCOMPANY CALIBRATION: UBER ({category.upper()} ROUND)\n"
                 "- Challenge them on high concurrency: race conditions, distributed locking, and geospatial indexing (H3 hexagons).\n"
                 "- Inquire how their architecture handles 500k concurrent active drivers with GPS packet jitter and sub-50ms dispatch latency.\n"
                 "- If Behavioral/Managerial: Probe high-urgency operational triage and incident post-mortems without blame."
             )
-        elif "openai" in comp_lower:
+        elif _has_word(comp_lower, "openai"):
             prompt += (
                 f"\n\nCOMPANY CALIBRATION: OPENAI ({category.upper()} ROUND)\n"
                 "- Probe understanding of GPU cluster utilization, KV cache management, continuous batching, and streaming latency.\n"
                 "- If Behavioral/Managerial: Test stance on frontier model safety guarantees vs deployment velocity, and ask 'Why OpenAI specifically?'."
             )
-        elif "amazon" in comp_lower:
+        elif _has_word(comp_lower, "amazon"):
             prompt += (
                 f"\n\nCOMPANY CALIBRATION: AMAZON ({category.upper()} ROUND)\n"
                 "- Technical: Focus on highly available microservices, DynamoDB single-table design, decoupled messaging (SQS/SNS), and idempotency.\n"
                 "- If Behavioral/Managerial: Rigorously evaluate against the 16 Leadership Principles (Customer Obsession, Ownership, Bias for Action, Disagree and Commit, Dive Deep)."
             )
-        elif "meta" in comp_lower:
+        elif _has_word(comp_lower, "meta"):
             prompt += (
                 f"\n\nCOMPANY CALIBRATION: META ({category.upper()} ROUND)\n"
                 "- Technical: Focus on social graph traversal, high-throughput caching (TAO/Memcached), and handling billions of edge queries.\n"
@@ -193,7 +198,7 @@ def build_interviewer_system_prompt(
                 first_line = tail.split("\n", 1)[0]
                 beh = tail[tail.index("If Behavioral/Managerial:"):].split("\n", 1)[0]
                 prompt = head + "COMPANY CALIBRATION:" + first_line + "\n- " + beh
-        if not any(k in comp_lower for k in ("google", "uber", "openai", "amazon", "meta")):
+        if not any(_has_word(comp_lower, k) for k in ("google", "uber", "openai", "amazon", "meta")):
             from backend.app.tracks.company_context import calibration_block, company_by_name
             comp = company_by_name(company_name)
             if comp:

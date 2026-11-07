@@ -42,3 +42,39 @@ async def test_jd_interview_uses_jd_company_with_overrides(client):
     r = (await client.post("/api/v1/interviews/jd", headers=h, json={"category": "technical", "jd_id": jd["id"],
                                                                      "experience_level": "junior"})).json()
     assert r["company_name"] == "Razorpay" and r["experience_level"] == "junior" and "@ Razorpay" in r["title"]
+
+
+@pytest.mark.asyncio
+async def test_overlong_titles_and_roles_do_not_500(client):
+    """E14: titles built from JD role + company (or long skills) overflowed interviews.title String(255) /
+    target_role String(150) and 500'd as a Postgres DataError."""
+    h = await _login(client)
+    jd = (await client.post("/api/v1/job-descriptions", headers=h, json={
+        "title": "R" * 200, "company": "C" * 200,
+        "raw_text": "We are hiring engineers to build payment APIs in Java and MySQL."})).json()
+    # Pin the extracted role to the max the JD schema allows (the mock extractor may return something shorter).
+    upd = await client.put(f"/api/v1/job-descriptions/{jd['id']}", headers=h, json={"extracted_role": "E" * 200})
+    assert upd.status_code == 200, upd.text
+    r = await client.post("/api/v1/interviews/jd", headers=h, json={"category": "technical", "jd_id": jd["id"]})
+    assert r.status_code == 201, r.text
+    assert len(r.json()["title"]) <= 255 and len(r.json()["target_role"]) <= 150
+    r = await client.post("/api/v1/interviews/domain", headers=h, json={
+        "category": "technical", "domain_skills": ["S" * 150] * 3, "target_role": "T" * 150})
+    assert r.status_code == 201, r.text
+    assert len(r.json()["title"]) <= 255
+    r = await client.post("/api/v1/interviews/domain", headers=h, json={
+        "category": "technical", "domain_skills": ["Go"], "target_role": "T" * 151})
+    assert r.status_code == 422
+    r = await client.post("/api/v1/interviews/jd", headers=h, json={"category": "technical", "jd_id": jd["id"],
+                                                                    "difficulty": "x" * 21})
+    assert r.status_code == 422
+
+
+def test_company_calibration_matches_whole_words_only():
+    """E15: 'meta' in 'Metabase' (or 'uber' in 'Tuberlabs') pulled in Meta/Uber calibration."""
+    p = build_interviewer_system_prompt(category="technical", target_role="x", difficulty="x", company_name="Metabase")
+    assert "COMPANY CALIBRATION: META" not in p and "Metabase" in p
+    p = build_interviewer_system_prompt(category="technical", target_role="x", difficulty="x", company_name="Tuberlabs")
+    assert "UBER" not in p and "Tuberlabs" in p
+    p = build_interviewer_system_prompt(category="technical", target_role="x", difficulty="x", company_name="Meta Platforms")
+    assert "COMPANY CALIBRATION: META" in p

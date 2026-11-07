@@ -21,6 +21,11 @@ def _assistant_kind(result: Dict[str, Any], default: str) -> str:
     return default
 
 
+def _clip(text: str, limit: int) -> str:
+    """Fit a derived string into its column (titles are built from user/JD text and used to 500 when too long)."""
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
 class InterviewService:
     @classmethod
     async def create_domain_interview(
@@ -82,8 +87,8 @@ class InterviewService:
             user_id=user_id,
             mode="domain",
             category=data.category,
-            title=title,
-            target_role=data.target_role or "Software Engineer",
+            title=_clip(title, 255),
+            target_role=_clip(data.target_role or "Software Engineer", 150),
             difficulty=data.difficulty or "intermediate",
             status="in_progress",
             domain_skills=data.domain_skills,
@@ -175,8 +180,8 @@ class InterviewService:
             user_id=user_id,
             mode="jd",
             category=data.category,
-            title=title,
-            target_role=jd.extracted_role or jd.title,
+            title=_clip(title, 255),
+            target_role=_clip(jd.extracted_role or jd.title, 150),
             difficulty=data.difficulty or "intermediate",
             status="in_progress",
             domain_skills=jd.extracted_skills,
