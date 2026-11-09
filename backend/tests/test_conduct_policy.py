@@ -29,6 +29,16 @@ def test_quick_verdicts_and_false_positive_safety():
                  "I pasted the code into a file and ran it", "I'd kill the process with SIGTERM", "bc it was faster",
                  "Could you repeat the question?", "Redis copies data to replicas"):
         assert conduct.quick_verdict(fine) is None, fine
+    # E17: harmless engineering talk the deterministic filter used to punish (one of them ended the interview).
+    for fine in ("I'll find you the link after this", "I will find you a better example", "I'll beat you to it",
+                 "We copied from the primary to the replica nightly", "I copied it over to the staging bucket",
+                 "I felt like an idiot when prod went down", "an idiot-proof deploy script",
+                 "The pager wouldn't shut up all night", "Copilot generated the code and I reviewed every line",
+                 "Copilot wrote it and I reviewed it"):
+        assert conduct.quick_verdict(fine) is None, fine
+    for bad in ("I just copied it.", "I pasted it from stackoverflow", "you idiot", "chatgpt wrote it", "shut up"):
+        assert conduct.quick_verdict(bad).kind == conduct.UNPROFESSIONAL, bad
+    assert conduct.quick_verdict("I will find you.").kind == conduct.SEVERE
     assert conduct.decide(conduct.Verdict(conduct.OFF_TOPIC), 0) == "warn"
     assert conduct.decide(conduct.Verdict(conduct.OFF_TOPIC), 1) == "terminate"
     assert conduct.decide(conduct.Verdict(conduct.SEVERE), 0) == "terminate"

@@ -218,6 +218,10 @@ async def main():
         check("plans: adapt preview foreign", await c.post(f"/plans/{fake}/adapt/preview", headers=a, json={}))
         check("plans: suggested backlog foreign", await c.get(f"/plans/{fake}/suggested-backlog", headers=a))
         check("plans: custom empty body", await c.post("/plans/custom", headers=a, json={}))
+        # E20: unknown / unbounded weekday names were stored and sent to the model as-is.
+        check("plans: custom unknown weekday", await c.post("/plans/custom", headers=a, json={"topic": "DSA", "schedule_days": ["funday"]}))
+        check("plans: custom 50 weekdays", await c.post("/plans/custom", headers=a, json={"topic": "DSA", "schedule_days": ["monday"] * 50}))
+        check("plans: queue/next foreign plan", await c.post(f"/plans/{fake}/queue/next", headers=a))
 
         check("resume: empty file", await c.post("/resumes/upload", headers=a, files={"file": ("r.pdf", b"", "application/pdf")}))
         check("resume: garbage pdf", await c.post("/resumes/upload", headers=a, files={"file": ("r.pdf", b"%PDF-1.4 garbage", "application/pdf")}))

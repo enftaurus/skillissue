@@ -94,3 +94,78 @@ async def test_empty_queue_is_a_clear_error(client):
     plan = (await client.post("/api/v1/plans/custom", headers=h, json={"topic": "DSA", "daily_study_minutes": 30, "total_days": 3})).json()
     r = await client.post(f"/api/v1/plans/{plan['id']}/queue/next", headers=h)
     assert r.status_code == 409 and r.json()["error"]["code"] == "QUEUE_EMPTY"
+
+
+# --- E18-E20 (5a, round 3d) ---------------------------------------------------------------------------------
+
+def test_fit_tasks_and_plan_meta_survive_junk_model_output():
+    from backend.app.plans.service import clean_plan_meta
+    junk = [{"title": "T" * 900, "subtopic": "S" * 400, "description": {"x": 1}, "task_type": "revision" * 10},
+            {"title": 42, "subtopic": ["a"], "task_type": None}, {"title": {"nested": True}}, {"title": "  "},
+            {"title": "ok\x00nul"}]
+    t = fit_tasks(junk, 4, 30, "DBMS")
+    assert len(t) == 4
+    assert len(t[0]["title"]) == 255 and len(t[0]["subtopic"]) == 150 and t[0]["task_type"] == "practice"
+    assert isinstance(t[0]["description"], str) and t[0]["description"]
+    assert t[1]["title"] == "42" and t[1]["subtopic"] is None
+    assert t[2]["title"] == "oknul"
+    title, skills = clean_plan_meta({"bad": 1}, "not a list", "DBMS Study Roadmap", "DBMS")
+    assert title == "DBMS Study Roadmap" and skills == ["DBMS"]
+    title, skills = clean_plan_meta("x" * 1000, [{"a": 1}, "SQL", 7, "y" * 500], "f", "f")
+    assert len(title) == 255 and skills == ["SQL", "7", "y" * 150]
+
+
+@pytest.mark.asyncio
+async def test_schedule_days_validated(client):
+    h = await _login(client)
+    for bad in (["funday"], ["monday"] * 50, ["x" * 10000]):
+        r = await client.post("/api/v1/plans/custom", headers=h, json={"topic": "DSA", "total_days": 3, "schedule_days": bad})
+        assert r.status_code == 422, bad
+    r = await client.post("/api/v1/plans/custom", headers=h, json={"topic": "DSA", "total_days": 3,
+                                                                  "schedule_days": [" Monday", "monday", "FRIDAY"]})
+    assert r.status_code in (200, 201) and r.json()["schedule_days"] == ["monday", "friday"]
+
+
+@pytest.mark.asyncio
+async def test_long_queue_topic_and_double_start_dont_break_the_plan(db_session):
+    import asyncio
+    import httpx
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+    from backend.app.core.config import settings
+    from backend.app.database.session import get_db
+    from backend.app.main import create_application
+
+    engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
+    maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _own_session():  # one session per request, like production
+        async with maker() as s:
+            yield s
+            await s.commit()
+
+    app = create_application()
+    app.dependency_overrides[get_db] = _own_session
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as client:
+            h = await _login(client)
+            r = await client.post("/api/v1/learning-backlog", headers=h, json={"topic": "T" * 150, "subtopic": "S" * 150,
+                                                                               "priority": "high", "reason": "practice"})
+            assert r.status_code in (200, 201), r.text
+            item_id = r.json()["id"]
+            plan = (await client.post("/api/v1/plans/custom", headers=h,
+                                      json={"topic": "DSA", "daily_study_minutes": 30, "total_days": 3})).json()
+            base = len(plan["tasks"])
+
+            # Title "Deep Dive: {topic} ({subtopic})" is 316 chars against a 255 column: used to be a 500.
+            rs = await asyncio.gather(*[client.post(f"/api/v1/plans/{plan['id']}/queue/next", headers=h) for _ in range(3)])
+            assert all(x.status_code in (200, 409) for x in rs), [x.text for x in rs]
+            plan = (await client.get(f"/api/v1/plans/{plan['id']}", headers=h)).json()
+            assert len(plan["tasks"]) == base + 1  # three concurrent "Start next topic" clicks schedule it once
+            assert len(plan["tasks"][-1]["title"]) <= 255
+
+            # Re-attaching an item that's already in this plan doesn't duplicate it either.
+            r = await client.post(f"/api/v1/plans/{plan['id']}/backlog-items", headers=h, json={"backlog_item_ids": [item_id]})
+            assert r.status_code == 200 and len(r.json()["tasks"]) == base + 1
+    finally:
+        await engine.dispose()

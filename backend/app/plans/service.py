@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 from backend.app.database.models import Plan, PlanTask, Evaluation, UserProfile, UserSkill
 from backend.app.plans.schemas import (
@@ -15,9 +15,34 @@ from backend.app.core.logging import logger
 from backend.app.plans.resources import resolve_for_tasks
 
 
+_TASK_TYPES = {"concept", "practice", "coding", "reassessment"}
+
+
+def _clip(value: Any, limit: int, default: str = "") -> str:
+    """Model output as a bounded string: non-strings, NULs and overlong values were DataError 500s."""
+    if value is None or isinstance(value, (dict, list)):
+        return default
+    text_value = str(value).replace("\x00", "").strip()
+    return (text_value[:limit].rstrip() or default) if text_value else default
+
+
+def clean_plan_meta(title: Any, target_skills: Any, fallback_title: str, fallback_skill: str):
+    """Plan title (String(255)) and target_skills (List[str] in the response) from model output."""
+    skills = [_clip(x, 150) for x in (target_skills if isinstance(target_skills, list) else [])]
+    skills = [x for x in skills if x][:12] or [_clip(fallback_skill, 150, "General")]
+    return _clip(title, 255, _clip(fallback_title, 255, "Study Roadmap")), skills
+
+
 def fit_tasks(tasks: Any, days: int, daily_minutes: int, topic: str) -> List[Dict[str, Any]]:
     """Exactly `days` sessions, numbered 1..days, none longer than the daily budget."""
-    tasks = [t for t in (tasks if isinstance(tasks, list) else []) if isinstance(t, dict) and t.get("title")][:days]
+    tasks = [dict(t) for t in (tasks if isinstance(tasks, list) else []) if isinstance(t, dict) and _clip(t.get("title"), 255)][:days]
+    for t in tasks:
+        t["title"] = _clip(t.get("title"), 255)
+        t["subtopic"] = _clip(t.get("subtopic"), 150) or None
+        t["description"] = _clip(t.get("description"), 4000, "Review core engineering concepts and complete exercises.")
+        kind = _clip(t.get("task_type"), 30).lower()
+        t["task_type"] = kind if kind in _TASK_TYPES else "practice"
+    topic = _clip(topic, 200, "Study")
     phases = [("Fundamentals", "concept"), ("Core mechanisms", "concept"), ("Guided practice", "practice"),
               ("Edge cases & failure modes", "practice"), ("Hands-on coding", "coding"), ("Spaced revision", "concept")]
     while len(tasks) < days:
@@ -162,8 +187,8 @@ class PlanService:
         response = await provider.generate_json(prompt=prompt, system_prompt=system_prompt)
         parsed = response.parsed_json or {}
 
-        title = parsed.get("title") or f"{data.topic} Study Roadmap"
-        target_skills = parsed.get("target_skills") or [data.topic]
+        title, target_skills = clean_plan_meta(parsed.get("title"), parsed.get("target_skills"),
+                                               f"{data.topic} Study Roadmap", data.topic)
         tasks_data = parsed.get("tasks", [])
         if not tasks_data:
             tasks_data = [
@@ -303,8 +328,8 @@ class PlanService:
         response = await provider.generate_json(prompt=prompt, system_prompt=system_prompt)
         parsed = response.parsed_json or {}
 
-        title = parsed.get("title") or f"{effective_days}-Day Technical Improvement Roadmap"
-        target_skills = parsed.get("target_skills") or ["Database Optimization", "System Reliability", "Async Concurrency"]
+        title, target_skills = clean_plan_meta(parsed.get("title"), parsed.get("target_skills"),
+                                               f"{effective_days}-Day Technical Improvement Roadmap", target_role)
         tasks_data = fit_tasks(parsed.get("tasks", []), effective_days, daily_minutes,
                                ", ".join((evaluation.weaknesses or [])[:2]) or target_role)
         resources = await resolve_for_tasks(tasks_data, " ".join((evaluation.weaknesses or []) + (evaluation.missing_concepts or [])))
@@ -677,6 +702,13 @@ class PlanService:
         return suggestions
 
     @staticmethod
+    async def _lock_queue(db: AsyncSession, user_id: str) -> None:
+        """Serialise queue -> plan moves per user (released at commit). Without it two concurrent
+        "Start next topic" requests both read the same queue front and scheduled every topic twice."""
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            await db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"plan-queue:{user_id}"})
+
+    @staticmethod
     def queue_order():
         """Priority first (high > medium > low), then FIFO by when the topic was queued."""
         from sqlalchemy import case
@@ -688,6 +720,7 @@ class PlanService:
     async def dequeue_next(cls, db: AsyncSession, user_id: str, plan_id: str, count: int = 1) -> Plan:
         """Take the front of the learning queue into this plan."""
         from backend.app.database.models import LearningBacklogItem
+        await cls._lock_queue(db, user_id)
         await cls.get_plan_by_id(db, user_id, plan_id)
         ids = (await db.execute(select(LearningBacklogItem.id).where(
             LearningBacklogItem.user_id == user_id, LearningBacklogItem.status == "queued")
@@ -710,6 +743,7 @@ class PlanService:
         creating actionable PlanTasks and updating backlog item statuses to 'planned'.
         """
         from backend.app.database.models import LearningBacklogItem
+        await cls._lock_queue(db, user_id)
         plan = await cls.get_plan_by_id(db, user_id, plan_id)
 
         result = await db.execute(
@@ -718,7 +752,8 @@ class PlanService:
                 LearningBacklogItem.user_id == user_id,
             )
         )
-        items = list(result.scalars().all())
+        # An item already scheduled in this plan is not added twice (double-clicked "Start next topic" / attach).
+        items = [i for i in result.scalars().all() if not (i.status == "planned" and i.planned_plan_id == plan.id)]
         if not items:
             return plan
 
@@ -737,6 +772,7 @@ class PlanService:
             task_title = f"Deep Dive: {item.topic}"
             if item.subtopic:
                 task_title += f" ({item.subtopic})"
+            task_title = task_title[:255]  # topic and subtopic are 150 each; plan_tasks.title is 255
 
             task = PlanTask(
                 plan_id=plan_id_str,

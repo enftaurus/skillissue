@@ -19,19 +19,32 @@ from backend.app.core.logging import logger
 OK, OFF_TOPIC, UNPROFESSIONAL, SEVERE = "ok", "off_topic", "unprofessional", "severe"
 MAX_WARNINGS = 1  # one warning, then the interview ends
 
+_CHEAT_SOURCE = (r"(leet\s?code|stack\s?overflow|google|the\s+internet|internet|online|chat\s?gpt|gpt|claude|gemini|copilot|"
+                 r"(an?\s+|the\s+)?ai|(a|my)\s+friend|someone|somebody|github|geeks\s?for\s?geeks|gfg|youtube|"
+                 r"(a|some|the)\s+(website|site|blog|tutorial|editorial)|the\s+(solution|answer)s?|there|here)\b")
 _SEVERE_RE = re.compile(
-    r"\b(i('| wi)?ll|gonna|going to)\s+(kill|hurt|find|beat)\s+(you|u)\b|\bkill\s+yourself\b|\bkys\b|"
+    # "I'll find you the link" / "I'll beat you to it" are not threats: "find" only with nothing (or "and ...") after it.
+    r"\b(i('| wi)?ll|gonna|going to)\s+((kill|hurt|beat)\s+(you|u)\b(?!\s+(to|at|in)\b)|find\s+(you|u)\s*(?:[.!?]|$|and\b))|"
+    r"\bkill\s+yourself\b|\bkys\b|"
     r"\b(n[i1]gg(er|a)|f[a@]gg?ot|retard(ed)?|wh[o0]re|sl[u*]t|c[u*]nt)\b|"
     r"\b(send|show)\s+(me\s+)?(nudes|your\s+body)\b|\bsexy\b|\b(date|sleep)\s+with\s+me\b",
     re.I)
 _PROFANITY_RE = re.compile(
-    r"\b(f+u+c+k+\w*|f\*+k|wtf|stfu|sh[i1]t+y?|bullshit|bitch\w*|bastard|asshole|dickhead|dumbass|idiot|stupid\s+(question|interviewer|bot)|"
-    r"shut\s+up|screw\s+(you|this)|piss\s+off|bloody\s+hell|chutiya|madarchod|bhenchod|bsdk)\b",
+    r"\b(f+u+c+k+\w*|f\*+k|wtf|stfu|sh[i1]t+y?|bullshit|bitch\w*|bastard|asshole|dickhead|dumbass|stupid\s+(question|interviewer|bot)|"
+    # "idiot" only aimed at someone ("I felt like an idiot" / "idiot-proof" are fine); "the pager wouldn't shut up" is fine.
+    r"(you|u|you're|youre|ur)\s+(are\s+)?(an?\s+)?idiots?|idiot\s+(interviewer|bot|ai)|"
+    r"(?<!n't\s)(?<!not\s)(?<!never\s)(?<!to\s)shut\s+up|screw\s+(you|this)|piss\s+off|bloody\s+hell|chutiya|madarchod|bhenchod|bsdk)\b",
     re.I)
 _CHEATING_RE = re.compile(
-    r"\b(i|we)\s+(just\s+|literally\s+|totally\s+)?(copied\s+(it|this|that|everything|the\s+(code|answer|solution|whole\s+thing))\b|copied\s+(from|off)\b|copy[- ]?pasted\s+(it|this|the\s+(code|answer|solution))|pasted\s+(it|this|the\s+(code|answer|solution))\s+from|cheated|"
+    # Copying only counts from a place answers come from, or with nothing after it ("I just copied it."):
+    # "we copied it from the primary to the replica" / "I copied it over to staging" describe engineering work.
+    r"\b(i|we)\s+(just\s+|literally\s+|totally\s+)?(copied\s+((it|this|that|everything|the\s+(code|answer|solution|whole\s+thing))\s+)?(from|off)\s+" + _CHEAT_SOURCE +
+    r"|copied\s+(it|this|that|everything|the\s+(answer|solution|whole\s+thing))(?=\s*(?:[.!,]|$|lol\b|tbh\b|honestly\b))"
+    r"|copy[- ]?pasted\s+(it|this|the\s+(code|answer|solution))|pasted\s+(it|this|the\s+(code|answer|solution))\s+from\s+" + _CHEAT_SOURCE + r"|cheated|"
     r"looked\s+(it|this)\s+up\s+during|googled\s+(it|the\s+answer|the\s+solution))\b|"
-    r"\b(chat\s?gpt|gpt|copilot|claude|gemini|an?\s+ai|the\s+ai)\s+(wrote|did|solved|generated|gave\s+me)\s+(it|this|the\s+(code|answer|solution))\b|"
+    # "Copilot generated it and I reviewed every line" is how people describe real work, not an admission.
+    r"\b(chat\s?gpt|gpt|copilot|claude|gemini|an?\s+ai|the\s+ai)\s+(wrote|did|solved|generated|gave\s+me)\s+(it|this|this\s+code|the\s+(answer|solution)|my\s+answer)\b"
+    r"(?!,?\s*(and|but|then)\s+(i|we)\s+(reviewed|checked|tested|verified|fixed|edited|rewrote|refactored|wrote))|"
     r"\bi\s+(used|asked)\s+(chat\s?gpt|gpt|copilot|claude|gemini|ai)\s+(to|for)\s+(write|solve|answer|do)\b|"
     r"\b(someone|my\s+friend|a\s+friend)\s+(else\s+)?(wrote|solved|did)\s+(it|this|the\s+code)\s+for\s+me\b",
     re.I)

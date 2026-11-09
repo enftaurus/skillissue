@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
 class CreateCustomPlanRequest(BaseModel):
     topic: str = Field(min_length=2, max_length=150, description="What you want to learn, e.g. Operating Systems, DBMS, DSA, System Design")
@@ -11,6 +13,21 @@ class CreateCustomPlanRequest(BaseModel):
     current_level: str = Field(default="intermediate", pattern="^(beginner|intermediate|advanced)$")
     deadline: Optional[datetime] = None
     start_date: Optional[datetime] = None
+
+    @field_validator("schedule_days")
+    @classmethod
+    def _weekdays(cls, v: List[str]) -> List[str]:
+        # Unknown names used to be stored (and sent to the model) as-is, with no size bound.
+        if len(v) > 14:
+            raise ValueError("at most 7 weekdays")
+        days = []
+        for d in v:
+            d = str(d).strip().lower()
+            if d not in _WEEKDAYS:
+                raise ValueError(f"unknown weekday (use one of: {', '.join(_WEEKDAYS)})")
+            if d not in days:
+                days.append(d)
+        return days or list(_WEEKDAYS[:5])
 
 class GeneratePlanFromEvaluationRequest(BaseModel):
     total_days: int = Field(default=7, ge=3, le=60)
