@@ -206,3 +206,80 @@ async def test_garbled_text_is_never_misconduct():
         return '{"conduct": "off_topic", "certain": true, "reason": "nonsense"}'
     assert (await conduct.assess("identical identical validation not identical validation identical validation", "q",
                                  says_off_topic)).kind == conduct.OK
+
+
+LONG_STRONG_ANSWER = (
+    "So in our payments service the same webhook from the provider could arrive two or three times, and the first "
+    "version of the handler would just insert a new row for each one, so a customer could get charged twice. What I "
+    "did was add an idempotency key, which is the provider's event id, and put a unique constraint on it in the ledger "
+    "table. Then the handler does an insert and if the insert fails on the constraint we know it is a duplicate and we "
+    "just return the stored result instead of doing the work again. The tricky part was that the work and the insert "
+    "have to be in the same transaction, otherwise you can insert the key and then crash before you do the work, and "
+    "then the retry sees the key and skips it, so the work never happens. So we wrap both in one transaction and the "
+    "key row also stores the response so the retry gets the same answer. When two copies of the same event arrive at "
+    "the same time the second insert waits on the first transaction because of the unique index, and when the first "
+    "one commits the second one fails and returns the stored result. We measured it by replaying a day of production "
+    "webhooks against staging, and the duplicate rate on the ledger went from about 0.3 percent of events to zero, and "
+    "the p99 latency of the handler went up by about 4 milliseconds because of the extra index write."
+)
+
+
+def test_long_detailed_answer_is_not_speech_garble():
+    """E21: any answer over ~250 words has a type/token ratio under 0.5, so strong answers got 'didn't catch that'."""
+    from backend.app.interviews.agent.nodes import _looks_garbled
+    assert len(LONG_STRONG_ANSWER.split()) > 200
+    assert not _looks_garbled(LONG_STRONG_ANSWER)
+    assert not _looks_garbled("we used a queue and the queue workers read from the queue and wrote to the database")
+    # Real debris is still caught: stutter, and a looped Whisper hallucination.
+    assert _looks_garbled("the the cache cache was was invalid")
+    assert _looks_garbled("thank you for watching " * 6)
+
+
+def test_design_choice_is_not_a_correction_unless_the_question_assumed_it():
+    """E22: 'I didn't use a cache since...' explains a choice; it's only a correction when we claimed they used it."""
+    from backend.app.interviews.agent.nodes import _is_correction
+    for answer in ("I didn't use recursion because the stack could overflow, so I iterated with an explicit stack.",
+                   "I never used an ORM there, the queries were hand-written SQL.",
+                   "I did not use a cache since the data changed every second."):
+        assert not _is_correction(answer, "Walk me through how you kept reads fast.")
+        assert not _is_correction(answer)
+    assert _is_correction("I didn't use Redis, it was Memcached.", "How did you use Redis for the session store?")
+    assert _is_correction("No, I used Postgres.", "You mentioned MongoDB earlier. Why that?")
+    assert _is_correction("That's not what I said.")
+    assert _is_correction("i have never mentioned that i used python in the offline payment protocol")
+
+
+def test_yes_or_no_to_a_yes_no_question_is_not_unclear():
+    """E23: 'No, I haven't.' to 'Have you worked with Kafka?' drew 'I'm not following, explain concretely'."""
+    from backend.app.interviews.agent.nodes import _unclear_answer
+    state = {"last_intent": "answer", "last_quality": "weak",
+             "recent_messages": [{"role": "assistant", "content": "Okay. Have you worked with Kafka before?"}]}
+    for reply in ("No, I haven't.", "Yes, a little.", "Nope.", "Yeah, at my internship."):
+        assert not _unclear_answer(reply, state), reply
+    open_q = dict(state, recent_messages=[{"role": "assistant", "content": "What did the service do?"}])
+    assert _unclear_answer("stuff mostly", open_q)
+
+
+class _FakeModel:
+    def __init__(self, text):
+        self.text = text
+
+    async def ainvoke(self, _messages):
+        return type("Resp", (), {"content": self.text})()
+
+
+@pytest.mark.asyncio
+async def test_switch_offer_flag_only_set_when_the_offer_is_made():
+    """E24: a garbled/correction turn during a stuck streak marked the switch as offered without offering it,
+    so the early close could end questioning on an offer that was never made."""
+    from backend.app.interviews.agent.nodes import generate_question_node
+    stuck = [{"quality": "non_answer", "intent": "non_answer"}] * 3
+    base = {"category": "technical", "current_topic": "Caching", "domain_skills": ["Caching"], "turn_count": 4,
+            "answer_log": stuck, "next_action": "decrease_difficulty", "last_intent": "answer",
+            "recent_messages": [{"role": "assistant", "content": "How would you invalidate it?"}]}
+    garbled = dict(base, latest_candidate_answer="the the cache cache was was")
+    out = await generate_question_node(garbled, {"configurable": {"model": _FakeModel("Sorry, say that again?")}})
+    assert out["offered_switch"] is False
+    idk = dict(base, latest_candidate_answer="I really don't know.")
+    out = await generate_question_node(idk, {"configurable": {"model": _FakeModel("Want to switch to your own project?")}})
+    assert out["offered_switch"] is True

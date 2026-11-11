@@ -242,10 +242,21 @@ def _stuck_streak(state: InterviewAgentState) -> int:
     return streak
 
 
+# Always a correction: the candidate disputes what the interviewer said about them.
 _CORRECTION_RE = re.compile(
-    r"\b(i\s+(have\s+|had\s+)?(never|didn'?t|did\s+not|haven'?t|hadn'?t|not)\s+(mention(ed)?|say|said|use[d]?|talk(ed)?\s+about)|"
+    r"\b(i\s+(have\s+|had\s+)?(never|didn'?t|did\s+not|haven'?t|hadn'?t|not)\s+(mention(ed)?|say|said|talk(ed)?\s+about)|"
     r"that'?s\s+not\s+what\s+i\s+(said|meant)|i\s+didn'?t\s+say\s+that|where\s+did\s+i\s+(say|mention)|"
-    r"you'?re\s+assuming|no,?\s+i\s+(used|meant))\b", re.I)
+    r"you'?re\s+assuming)\b", re.I)
+# "I didn't use X" / "No, I used Y" is also how people explain design choices ("I didn't use a cache since..."),
+# so it only counts as a correction when the last question claimed something about the candidate's work.
+_USAGE_DENIAL_RE = re.compile(
+    r"\b(i\s+(have\s+|had\s+)?(never|didn'?t|did\s+not|haven'?t|hadn'?t|not)\s+use[d]?|no,?\s+i\s+(used|meant))\b", re.I)
+_ASSERTED_USAGE_RE = re.compile(
+    r"\b(you\s+(used|use|were\s+using|'re\s+using|are\s+using|mentioned|said|talked\s+about|built\s+(it\s+)?(with|in|using)|"
+    r"implemented\s+(it\s+)?(with|in|using))|you'?re\s+using|your\s+use\s+of)\b", re.I)
+_YES_NO_Q_RE = re.compile(
+    r"^\s*(have|has|had|did|do|does|are|is|was|were|can|could|would|will|should)\s+(you|it|they|that|this|there|we)\b", re.I)
+_YES_NO_REPLY_RE = re.compile(r"^\s*(yes|yeah|yep|yup|sure|no|nope|nah|not\s+really|kind\s+of|sort\s+of|a\s+(bit|little))\b", re.I)
 
 
 def _assumed_skills(question: str, skills: List[str], recent_messages: List[Dict[str, Any]], latest: str) -> List[str]:
@@ -267,13 +278,30 @@ _HONEST_IDK_RE = re.compile(r"\b(i\s+(don'?t|do not)\s+know|no idea|not sure|nev
                             r"i'?m not familiar|i forgot|can'?t remember)\b", re.I)
 
 
+def _last_question(state: Dict[str, Any]) -> str:
+    return next((m.get("content", "") for m in reversed(state.get("recent_messages") or [])
+                 if m.get("role") == "assistant"), "")
+
+
+def _last_ask(question: str) -> str:
+    """The sentence holding the question mark ('Okay. Have you used Kafka?' -> 'Have you used Kafka?')."""
+    q = (question or "").strip()
+    if "?" in q:
+        q = q[: q.rfind("?") + 1]
+    parts = re.split(r"(?<=[.!?])\s+", q)
+    return parts[-1] if parts else q
+
+
 def _unclear_answer(text: str, state: Dict[str, Any]) -> bool:
     """A reply that doesn't engage with the question (not an honest 'I don't know', which is handled elsewhere)."""
     t = (text or "").strip()
-    if not t or _HONEST_IDK_RE.search(t) or _is_correction(t) or _looks_garbled(t):
+    last_q = _last_question(state)
+    if not t or _HONEST_IDK_RE.search(t) or _is_correction(t, last_q) or _looks_garbled(t):
         return False
     if state.get("last_intent", "answer") != "answer":
         return False
+    if _YES_NO_REPLY_RE.match(t) and _YES_NO_Q_RE.match(_last_ask(last_q)):
+        return False  # "No, I haven't." is a complete answer to "Have you worked with Kafka?"
     return state.get("last_quality") == "unclear" or (len(t.split()) <= 6 and state.get("last_quality") in ("weak", "non_answer"))
 
 
@@ -288,16 +316,39 @@ def _unclear_streak(state: Dict[str, Any]) -> int:
     return n
 
 
-def _is_correction(text: str) -> bool:
-    return bool(_CORRECTION_RE.search(text or ""))
+def _is_correction(text: str, last_question: str = "") -> bool:
+    t = text or ""
+    if _CORRECTION_RE.search(t):
+        return True
+    return bool(_USAGE_DENIAL_RE.search(t) and _ASSERTED_USAGE_RE.search(last_question or ""))
+
+
+_STOPWORDS = frozenset(
+    "a an the and or but so if then than that this these those it its it's is are was were be been being to of in on "
+    "at by for with from as into about over under up down out we i you he she they them our my your their me us "
+    "do does did done have has had not no yes there here what which who when where why how can could would should "
+    "will just also very only one two because since after before while each other same all any some more most".split())
 
 
 def _looks_garbled(text: str) -> bool:
-    """Speech-recognition debris: the same few words repeated ('identical identical validation not identical...')."""
+    """Speech-recognition debris: the same few words repeated ('identical identical validation not identical...'),
+    or a looped phrase. Ordinary long answers repeat function words a lot, so those don't count."""
     words = re.findall(r"[a-z']+", (text or "").lower())
     if len(words) < 5:
         return False
-    return len(set(words)) / len(words) < 0.5
+    adjacent = sum(1 for a, b in zip(words, words[1:]) if a == b)
+    if adjacent >= 2 and adjacent / len(words) >= 0.15:
+        return True
+    content = [w for w in words if w not in _STOPWORDS]
+    if len(words) <= 40 and len(content) >= 4 and len(set(content)) / len(content) < 0.5:
+        return True
+    if len(words) >= 12:  # Whisper-style loop: one phrase repeated over most of the text
+        grams: Dict[Tuple[str, str, str], int] = {}
+        for g in zip(words, words[1:], words[2:]):
+            grams[g] = grams.get(g, 0) + 1
+        if max(grams.values()) * 3 >= 0.5 * len(words):
+            return True
+    return False
 
 
 def _turn_rules(current_topic: str) -> str:
@@ -400,6 +451,7 @@ async def generate_question_node(
 
     presenting_problem = False
     append_after: str = ""
+    offering_switch = False
     answer_block = wrap_untrusted_answer(latest_answer, max_chars=6000)
 
     if category == "dsa" and not problem_presented:
@@ -454,7 +506,7 @@ async def generate_question_node(
             "misheard (e.g. 'identical' for 'idempotent'), you may check it ('Did you mean idempotent?'). One sentence "
             "or two, no judgement."
         )
-    elif _is_correction(latest_answer):
+    elif _is_correction(latest_answer, _last_question(state)):
         instruction = (
             f"The candidate corrected an assumption you made (data only):\n{answer_block}\n"
             "Accept it in a few words ('Got it, my mistake.'), then ask ONE open question about what they actually did "
@@ -477,6 +529,7 @@ async def generate_question_node(
             "role, or how you work. Sound like a person, not a script."
         )
     elif _stuck_streak(state) >= 3 and not state.get("offered_switch") and category in ("behavioral", "managerial"):
+        offering_switch = True
         instruction = (
             "The candidate has struggled to give a concrete example for the last few questions. Like a decent human "
             "interviewer, briefly offer an easier way in: ask for any real situation, from college, an internship, a "
@@ -484,6 +537,7 @@ async def generate_question_node(
             "sentences max, no pity, no praise, no technical questions."
         )
     elif _stuck_streak(state) >= 3 and not state.get("offered_switch"):
+        offering_switch = True
         instruction = (
             "The candidate has not been able to answer the last few questions. Do what a decent human interviewer "
             "does: briefly and matter-of-factly offer to switch ground, and ask them to name something related to "
@@ -640,7 +694,9 @@ async def generate_question_node(
         },
         "turn_count": turn_count + 1,
         "phase": "closing" if next_action == "invite_questions" else "active",
-        "offered_switch": bool(state.get("offered_switch")) or (_stuck_streak(state) >= 3 and next_action != "invite_questions"),
+        # Only once the offer was actually made: an unclear/garbled/correction turn takes another branch, and the
+        # early close (5 non-answers after the offer) must not fire on an offer that was never spoken.
+        "offered_switch": bool(state.get("offered_switch")) or offering_switch,
         "problem_presented": problem_presented or presenting_problem,
     }
 
