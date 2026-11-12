@@ -45,6 +45,13 @@ def _session_payload(session: ComprehensionSession, item: Item) -> Dict[str, Any
     return data
 
 
+def _item_for(session: ComprehensionSession) -> Item:
+    item = ITEMS_BY_ID.get(session.item_id)
+    if item is None:  # retired from the bank after the session was started
+        raise AppException("This code item is no longer available.", code="ITEM_RETIRED", status_code=410)
+    return item
+
+
 class ComprehensionService:
     @staticmethod
     def list_items() -> List[Dict[str, Any]]:
@@ -72,7 +79,7 @@ class ComprehensionService:
     @classmethod
     async def get(cls, db: AsyncSession, user_id: str, session_id: str) -> Dict[str, Any]:
         s = await cls._get(db, user_id, session_id)
-        return _session_payload(s, ITEMS_BY_ID[s.item_id])
+        return _session_payload(s, _item_for(s))
 
     @classmethod
     async def answer(cls, db: AsyncSession, user_id: str, session_id: str, question_id: str, answer: str,
@@ -83,7 +90,7 @@ class ComprehensionService:
         started = s.started_at if s.started_at.tzinfo else s.started_at.replace(tzinfo=timezone.utc)
         if datetime.now(timezone.utc) > started + timedelta(minutes=s.time_limit_minutes) + GRACE:
             raise AppException("Time's up for this item. Finish the session to see the answers.", code="SESSION_EXPIRED")
-        item = ITEMS_BY_ID[s.item_id]
+        item = _item_for(s)
         q = next((x for x in item.questions if x.id == question_id), None)
         if q is None:
             raise EntityNotFoundError("Question", question_id)
@@ -111,6 +118,15 @@ class ComprehensionService:
             entry = {"answer": text, "score": grade.score, "verdict": grade.verdict, "feedback": grade.feedback,
                      "location_correct": grade.location_correct, "follow_up": grade.follow_up,
                      "done": grade.follow_up is None}
+
+        # Grading can take seconds (LLM judge). Re-read under a row lock so a concurrent finish or a
+        # double-submit of the same question can't be overwritten by this stale copy.
+        await db.refresh(s, with_for_update=True)
+        if s.status != "in_progress":
+            raise AppException("This session is finished.", code="SESSION_FINISHED")
+        answers = dict(s.answers or {})
+        if answers.get(q.id) != prev:
+            raise AppException("You've already answered this question.", code="ALREADY_ANSWERED")
         answers[q.id] = entry
         s.answers = answers
         flag_modified(s, "answers")
@@ -121,7 +137,8 @@ class ComprehensionService:
     @classmethod
     async def finish(cls, db: AsyncSession, user_id: str, session_id: str) -> Dict[str, Any]:
         s = await cls._get(db, user_id, session_id)
-        item = ITEMS_BY_ID[s.item_id]
+        item = _item_for(s)
+        await db.refresh(s, with_for_update=True)  # serialize with in-flight answers
         if s.status != "completed":
             answers = s.answers or {}
             scores = [float((answers.get(q.id) or {}).get("score") or 0.0) for q in item.questions]

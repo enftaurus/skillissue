@@ -123,3 +123,104 @@ async def test_numeric_answers_do_not_match_inside_other_numbers():
     rq = next(x for x in r.questions if x.type == "numeric")
     assert (await grade_answer(r, rq, "11.5 seconds")).verdict == "incorrect"
     assert (await grade_answer(r, rq, "1.5 seconds")).verdict == "correct"
+
+
+# --- Round 3f regressions (E25-E28) ---------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_trace_accepts_inline_outputs_and_matches_whole_tokens():
+    build = ITEMS_BY_ID["build-order"]
+    q = next(x for x in build.questions if x.type == "trace")  # "[]\n['c']"
+    assert (await grade_answer(build, q, "It prints [] and then ['c']")).verdict == "correct"
+    assert (await grade_answer(build, q, "['c'] then []")).verdict != "correct"  # order still matters
+    retry = ITEMS_BY_ID["retry-helper"]
+    rq = next(x for x in retry.questions if x.type == "trace")  # "None 3 3"
+    assert (await grade_answer(retry, rq, "NoneType 3 3")).verdict == "incorrect"
+    assert (await grade_answer(retry, rq, "None 3 33")).verdict == "incorrect"
+
+
+class _Judge:
+    def __init__(self, text):
+        self.text = text
+
+    async def generate_text(self, **kw):
+        class R:
+            pass
+        r = R()
+        r.text = self.text
+        return r
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raw", [
+    '[1, 2]', '{"covered": 3, "score": 0.5}', '{"covered": [0], "score": "high"}',
+    '{"covered": [0], "score": null, "follow_up": {"q": 1}}', '{"covered": [true, "0", 9, -1], "score": NaN}',
+    '{"covered": [0], "score": 0.4, "feedback": 12, "follow_up": 7}', 'no json at all',
+])
+async def test_malformed_judge_output_never_500s(raw):
+    item = ITEMS_BY_ID["ttl-lru-cache"]
+    q = next(x for x in item.questions if x.type == "explain")
+    g = await grade_answer(item, q, "It is an LRU cache with a TTL per key; get moves keys to the end.", _Judge(raw))
+    assert 0.0 <= g.score <= 1.0 and isinstance(g.feedback, str)
+    assert g.follow_up is None or isinstance(g.follow_up, str)
+
+
+@pytest.mark.asyncio
+async def test_nan_judge_score_is_not_full_marks():
+    item = ITEMS_BY_ID["ttl-lru-cache"]
+    q = next(x for x in item.questions if x.type == "explain")
+    g = await grade_answer(item, q, "it caches stuff", _Judge('{"covered": [], "score": NaN}'))
+    assert g.score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_offline_follow_up_does_not_leak_the_answer_key():
+    for item in ITEMS:
+        for q in item.questions:
+            if q.type in ("trace", "numeric"):
+                continue
+            g = await grade_answer(item, q, "not sure, something about the code")
+            assert g.follow_up, f"{item.id}/{q.id}"
+            for point in q.key_points:
+                assert point.split(",")[0].lower() not in g.follow_up.lower(), f"{item.id}/{q.id} leaked {point!r}"
+
+
+@pytest.mark.asyncio
+async def test_answer_after_concurrent_finish_is_rejected(client, monkeypatch):
+    """Grading is slow; a finish landing mid-grade must not be overwritten by the stale answer."""
+    from backend.app.comprehension import service as svc
+    from backend.app.providers.factory import ModelFactory
+
+    async def _no_provider(*a, **k):
+        raise RuntimeError("offline")
+    monkeypatch.setattr(ModelFactory, "get_for_user", _no_provider)
+    h = await _login(client)
+    sid = (await client.post("/api/v1/comprehension/sessions", headers=h, json={"item_id": "retry-helper"})).json()["id"]
+
+    real_grade = svc.grade_answer
+
+    async def slow_grade(*a, **k):
+        fin = await client.post(f"/api/v1/comprehension/sessions/{sid}/finish", headers=h)
+        assert fin.json()["status"] == "completed"
+        return await real_grade(*a, **k)
+    monkeypatch.setattr(svc, "grade_answer", slow_grade)
+    r = await client.post(f"/api/v1/comprehension/sessions/{sid}/answer", headers=h, json={"question_id": "q1", "answer": "None 3 3"})
+    assert r.json()["error"]["code"] == "SESSION_FINISHED"
+    monkeypatch.setattr(svc, "grade_answer", real_grade)
+    s = (await client.get(f"/api/v1/comprehension/sessions/{sid}", headers=h)).json()
+    assert s["answers"] == {} and s["score"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_retired_item_is_410_not_500(client, db_session):
+    from backend.app.database.models import ComprehensionSession
+    h = await _login(client)
+    sid = (await client.post("/api/v1/comprehension/sessions", headers=h, json={"item_id": "retry-helper"})).json()["id"]
+    row = await db_session.get(ComprehensionSession, sid)
+    row.item_id = "retired-item"
+    await db_session.commit()
+    for r in (await client.get(f"/api/v1/comprehension/sessions/{sid}", headers=h),
+              await client.post(f"/api/v1/comprehension/sessions/{sid}/finish", headers=h),
+              await client.post(f"/api/v1/comprehension/sessions/{sid}/answer", headers=h, json={"question_id": "q1", "answer": "x"})):
+        assert r.status_code == 410 and r.json()["error"]["code"] == "ITEM_RETIRED"
+    assert (await client.get("/api/v1/comprehension/history", headers=h)).status_code == 200
