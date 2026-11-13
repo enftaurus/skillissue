@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.errors import AppException, EntityNotFoundError
 from backend.app.database.models import Evaluation, EvaluationDispute, Interview
+from backend.app.evaluations.sanitize import coerce_score
 from backend.app.interviews.prompts import sanitize_untrusted_input
 from backend.app.interviews.rubrics import get_rubric_for_category
 
@@ -113,25 +114,32 @@ async def resolve_dispute(db: AsyncSession, user_id: str, interview_id: str, dim
                           quote: str, provider: Any) -> EvaluationDispute:
     from backend.app.interviews.service import InterviewService
     interview = await InterviewService.get_interview(db, user_id, interview_id)
+    quote = (quote or "").replace("\x00", "").strip()
+    argument = (argument or "").replace("\x00", "").strip()
+    if len(quote) < 12 or _norm(quote) not in _norm(candidate_text_of(interview)):
+        raise AppException("Quote a line from your own answers, exactly as it appears in the transcript.",
+                           code="QUOTE_NOT_IN_TRANSCRIPT")
+    # Serialise disputes per evaluation: the row lock is held across the judge call so two concurrent disputes
+    # can't both pass the limit checks, and a revision to one dimension can't be overwritten by a stale copy of
+    # the scores from another dispute (Postgres; a no-op on SQLite, which serialises writers anyway).
     evaluation = (await db.execute(select(Evaluation).where(Evaluation.interview_id == interview_id,
-                                                            Evaluation.user_id == user_id))).scalar_one_or_none()
+                                                            Evaluation.user_id == user_id)
+                                   .with_for_update().execution_options(populate_existing=True))).scalar_one_or_none()
     if evaluation is None or evaluation.overall_score is None:
         raise EntityNotFoundError("Evaluation", interview_id)
+    if evaluation.model_identifier == "conduct-policy":
+        raise AppException("This interview ended for conduct before any real answer; there's no technical finding to dispute.",
+                           code="NOT_DISPUTABLE")
     dims = dict(evaluation.rubric_dimension_scores or {})
-    if dimension_id not in dims:
+    if not isinstance(dims.get(dimension_id), dict):
         raise AppException("That rubric dimension isn't part of this evaluation.", code="UNKNOWN_DIMENSION")
     existing = (await db.execute(select(EvaluationDispute).where(EvaluationDispute.evaluation_id == evaluation.id))).scalars().all()
     if len(existing) >= MAX_DISPUTES:
         raise AppException(f"You can dispute at most {MAX_DISPUTES} findings per evaluation.", code="DISPUTE_LIMIT")
     if any(d.dimension_id == dimension_id for d in existing):
         raise AppException("You've already disputed this dimension.", code="ALREADY_DISPUTED")
-    quote = (quote or "").replace("\x00", "").strip()
-    argument = (argument or "").replace("\x00", "").strip()
-    if len(quote) < 12 or _norm(quote) not in _norm(candidate_text_of(interview)):
-        raise AppException("Quote a line from your own answers, exactly as it appears in the transcript.",
-                           code="QUOTE_NOT_IN_TRANSCRIPT")
 
-    old = dims[dimension_id].get("score")
+    old = coerce_score(dims[dimension_id].get("score"))
     rubric = {d.id: d for d in get_rubric_for_category(interview.category)}
     rd = rubric.get(dimension_id)
     criteria = json.dumps(rd.scoring_criteria) if rd else "{}"
@@ -145,13 +153,14 @@ async def resolve_dispute(db: AsyncSession, user_id: str, interview_id: str, dim
             r = await provider.generate_text(prompt=prompt, system_prompt=DISPUTE_SYSTEM)
             raw = (r.text or "").strip()
             data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-            proposed = int(data.get("new_score", old))
-            if isinstance(old, int):
+            proposed = coerce_score(data.get("new_score"))
+            if proposed is None:
+                proposed = old
+            elif old is not None:
                 proposed = max(old - MAX_REVISION, min(old + MAX_REVISION, proposed))
-            proposed = max(1, min(5, proposed))
             if data.get("decision") == "revised" and proposed != old:
                 decision, new = "revised", proposed
-            reason = str(data.get("reason") or reason)[:600]
+            reason = str(data.get("reason") or reason).replace("\x00", "").strip()[:600] or reason
         except Exception:
             reason = "Couldn't re-evaluate right now; the original score stands."
 
@@ -161,7 +170,11 @@ async def resolve_dispute(db: AsyncSession, user_id: str, interview_id: str, dim
         d["explanation"] = (d.get("explanation") or "") + f" (Revised {old} -> {new} after a dispute: {reason})"
         dims[dimension_id] = d
         evaluation.rubric_dimension_scores = dims
-        evaluation.overall_score = recompute_overall(interview.category, dims)
+        overall = recompute_overall(interview.category, dims)
+        if getattr(interview, "termination_reason", None) and overall is not None:
+            from backend.app.evaluations.conduct_penalty import CONDUCT_SCORE_CAP
+            overall = min(overall, CONDUCT_SCORE_CAP)  # a dispute can't lift the conduct-policy cap
+        evaluation.overall_score = overall
     dispute = EvaluationDispute(user_id=user_id, evaluation_id=evaluation.id, dimension_id=dimension_id, argument=argument[:2000],
                                 quote=quote[:2000], decision=decision, old_score=old if isinstance(old, int) else None,
                                 new_score=new if isinstance(new, int) else None, reason=reason)

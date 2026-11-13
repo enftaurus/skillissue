@@ -1,4 +1,5 @@
 import asyncio
+import math
 from datetime import datetime, timezone
 import json
 from typing import Any, Dict, List, Optional
@@ -28,6 +29,10 @@ def rubric_score_to_pct(score) -> float:
     return (v - 1.0) / 4.0 * 100.0
 
 from backend.app.evaluations.credibility import candidate_text_of, confidence, evidence_check, merge_passes
+from backend.app.evaluations.sanitize import (
+    coerce_score, dimension_scores as sanitize_dimension_scores, question_index as coerce_question_index,
+    sanitize_evaluation, clean_text,
+)
 
 
 class EvaluationService:
@@ -203,8 +208,14 @@ class EvaluationService:
             await db.refresh(failed_eval)
             return failed_eval
 
+        parsed = sanitize_evaluation(parsed)
         overall_score = float(parsed["overall_score"])
-        dimension_scores, consistency = merge_passes(parsed.get("dimension_scores", {}), second_pass)
+        if not math.isfinite(overall_score):
+            overall_score = 50.0
+        overall_score = max(0.0, min(100.0, overall_score))
+        if second_pass is not None:
+            second_pass = sanitize_dimension_scores(second_pass)
+        dimension_scores, consistency = merge_passes(parsed["dimension_scores"], second_pass)
 
         # Apply hint penalty if candidate used hints
         if interview.hint_level_used > 0 and "problem_solving_rigor" in dimension_scores:
@@ -212,9 +223,9 @@ class EvaluationService:
             orig_score = dimension_scores["problem_solving_rigor"].get("score", 3)
             adjusted_score = max(1, int(round(orig_score * penalty_factor)))
             dimension_scores["problem_solving_rigor"]["score"] = adjusted_score
-            dimension_scores["problem_solving_rigor"]["explanation"] += (
-                f" (Reflects Level {interview.hint_level_used} hint penalty)."
-            )
+            dimension_scores["problem_solving_rigor"]["explanation"] = (
+                dimension_scores["problem_solving_rigor"].get("explanation") or ""
+            ) + f" (Reflects Level {interview.hint_level_used} hint penalty)."
 
         # Compute overall_score deterministically from rubric dimension scores and weights
         total_weighted_score = 0.0
@@ -250,18 +261,14 @@ class EvaluationService:
         for item in raw_qf:
             if not isinstance(item, dict):
                 continue
-            q_idx = int(item.get("question_index", len(verified_question_feedback) + 1))
-            iq = str(item.get("interviewer_question", ""))
-            ca = str(item.get("candidate_answer", ""))
-            vq = str(item.get("verbatim_quote", "")).strip() if item.get("verbatim_quote") else ""
-            score_val = item.get("score")
-            try:
-                score_int = int(score_val) if score_val is not None else None
-            except (ValueError, TypeError):
-                score_int = None
-            critique = str(item.get("critique", ""))
-            guide = str(item.get("strong_answer_guide", ""))
-            res = item.get("targeted_resource")
+            q_idx = coerce_question_index(item.get("question_index"), len(verified_question_feedback) + 1)
+            iq = clean_text(item.get("interviewer_question"))
+            ca = clean_text(item.get("candidate_answer"))
+            vq = clean_text(item.get("verbatim_quote"))
+            score_int = coerce_score(item.get("score"))
+            critique = clean_text(item.get("critique"))
+            guide = clean_text(item.get("strong_answer_guide"))
+            res = clean_text(item.get("targeted_resource"), 300) or None
 
             # Ground strictly against candidate answer for this specific question turn
             turn = grouped_by_idx.get(q_idx)
@@ -415,7 +422,9 @@ class EvaluationService:
 
         # Update persistent UserSkill map for each evaluated rubric dimension using EMA
         for dim_id, dim_data in dimension_scores.items():
-            dim_score_val = float(dim_data.get("score", 3))
+            if "score" not in dim_data:
+                continue  # the model gave no usable score; don't move the skill map on a guess
+            dim_score_val = float(dim_data["score"])
             normalized_score = round(rubric_score_to_pct(dim_score_val), 1)
             await cls._update_user_skill(db, user_id, dim_id, normalized_score, evaluation.id)
 
